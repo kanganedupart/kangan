@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="강안출결">
+<title>강안교육 직원 출결패드</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;}
+html,body{width:100%;height:100%;overflow:hidden;background:#0f172a;font-family:'Apple SD Gothic Neo','Noto Sans KR',sans-serif;}
+
+/* HEADER */
+.header{
+  position:fixed;top:0;left:0;right:0;
+  padding:20px 24px 16px;
+  display:flex;align-items:center;justify-content:space-between;
+  z-index:10;
+}
+.header-logo{
+  display:flex;align-items:center;gap:10px;
+}
+.logo-box{
+  width:40px;height:40px;background:#2563eb;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;font-weight:800;color:#fff;letter-spacing:-1px;
+}
+.logo-text{font-size:14px;font-weight:600;color:rgba(255,255,255,.7);}
+.header-label{
+  font-size:13px;font-weight:600;
+  color:rgba(255,255,255,.5);
+  background:rgba(255,255,255,.08);
+  padding:5px 12px;border-radius:20px;
+  border:1px solid rgba(255,255,255,.1);
+}
+.header-time{
+  font-size:13px;color:rgba(255,255,255,.4);
+  font-family:'DM Mono','Courier New',monospace;
+}
+
+/* MAIN */
+.screen{
+  width:100%;height:100%;
+  display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+  padding:80px 20px 20px;
+}
+
+/* PIN SCREEN */
+#pin-screen{display:flex;flex-direction:column;align-items:center;width:100%;max-width:360px;}
+.pin-title{font-size:18px;font-weight:600;color:rgba(255,255,255,.8);margin-bottom:6px;}
+.pin-sub{font-size:13px;color:rgba(255,255,255,.35);margin-bottom:32px;}
+
+.pin-dots{display:flex;gap:16px;margin-bottom:40px;}
+.pin-dot{
+  width:16px;height:16px;border-radius:50%;
+  border:2px solid rgba(255,255,255,.25);
+  background:transparent;
+  transition:all .15s;
+}
+.pin-dot.filled{background:#2563eb;border-color:#2563eb;box-shadow:0 0 12px rgba(37,99,235,.5);}
+.pin-dot.error{background:#dc2626;border-color:#dc2626;animation:shake .3s ease;}
+
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
+/* KEYPAD */
+.keypad{
+  display:grid;grid-template-columns:repeat(3,1fr);
+  gap:12px;width:100%;max-width:300px;
+}
+.key{
+  aspect-ratio:1;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:24px;font-weight:600;color:#fff;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.1);
+  cursor:pointer;
+  transition:background .1s,transform .1s;
+  -webkit-tap-highlight-color:transparent;
+}
+.key:active{background:rgba(255,255,255,.2);transform:scale(.93);}
+.key.zero{grid-column:2;}
+.key.del{background:rgba(220,38,38,.15);border-color:rgba(220,38,38,.2);font-size:18px;}
+.key.del:active{background:rgba(220,38,38,.3);}
+.key.empty{visibility:hidden;}
+
+/* CONFIRM SCREEN */
+#confirm-screen{display:none;flex-direction:column;align-items:center;width:100%;max-width:360px;}
+.confirm-name{
+  font-size:32px;font-weight:700;color:#fff;
+  margin-bottom:6px;text-align:center;
+}
+.confirm-role{
+  font-size:16px;font-weight:500;
+  margin-bottom:40px;
+}
+.confirm-btns{display:flex;gap:14px;width:100%;}
+.confirm-btn{
+  flex:1;padding:18px;border-radius:16px;
+  font-size:18px;font-weight:700;border:none;cursor:pointer;
+  font-family:inherit;transition:transform .1s,opacity .15s;
+}
+.confirm-btn:active{transform:scale(.96);}
+.btn-checkin{background:#2563eb;color:#fff;box-shadow:0 4px 20px rgba(37,99,235,.4);}
+.btn-checkout{background:#16a34a;color:#fff;box-shadow:0 4px 20px rgba(22,163,74,.4);}
+.confirm-cancel{
+  margin-top:20px;font-size:13px;color:rgba(255,255,255,.35);
+  cursor:pointer;padding:8px 20px;border-radius:20px;
+  border:1px solid rgba(255,255,255,.1);background:none;
+  font-family:inherit;transition:color .15s;
+}
+.confirm-cancel:hover{color:rgba(255,255,255,.6);}
+
+/* RESULT SCREEN */
+#result-screen{display:none;flex-direction:column;align-items:center;width:100%;max-width:360px;}
+.result-icon{font-size:64px;margin-bottom:16px;}
+.result-msg{font-size:26px;font-weight:700;color:#fff;margin-bottom:8px;text-align:center;}
+.result-name{font-size:18px;color:rgba(255,255,255,.6);margin-bottom:8px;}
+.result-time{font-size:14px;font-family:'DM Mono','Courier New',monospace;color:rgba(255,255,255,.4);}
+.result-bar{
+  width:200px;height:4px;background:rgba(255,255,255,.1);
+  border-radius:2px;margin-top:32px;overflow:hidden;
+}
+.result-bar-fill{height:100%;background:#2563eb;border-radius:2px;animation:fillbar 3s linear forwards;}
+@keyframes fillbar{from{width:0}to{width:100%}}
+
+/* LOCK SCREEN */
+#lock-screen{display:none;flex-direction:column;align-items:center;width:100%;max-width:360px;}
+.lock-icon{font-size:48px;margin-bottom:16px;}
+.lock-msg{font-size:18px;font-weight:600;color:#f87171;margin-bottom:8px;text-align:center;}
+.lock-sub{font-size:13px;color:rgba(255,255,255,.4);text-align:center;}
+.lock-countdown{font-size:32px;font-weight:700;color:#f87171;margin-top:20px;font-family:'DM Mono',monospace;}
+
+/* ERROR MSG */
+.error-msg{
+  font-size:13px;color:#f87171;margin-top:-24px;margin-bottom:24px;
+  min-height:18px;text-align:center;
+}
+
+/* 배경 그라디언트 */
+.bg-glow{
+  position:fixed;inset:0;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 0%,rgba(37,99,235,.15) 0%,transparent 70%);
+}
+</style>
+</head>
+<body>
+<div class="bg-glow"></div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="header-logo">
+    <div class="logo-box">강안</div>
+    <div class="logo-text">강안교육</div>
+  </div>
+  <div class="header-label">직원 출결패드</div>
+  <div class="header-time" id="header-time"></div>
+</div>
+
+<!-- PIN SCREEN -->
+<div class="screen" id="pin-screen-wrap">
+  <div id="pin-screen">
+    <div class="pin-title">PIN 번호를 입력하세요</div>
+    <div class="pin-sub">4자리 출결 번호</div>
+    <div class="pin-dots" id="pin-dots">
+      <div class="pin-dot" id="dot-0"></div>
+      <div class="pin-dot" id="dot-1"></div>
+      <div class="pin-dot" id="dot-2"></div>
+      <div class="pin-dot" id="dot-3"></div>
+    </div>
+    <div class="error-msg" id="error-msg"></div>
+    <div class="keypad">
+      <div class="key" onclick="pressKey('1')">1</div>
+      <div class="key" onclick="pressKey('2')">2</div>
+      <div class="key" onclick="pressKey('3')">3</div>
+      <div class="key" onclick="pressKey('4')">4</div>
+      <div class="key" onclick="pressKey('5')">5</div>
+      <div class="key" onclick="pressKey('6')">6</div>
+      <div class="key" onclick="pressKey('7')">7</div>
+      <div class="key" onclick="pressKey('8')">8</div>
+      <div class="key" onclick="pressKey('9')">9</div>
+      <div class="key empty"></div>
+      <div class="key zero" onclick="pressKey('0')">0</div>
+      <div class="key del" onclick="pressDelete()">⌫</div>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM SCREEN -->
+<div class="screen" id="confirm-screen-wrap" style="display:none">
+  <div id="confirm-screen">
+    <div class="confirm-role" id="confirm-role"></div>
+    <div class="confirm-name" id="confirm-name"></div>
+    <div class="confirm-btns">
+      <button class="confirm-btn btn-checkin" onclick="doAttend('in')">출근 ✓</button>
+      <button class="confirm-btn btn-checkout" onclick="doAttend('out')">퇴근 ✓</button>
+    </div>
+    <button class="confirm-cancel" onclick="resetToPin()">취소</button>
+  </div>
+</div>
+
+<!-- RESULT SCREEN -->
+<div class="screen" id="result-screen-wrap" style="display:none">
+  <div id="result-screen">
+    <div class="result-icon" id="result-icon"></div>
+    <div class="result-msg" id="result-msg"></div>
+    <div class="result-name" id="result-name"></div>
+    <div class="result-time" id="result-time"></div>
+    <div class="result-bar"><div class="result-bar-fill" id="result-bar"></div></div>
+  </div>
+</div>
+
+<!-- LOCK SCREEN -->
+<div class="screen" id="lock-screen-wrap" style="display:none">
+  <div id="lock-screen">
+    <div class="lock-icon">🔒</div>
+    <div class="lock-msg">PIN 오류 3회 초과</div>
+    <div class="lock-sub">잠시 후 다시 시도하세요</div>
+    <div class="lock-countdown" id="lock-countdown">30</div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getDatabase, ref, get, set, update }
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDWtvRCSWWmApj0W_qTOXaJg7A2VL-vjVc",
+  authDomain: "kanganedupart-8fb5a.firebaseapp.com",
+  databaseURL: "https://kanganedupart-8fb5a-default-rtdb.firebaseio.com",
+  projectId: "kanganedupart-8fb5a",
+  storageBucket: "kanganedupart-8fb5a.firebasestorage.app",
+  messagingSenderId: "433381824511",
+  appId: "1:433381824511:web:3292f67b193dd0a81079ca"
+};
+const fbApp = initializeApp(firebaseConfig);
+const db = getDatabase(fbApp);
+
+// ── STATE ──
+let pin = '';
+let failCount = 0;
+let locked = false;
+let lockTimer = null;
+let foundPart = null;
+
+// ── CLOCK ──
+function updateClock() {
+  const d = new Date();
+  const days = ['일','월','화','수','목','금','토'];
+  document.getElementById('header-time').textContent =
+    `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')} (${days[d.getDay()]})  ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+updateClock(); setInterval(updateClock, 10000);
+
+// ── UTILS ──
+const todayStr = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+};
+const nowStr = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+};
+
+// ── PIN INPUT ──
+function pressKey(k) {
+  if (locked) return;
+  if (pin.length >= 4) return;
+  pin += k;
+  updateDots();
+  if (pin.length === 4) setTimeout(checkPin, 150);
+}
+
+function pressDelete() {
+  if (locked) return;
+  if (pin.length > 0) {
+    pin = pin.slice(0, -1);
+    updateDots();
+    clearError();
+  }
+}
+
+function updateDots() {
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById('dot-' + i);
+    dot.classList.toggle('filled', i < pin.length);
+    dot.classList.remove('error');
+  }
+}
+
+function setDotError() {
+  for (let i = 0; i < 4; i++) {
+    const dot = document.getElementById('dot-' + i);
+    dot.classList.remove('filled');
+    dot.classList.add('error');
+  }
+  setTimeout(() => {
+    for (let i = 0; i < 4; i++) {
+      document.getElementById('dot-' + i).classList.remove('error');
+    }
+  }, 400);
+}
+
+function clearError() {
+  document.getElementById('error-msg').textContent = '';
+}
+
+function showError(msg) {
+  document.getElementById('error-msg').textContent = msg;
+}
+
+// ── PIN CHECK ──
+async function checkPin() {
+  const snap = await get(ref(db, 'parts'));
+  const parts = snap.val() || {};
+  const found = Object.entries(parts).find(([,p]) => p.pin === pin && p.active !== false);
+
+  if (found) {
+    failCount = 0;
+    foundPart = { id: found[0], ...found[1] };
+    showConfirm();
+  } else {
+    failCount++;
+    setDotError();
+    pin = '';
+    if (failCount >= 3) {
+      showLock();
+    } else {
+      showError(`PIN이 올바르지 않습니다 (${failCount}/3)`);
+    }
+  }
+}
+
+// ── SCREENS ──
+function showScreen(name) {
+  ['pin','confirm','result','lock'].forEach(s => {
+    document.getElementById(s + '-screen-wrap').style.display = 'none';
+  });
+  document.getElementById(name + '-screen-wrap').style.display = 'flex';
+}
+
+function showConfirm() {
+  const SUB_COLORS = {
+    순찰:'#0ea5e9','1층':'#8b5cf6',식관:'#f59e0b',응대:'#10b981',
+    국어:'#e11d48',수학:'#3b82f6',영어:'#ec4899',지리:'#f59e0b',
+    물리:'#f97316',화학:'#14b8a6',생명:'#16a34a',지학:'#8b5cf6',
+    사문:'#0ea5e9',생윤:'#6366f1',스타터:'#6366f1',디자인:'#e11d48'
+  };
+  const color = SUB_COLORS[foundPart.role] || '#6b7280';
+  document.getElementById('confirm-role').innerHTML =
+    `<span style="color:${color};font-weight:700">${foundPart.role}</span>`;
+  document.getElementById('confirm-name').textContent = foundPart.name;
+  showScreen('confirm');
+}
+
+async function doAttend(type) {
+  const today = todayStr();
+  const now = nowStr();
+  const attRef = ref(db, `attendance/${today}/${foundPart.id}`);
+  const snap = await get(attRef);
+  const existing = snap.val() || {};
+
+  if (type === 'in') {
+    if (existing.inTime) {
+      // 이미 출근 찍음
+      showResult('⚠️', '이미 출근 처리됨', foundPart.name, existing.inTime);
+      return;
+    }
+    existing.inTime = now;
+  } else {
+    if (!existing.inTime) {
+      showResult('⚠️', '출근 먼저 필요합니다', foundPart.name, now);
+      return;
+    }
+    if (existing.outTime) {
+      showResult('⚠️', '이미 퇴근 처리됨', foundPart.name, existing.outTime);
+      return;
+    }
+    existing.outTime = now;
+  }
+
+  await set(attRef, existing);
+
+  const msg = type === 'in' ? '출근 완료' : '퇴근 완료';
+  const icon = type === 'in' ? '✅' : '👋';
+  showResult(icon, msg, foundPart.name, now);
+}
+
+function showResult(icon, msg, name, time) {
+  document.getElementById('result-icon').textContent = icon;
+  document.getElementById('result-msg').textContent = msg;
+  document.getElementById('result-name').textContent = name;
+  document.getElementById('result-time').textContent = time;
+  // 바 애니메이션 재시작
+  const bar = document.getElementById('result-bar');
+  bar.style.animation = 'none';
+  bar.offsetHeight; // reflow
+  bar.style.animation = 'fillbar 3s linear forwards';
+  showScreen('result');
+  setTimeout(() => resetToPin(), 3000);
+}
+
+function resetToPin() {
+  pin = '';
+  foundPart = null;
+  updateDots();
+  clearError();
+  showScreen('pin');
+}
+
+// ── LOCK ──
+function showLock() {
+  let seconds = 30;
+  document.getElementById('lock-countdown').textContent = seconds;
+  showScreen('lock');
+  locked = true;
+  lockTimer = setInterval(() => {
+    seconds--;
+    document.getElementById('lock-countdown').textContent = seconds;
+    if (seconds <= 0) {
+      clearInterval(lockTimer);
+      locked = false;
+      failCount = 0;
+      resetToPin();
+    }
+  }, 1000);
+}
+
+// ── GLOBAL ──
+window.pressKey = pressKey;
+window.pressDelete = pressDelete;
+window.doAttend = doAttend;
+window.resetToPin = resetToPin;
+
+// 전체화면 시도
+document.body.addEventListener('click', () => {
+  if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+});
+</script>
+</body>
+</html>
