@@ -357,7 +357,8 @@ function calcRealH(p,a){
   if(!a||!a.inTime)return schedH(p);
   const ph=a.stdPhrase||'';
   if(ph==='결근')return 0;
-  const startT=a.adjustedStart||a.inTime||p.start;
+  // 일찍 찍어도 스케줄 시작시간 기준으로 계산 (관리자 처리 전까지)
+  const startT=a.adjustedStart||p.start;
   const endT=a.adjustedEnd||a.outTime||p.end;
   const totalM=toM(endT)-toM(startT);
   if(totalM<=0)return 0;
