@@ -522,9 +522,7 @@ const rows=sorted.map(({dt,p,a,alertHtml})=>{
 }).join('');
 document.getElementById('workman-list').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>날짜</th><th>카테고리</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th>실시수</th><th>처리구분</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 window.loadWorkmanData=loadWorkmanData;
-function exportWorkmanCSV(){if(!WD.length){ST('먼저 조회해주세요');return;}const h='날짜,카테고리,직무,이름,스케줄,출근,퇴근,실시수,처리구분,메모,처리자';const rows=WD.map(({dt,p,a})=>[dt,CATL[p.cat]||p.cat,p.role,p.name,`${p.start}~${p.end}`,a.inTime||'',a.outTime||'',calcRealH(p,a.inTime?a:null),a.stdPhrase||'',a.memoText||'',a.memoBy||''].map(v=>`"${v}"`).join(',')).join('
-');const b=new Blob(['﻿'+h+'
-'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`강안교육_출근현황_${document.getElementById('workman-from').value}_${document.getElementById('workman-to').value}.csv`;a.click();URL.revokeObjectURL(u);}
+function exportWorkmanCSV(){if(!WD.length){ST('먼저 조회해주세요');return;}const h='날짜,카테고리,직무,이름,스케줄,출근,퇴근,실시수,처리구분,메모,처리자';const rows=WD.map(({dt,p,a})=>[dt,CATL[p.cat]||p.cat,p.role,p.name,p.start+'~'+p.end,a.inTime||'',a.outTime||'',calcRealH(p,a.inTime?a:null),a.stdPhrase||'',a.memoText||'',a.memoBy||''].map(v=>'"'+v+'"').join(',')).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_출근현황_'+document.getElementById('workman-from').value+'_'+document.getElementById('workman-to').value+'.csv';a.click();URL.revokeObjectURL(u);}
 window.exportWorkmanCSV=exportWorkmanCSV;
 function openUnscheduled(pid,dt){const p=AP[pid];if(!p)return;const col=cof(p.role);document.getElementById('modal-workman-title').innerHTML=`<span style="color:${col}">${p.role}</span> (${p.name}) 임시근무 처리`;document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">📌 스케줄 없는 날 출근 기록 — 임시근무로 처리합니다.</div><div style="display:flex;gap:10px;margin-bottom:14px"><div class="form-group" style="flex:1"><label class="form-label">출근 시각</label><input type="time" class="form-input" id="us-in" value="${(function(){const a={}; return a;})().inTime||p.start}"></div><div class="form-group" style="flex:1"><label class="form-label">퇴근 시각</label><input type="time" class="form-input" id="us-out" value="${p.end}"></div></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현</div><div class="memo-quick">${(MEMO_QUICK['임시근무']||[]).map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('us-mo').value+=(document.getElementById('us-mo').value?' / ':'')+'${q}'">${q}</button>`).join('')}</div><div class="form-group" style="margin-top:8px"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="us-mo" placeholder="임시근무 사유"></textarea></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveUnscheduled('${pid}','${dt}')">임시근무 처리</button></div>`;OM('modal-workman-edit');}
 window.openUnscheduled=openUnscheduled;
@@ -571,86 +569,102 @@ function openEP(id){document.getElementById('modal-part-title').textContent='파
 window.openAddPartModal=openAP;window.openEditPartModal=openEP;
 function rPF(pid){
 const p=pid?AP[pid]:null;
+const el=document.getElementById('modal-part-body');
 const days=['월','화','수','목','금','토','일'];
 const sd=p?p.days||[]:[];
-const co=['mgmt','tutor','etc'].map(c=>'<option value="'+c+'" '+(p&&p.cat===c?'selected':'')+'>'+(CAT[c]?CAT[c].label:c)+'</option>').join('');
 const sk=p?(p.status||'active'):'active';
-const breakVal=p&&p.customBreak!==undefined?p.customBreak:'';
-const joinDate=p&&p.joinDate?p.joinDate:kstDate();
-const leaveDate=p&&p.leaveDate?p.leaveDate:'';
 
-// 상태 버튼 (재직/퇴사만)
-const stateButtons=pid?(
-  (sk==='active'?'<button type="button" class="btn-secondary" style="font-size:12px;padding:6px 12px;color:var(--danger)" onclick="resignP(''+pid+'')">퇴사</button>':'')+
-  (sk==='inactive'?'<button type="button" class="btn-secondary" style="font-size:12px;padding:6px 12px;color:var(--success)" onclick="reinP(''+pid+'')">재입사</button>':'')+
-  '<button type="button" class="icon-btn del" onclick="delP(''+pid+'',''+(p?p.name:'')+'');CM('modal-part')">완전 삭제</button>'
-):'';
+// 탭 버튼
+el.innerHTML='';
+const tabBar=document.createElement('div');
+tabBar.style.cssText='display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border)';
+const btnBasic=document.createElement('button');
+btnBasic.type='button';btnBasic.id='ptab-basic';btnBasic.textContent='기본 정보';
+btnBasic.style.cssText='padding:8px 16px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;font-family:inherit';
+btnBasic.onclick=()=>switchPTab('basic');
+const btnSched=document.createElement('button');
+btnSched.type='button';btnSched.id='ptab-schedule';btnSched.textContent='스케줄 관리';
+btnSched.style.cssText='padding:8px 16px;font-size:13px;font-weight:500;border:none;background:none;cursor:pointer;color:var(--text-secondary);font-family:inherit';
+btnSched.onclick=()=>switchPTab('schedule');
+tabBar.appendChild(btnBasic);tabBar.appendChild(btnSched);el.appendChild(tabBar);
 
-// 스케줄 기간 리스트
+// 기본 정보 탭
+const basicDiv=document.createElement('div');basicDiv.id='ptab-basic-content';
+const cats={mgmt:'관리',tutor:'조교',etc:'기타'};
+basicDiv.innerHTML=`
+<div class="form-group"><label class="form-label">대카테고리</label>
+<select class="form-select" id="pf-cat">
+${Object.entries(cats).map(([k,v])=>`<option value="${k}"${p&&p.cat===k?' selected':''}>${v}</option>`).join('')}
+</select></div>
+<div class="form-group"><label class="form-label">직무명</label><input class="form-input" id="pf-role" placeholder="예: 순찰, 수학" value="${p?p.role:''}"></div>
+<div class="form-group"><label class="form-label">이름</label><input class="form-input" id="pf-name" placeholder="홍길동" value="${p?p.name:''}"></div>
+<div class="form-group"><label class="form-label">휴대폰</label><input class="form-input" id="pf-phone" placeholder="010-0000-0000" value="${p?p.phone:''}"></div>
+<div class="form-group"><label class="form-label">PIN (4자리)</label><input class="form-input" id="pf-pin" placeholder="0000" maxlength="4" value="${p?p.pin:''}" style="font-size:18px;letter-spacing:8px"></div>
+<div style="display:flex;gap:10px">
+<div class="form-group" style="flex:1"><label class="form-label">입사일</label><input type="date" class="form-input" id="pf-jd" value="${p&&p.joinDate?p.joinDate:kstDate()}"></div>
+<div class="form-group" style="flex:1"><label class="form-label">퇴사일</label><input type="date" class="form-input" id="pf-leave" value="${p&&p.leaveDate?p.leaveDate:''}"></div>
+</div>
+${pid?`<div class="divider-section"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">상태 변경</div><div id="state-btns"></div></div>`:''}
+`;
+el.appendChild(basicDiv);
+
+// 상태 버튼 추가
+if(pid){
+  const stDiv=document.getElementById('state-btns');
+  if(sk==='active'){const b=document.createElement('button');b.type='button';b.className='btn-secondary';b.style.cssText='font-size:12px;padding:6px 12px;color:var(--danger);margin-right:8px';b.textContent='퇴사';b.onclick=()=>resignP(pid);stDiv.appendChild(b);}
+  if(sk==='inactive'){const b=document.createElement('button');b.type='button';b.className='btn-secondary';b.style.cssText='font-size:12px;padding:6px 12px;color:var(--success);margin-right:8px';b.textContent='재입사';b.onclick=()=>reinP(pid);stDiv.appendChild(b);}
+  const bd=document.createElement('button');bd.type='button';bd.className='icon-btn del';bd.textContent='완전 삭제';bd.onclick=()=>{delP(pid,p?p.name:'');CM('modal-part');};stDiv.appendChild(bd);
+}
+
+// 스케줄 탭
+const schedDiv=document.createElement('div');schedDiv.id='ptab-schedule-content';schedDiv.style.display='none';
+const dayBtns=days.map(d=>{
+  const ds=p&&p.daySchedule?p.daySchedule[d]:null;
+  const isDiff=ds&&p&&(ds.start!==p.start||ds.end!==p.end);
+  return`<button type="button" class="day-btn${sd.includes(d)?' selected':''}${isDiff?' has-custom':''}" onclick="tDay('${d}')" ondblclick="toggleDayTime('${d}')">${d}</button>`;
+}).join('');
+const dayTimes=sd.map(d=>{
+  const ds=p&&p.daySchedule?p.daySchedule[d]:null;
+  if(!ds||!p||(ds.start===p.start&&ds.end===p.end))return'';
+  return`<div class="day-time-row" data-day="${d}"><span style="font-weight:600;width:20px;color:var(--warning)">${d}</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="ds-s-${d}" value="${ds.start}"><span style="color:var(--text-muted)">~</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="ds-e-${d}" value="${ds.end}"><button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="this.parentElement.remove()">✕</button></div>`;
+}).join('');
 const periods=p&&p.schedulePeriods?[...p.schedulePeriods].sort((a,b)=>a.startDate.localeCompare(b.startDate)):[];
-const periodsHtml=periods.length?periods.map((pd,i)=>`
-<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg);border-radius:var(--rs);margin-bottom:4px;flex-wrap:wrap">
-  <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--accent)">${pd.startDate} ~ ${pd.endDate}</span>
-  <span style="font-size:12px">${(pd.days||[]).join('·')} ${pd.start}~${pd.end}</span>
-  <button type="button" class="icon-btn del" style="padding:2px 6px;font-size:10px" onclick="removePeriod('${pid||''}',${i})">삭제</button>
-</div>`).join(''):'<div style="font-size:12px;color:var(--text-muted);padding:4px 0">등록된 변경 기간 없음</div>';
-
-let html=`
-<div style="display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border)">
-  <button type="button" id="ptab-basic" onclick="switchPTab('basic')" style="padding:8px 16px;font-size:13px;font-weight:600;border:none;background:none;cursor:pointer;color:var(--accent);border-bottom:2px solid var(--accent);margin-bottom:-2px;font-family:inherit">기본 정보</button>
-  <button type="button" id="ptab-schedule" onclick="switchPTab('schedule')" style="padding:8px 16px;font-size:13px;font-weight:500;border:none;background:none;cursor:pointer;color:var(--text-secondary);font-family:inherit">스케줄 관리</button>
+const periodsHtml=periods.length?periods.map((pd,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg);border-radius:var(--rs);margin-bottom:4px;flex-wrap:wrap"><span style="font-size:11px;color:var(--accent)">${pd.startDate} ~ ${pd.endDate}</span><span style="font-size:12px">${(pd.days||[]).join('·')} ${pd.start}~${pd.end}</span><button type="button" class="icon-btn del" style="padding:2px 6px;font-size:10px" onclick="removePeriod('${pid}',${i})">삭제</button></div>`).join(''):'<div style="font-size:12px;color:var(--text-muted)">등록된 변경 기간 없음</div>';
+const periodDayBtns=days.map(d=>`<button type="button" class="day-btn" onclick="tPDay('${d}')" id="pd-${d}">${d}</button>`).join('');
+schedDiv.innerHTML=`
+<div class="form-group"><label class="form-label">근무 요일 (더블클릭: 해당 요일 시간 개별 수정)</label>
+<div class="day-btns" id="pf-days">${dayBtns}</div>
+<div id="day-times">${dayTimes}</div></div>
+<div style="display:flex;gap:10px">
+<div class="form-group" style="flex:1"><label class="form-label">기본 출근</label><input class="form-input" id="pf-start" type="time" value="${p?p.start:'09:00'}"></div>
+<div class="form-group" style="flex:1"><label class="form-label">기본 퇴근</label><input class="form-input" id="pf-end" type="time" value="${p?p.end:'18:00'}"></div>
 </div>
+<div class="form-group"><label class="form-label">휴게시간(분) — 비워두면 자동</label><input class="form-input" id="pf-brk" type="number" placeholder="자동" value="${p&&p.customBreak!==undefined?p.customBreak:''}"></div>
+${pid?`<div class="divider-section">
+<div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">기간별 스케줄 변경</div>
+<div id="periods-list-${pid}">${periodsHtml}</div>
+<div style="margin-top:8px;padding:10px;background:var(--bg);border-radius:var(--rs);border:1px solid var(--border)">
+<div style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">기간 추가</div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
+<input type="date" class="form-input" id="period-start" style="width:148px"><span style="color:var(--text-muted)">~</span><input type="date" class="form-input" id="period-end" style="width:148px"></div>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px" id="period-days-wrap">${periodDayBtns}</div>
+<div style="display:flex;gap:6px;margin-bottom:8px"><input type="time" class="form-input" id="period-start-time" style="flex:1" value="09:00"><span style="color:var(--text-muted);align-self:center">~</span><input type="time" class="form-input" id="period-end-time" style="flex:1" value="18:00"></div>
+<div id="add-period-btn-wrap"></div>
+</div></div>`:''}
+`;
+el.appendChild(schedDiv);
 
-<div id="ptab-basic-content">
-  <div class="form-group"><label class="form-label">대카테고리</label><select class="form-select" id="pf-cat">${co}</select></div>
-  <div class="form-group"><label class="form-label">직무명</label><input class="form-input" id="pf-role" placeholder="예: 순찰, 수학" value="${p?p.role:''}"></div>
-  <div class="form-group"><label class="form-label">이름</label><input class="form-input" id="pf-name" placeholder="홍길동" value="${p?p.name:''}"></div>
-  <div class="form-group"><label class="form-label">휴대폰</label><input class="form-input" id="pf-phone" placeholder="010-0000-0000" value="${p?p.phone:''}"></div>
-  <div class="form-group"><label class="form-label">출결 PIN (4자리)</label><input class="form-input" id="pf-pin" placeholder="0000" maxlength="4" value="${p?p.pin:''}" style="font-family:'DM Mono',monospace;font-size:18px;letter-spacing:8px"></div>
-  <div style="display:flex;gap:10px">
-    <div class="form-group" style="flex:1"><label class="form-label">입사일</label><input type="date" class="form-input" id="pf-jd" value="${joinDate}"></div>
-    <div class="form-group" style="flex:1"><label class="form-label">퇴사일</label><input type="date" class="form-input" id="pf-leave" value="${leaveDate}"></div>
-  </div>
-  ${pid?`<div class="divider-section"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">상태 변경</div><div style="display:flex;gap:8px;flex-wrap:wrap">${stateButtons}</div></div>`:''}
-</div>
+// 기간 추가 버튼 (DOM으로)
+if(pid){
+  const apBtn=document.createElement('button');apBtn.type='button';apBtn.className='btn-secondary';apBtn.style.cssText='font-size:12px;padding:6px 14px';apBtn.textContent='+ 기간 추가';apBtn.onclick=()=>addPeriod(pid);
+  const wrap=document.getElementById('add-period-btn-wrap');if(wrap)wrap.appendChild(apBtn);
+}
 
-<div id="ptab-schedule-content" style="display:none">
-  <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">기본 스케줄</div>
-  <div class="form-group"><label class="form-label">근무 요일 (더블클릭하면 해당 요일 시간 개별 수정)</label>
-    <div class="day-btns" id="pf-days">${days.map(d=>{const ds=p?.daySchedule?.[d];const isDiff=ds&&(ds.start!==p.start||ds.end!==p.end);return'<button type="button" class="day-btn'+(sd.includes(d)?' selected':'')+(isDiff?' has-custom':'')+'" onclick="tDay(''+d+'')" ondblclick="toggleDayTime(''+d+'')">'+d+'</button>';}).join('')}</div>
-    <div id="day-times">${sd.map(d=>{const ds=p?.daySchedule?.[d];const isDiff=ds&&(ds.start!==p.start||ds.end!==p.end);return isDiff?`<div class="day-time-row" data-day="${d}"><span style="font-weight:600;width:20px;color:var(--warning)">${d}</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="ds-s-${d}" value="${ds.start}"><span style="color:var(--text-muted)">~</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="ds-e-${d}" value="${ds.end}"><button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="this.parentElement.remove()">✕</button></div>`:''}).join('')}</div>
-  </div>
-  <div style="display:flex;gap:10px">
-    <div class="form-group" style="flex:1"><label class="form-label">기본 출근</label><input class="form-input" id="pf-start" type="time" value="${p?p.start:'09:00'}"></div>
-    <div class="form-group" style="flex:1"><label class="form-label">기본 퇴근</label><input class="form-input" id="pf-end" type="time" value="${p?p.end:'18:00'}"></div>
-  </div>
-  <div class="form-group"><label class="form-label">휴게시간(분) — 비워두면 자동</label><input class="form-input" id="pf-brk" type="number" placeholder="자동 (4h이하:0 / 4h초과:30 / 9h이상:60)" value="${breakVal}"></div>
-
-  ${pid?`<div class="divider-section">
-    <div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">기간별 스케줄 변경 <span style="font-size:11px;color:var(--text-muted)">(임시근무/단기변경 포함)</span></div>
-    <div id="periods-list-${pid}">${periodsHtml}</div>
-    <div style="margin-top:8px;padding:10px;background:var(--bg);border-radius:var(--rs);border:1px solid var(--border)">
-      <div style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">기간 추가</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
-        <input type="date" class="form-input" id="period-start" style="width:150px" placeholder="시작일">
-        <span style="color:var(--text-muted)">~</span>
-        <input type="date" class="form-input" id="period-end" style="width:150px" placeholder="종료일">
-      </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px" id="period-days-wrap">
-        ${days.map(d=>'<button type="button" class="day-btn" onclick="tPDay(''+d+'')" id="pd-'+d+'">'+d+'</button>').join('')}
-      </div>
-      <div style="display:flex;gap:6px;margin-bottom:8px">
-        <input type="time" class="form-input" id="period-start-time" style="flex:1" value="09:00">
-        <span style="color:var(--text-muted);align-self:center">~</span>
-        <input type="time" class="form-input" id="period-end-time" style="flex:1" value="18:00">
-      </div>
-      <button type="button" class="btn-secondary" style="font-size:12px;padding:6px 14px" onclick="addPeriod('${pid}')">+ 기간 추가</button>
-    </div>
-  </div>`:''}
-</div>`;
-
-html+='<div class="btn-row"><button class="btn-secondary" onclick="CM('modal-part')">취소</button><button class="btn-primary" onclick="savePF(''+(pid||'')+'')">저장</button></div>';
-document.getElementById('modal-part-body').innerHTML=html;}
+// 버튼 행
+const btnRow=document.createElement('div');btnRow.className='btn-row';
+const cancelBtn=document.createElement('button');cancelBtn.type='button';cancelBtn.className='btn-secondary';cancelBtn.textContent='취소';cancelBtn.onclick=()=>CM('modal-part');
+const saveBtn=document.createElement('button');saveBtn.type='button';saveBtn.className='btn-primary';saveBtn.textContent='저장';saveBtn.onclick=()=>savePF(pid||'');
+btnRow.appendChild(cancelBtn);btnRow.appendChild(saveBtn);el.appendChild(btnRow);}
 
 function switchPTab(tab){
   document.getElementById('ptab-basic-content').style.display=tab==='basic'?'block':'none';
