@@ -390,7 +390,16 @@ function swTab(k){AT=k;document.querySelectorAll('.tab-content').forEach(e=>e.cl
 window.switchTab=swTab;
 function pfc(cat){return Object.entries(AP).filter(([,p])=>p.cat===cat&&p.status!=='inactive').map(([id,p])=>({...p,id}));}
 function renderCat(cat){const ps=enrich(pfc(cat),cat);rStats(cat,ps);rTL(cat,ps);chkAlert(cat,ps);}
-function getDayTime(p,dayOfWeek){if(p.daySchedule&&p.daySchedule[dayOfWeek])return p.daySchedule[dayOfWeek];return{start:p.start,end:p.end};}
+function getDayTime(p,dayOfWeek,date){
+  const today=date||kstDate();
+  // 변경 반영 시작일이 있고 아직 안 됐으면 이전 스케줄 사용
+  if(p.scheduleChangeDate&&today<p.scheduleChangeDate&&p.scheduleHistory&&p.scheduleHistory.length){
+    const prev=p.scheduleHistory[p.scheduleHistory.length-1];
+    if(prev)return{start:prev.start,end:prev.end};
+  }
+  if(p.daySchedule&&p.daySchedule[dayOfWeek])return p.daySchedule[dayOfWeek];
+  return{start:p.start,end:p.end};
+}
 function enrich(parts,cat){const DM=['일','월','화','수','목','금','토'];const date=DD[cat]||kstDate();const d=new Date(date+'T00:00:00+09:00');const td=DM[d.getDay()];const today=kstDate();const isFuture=date>today;const isPast=date<today;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const attData=TB[cat]||{};return parts.map(p=>{if(p.joinDate&&date<p.joinDate)return null;if(p.leaveDate&&date>p.leaveDate)return null;if(!(p.days||[]).includes(td))return null;const ds=getDayTime(p,td);const a=attData[p.id]||{};const ep={...p,start:ds.start,end:ds.end};if(p.plannedAbsent&&p.plannedAbsent.includes(date))return{...ep,actual:null,status:'absent-pln',ar:a};if(isFuture)return{...ep,actual:null,status:'pending',ar:{}};let st='pending',ac=a.inTime||null;const ph=a.stdPhrase||'';if(ph==='결근')st='absent-con';else if(a.inTime){st=toM(a.inTime)>toM(ds.start)+10?'late':'done';}else if(isPast)st=ph?'absent-con':'absent-unc';else if(nm>toM(ds.start)+10)st=ph?'absent-con':'absent-unc';if(ph==='조기퇴근'||ph==='추가근무'||ph==='임시근무')st='changed';const nc=needsCheck(ep,a,nm,date);return{...ep,actual:ac,status:st,ar:a,nc};}).filter(Boolean);}
 function renderAll(){['mgmt','tutor','etc'].forEach(c=>{const ps=enrich(pfc(c),c);rStats(c,ps);rTL(c,ps);chkAlert(c,ps);});}
 function chkAlert(c,ps){const el=document.getElementById('alert-'+c);if(!el)return;const uc=ps.filter(p=>p.status==='absent-unc'||p.nc);if(uc.length>0){el.textContent=`⚠ 처리 필요: ${uc.map(p=>p.name+(p.nc?' (퇴근미확인)':'')).join(', ')}`;el.classList.add('show');}else el.classList.remove('show');}
@@ -514,6 +523,12 @@ html+='<div class="form-group"><label class="form-label">이름</label><input cl
 html+='<div class="form-group"><label class="form-label">휴대폰</label><input class="form-input" id="pf-phone" placeholder="010-0000-0000" value="'+(p?p.phone:'')+'"></div>';
 html+='<div class="form-group"><label class="form-label">출결 PIN (4자리)</label><input class="form-input" id="pf-pin" placeholder="0000" maxlength="4" value="'+(p?p.pin:'')+'" style="font-family:\'DM Mono\',monospace;font-size:18px;letter-spacing:8px;font-feature-settings:\'zero\' 0"></div>';
 html+='<div class="form-group"><label class="form-label">입사일 (재직 시작일)</label><input type="date" class="form-input" id="pf-jd" value="'+joinDate+'"></div>';
+html+='<div class="form-group"><label class="form-label">스케줄 변경 반영 시작일 <span style="font-size:11px;color:var(--text-muted)">(변경 시에만 입력)</span></label><input type="date" class="form-input" id="pf-change-date" value="'+(p&&p.scheduleChangeDate?p.scheduleChangeDate:'')+'"><div style="font-size:11px;color:var(--text-muted);margin-top:4px">비워두면 저장 즉시 적용</div></div>';
+// 변경 이력 표시
+if(p&&p.scheduleHistory&&p.scheduleHistory.length){
+  const histHtml=p.scheduleHistory.slice(-3).reverse().map(h=>'<div style="font-size:11px;padding:4px 0;border-bottom:1px solid var(--border-light)"><span style="color:var(--text-muted)">'+h.date+'</span> → '+h.days.join('·')+' '+h.start+'~'+h.end+'<span style="color:var(--text-muted);font-size:10px;margin-left:6px">'+h.by+'</span></div>').join('');
+  html+='<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">스케줄 변경 이력</div><div>'+histHtml+'</div></div>';
+}
 html+='<div class="form-group"><label class="form-label">근무 요일 (클릭하면 해당 요일 시간 개별 수정 가능)</label><div class="day-btns" id="pf-days">'+days.map(d=>{const ds=p?.daySchedule?.[d];const isDiff=ds&&(ds.start!==p.start||ds.end!==p.end);return'<button type="button" class="day-btn'+(sd.includes(d)?' selected':'')+(isDiff?' has-custom':'')+'" onclick="tDay(\''+d+'\')" ondblclick="toggleDayTime(\''+d+'\')">'+d+'</button>';}).join('')+'</div>';
 html+='<div id="day-times">'+(dayScheduleHtml||'')+'</div></div>';
 html+='<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">기본 출근</label><input class="form-input" id="pf-start" type="time" value="'+(p?p.start:'09:00')+'"></div><div class="form-group" style="flex:1"><label class="form-label">기본 퇴근</label><input class="form-input" id="pf-end" type="time" value="'+(p?p.end:'18:00')+'"></div></div>';
@@ -528,7 +543,19 @@ window.toggleDayTime=toggleDayTime;
 async function savePF(pid){const ro=document.getElementById('pf-role').value.trim();const nm=document.getElementById('pf-name').value.trim();const ph=document.getElementById('pf-phone').value.trim();const st=document.getElementById('pf-start').value;const en=document.getElementById('pf-end').value;const ca=document.getElementById('pf-cat').value;const jd=document.getElementById('pf-jd').value;const dy=[...document.querySelectorAll('#pf-days .day-btn.selected')].map(b=>b.textContent.trim());const bv=document.getElementById('pf-brk').value;if(!ro||!nm){ST('직무와 이름은 필수입니다');return;}if(!dy.length){ST('근무 요일을 선택해주세요');return;}let pin=document.getElementById('pf-pin').value.trim();if(!pin&&pid)pin=AP[pid]?.pin||'';if(!pin&&ph.length>=4)pin=ph.replace(/-/g,'').slice(-4);if(!/^\d{4}$/.test(pin)){ST('PIN은 4자리 숫자여야 합니다');return;}const dup=Object.entries(AP).find(([id,p])=>p.pin===pin&&id!==pid&&p.status!=='inactive');if(dup){ST(`PIN ${pin}은 이미 사용 중입니다`);return;}
 // 요일별 시간 수집
 const daySchedule={};document.querySelectorAll('#day-times [data-day]').forEach(row=>{const d=row.dataset.day;const ds=document.getElementById('ds-s-'+d)?.value;const de=document.getElementById('ds-e-'+d)?.value;if(ds&&de&&(ds!==st||de!==en))daySchedule[d]={start:ds,end:de};});
-const data={cat:ca,role:ro,name:nm,phone:ph,pin,start:st,end:en,days:dy,joinDate:jd||kstDate(),status:pid?(AP[pid]?.status||'active'):'active',memos:pid?(AP[pid].memos||[]):[]};
+const changeDate=document.getElementById('pf-change-date')?.value||'';
+// 스케줄 변경 이력 추가
+const prevHistory=pid?(AP[pid]?.scheduleHistory||[]):[];
+const newHistory=[...prevHistory];
+if(pid&&changeDate){
+  const prev=AP[pid];
+  if(prev&&(prev.start!==st||prev.end!==en||JSON.stringify(prev.days)!==JSON.stringify(dy))){
+    newHistory.push({date:changeDate,days:dy,start:st,end:en,by:CU.name,at:kstLabel()});
+    if(newHistory.length>10)newHistory.splice(0,newHistory.length-10);
+  }
+}
+const data={cat:ca,role:ro,name:nm,phone:ph,pin,start:st,end:en,days:dy,joinDate:jd||kstDate(),status:pid?(AP[pid]?.status||'active'):'active',memos:pid?(AP[pid].memos||[]):[],scheduleHistory:newHistory};
+if(changeDate)data.scheduleChangeDate=changeDate;
 if(Object.keys(daySchedule).length>0)data.daySchedule=daySchedule;
 if(bv!=='')data.customBreak=parseInt(bv);SL(true);if(pid)await update(ref(db,`parts/${pid}`),data);else await push(ref(db,'parts'),data);SL(false);ST(pid?'수정 완료':'등록 완료');CM('modal-part');}
 window.savePartForm=savePF;
