@@ -91,11 +91,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .b-absent{background:var(--danger-light);color:var(--danger);}
 .b-absent-p{background:#fff0f0;color:#fca5a5;border:1px solid #fca5a5;}
 .b-late{background:var(--warning-light);color:var(--warning);}
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:500;display:none;align-items:center;justify-content:center;padding:20px;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:500;display:none;align-items:center;justify-content:center;padding:20px;overflow:hidden;}
 .modal-overlay.open{display:flex;}
-.modal{background:var(--surface);border-radius:var(--rl);padding:28px;width:100%;max-width:480px;box-shadow:var(--shadow-lg);animation:slideUp .2s ease;max-height:90vh;overflow-y:auto;}
+.modal{background:var(--surface);border-radius:var(--rl);padding:28px;width:100%;max-width:480px;box-shadow:var(--shadow-lg);animation:slideUp .2s ease;max-height:90vh;overflow-y:auto;position:relative;}
 @keyframes slideUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
-.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;cursor:move;user-select:none;}
 .modal-title{font-size:17px;font-weight:700;}
 .modal-close{width:28px;height:28px;border-radius:6px;border:none;background:var(--border-light);cursor:pointer;font-size:16px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;}
 .modal-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light);}
@@ -322,6 +322,34 @@ const ST=msg=>{const t=document.getElementById('toast');t.textContent=msg;t.clas
 const OM=id=>document.getElementById(id).classList.add('open');
 const CM=id=>document.getElementById(id).classList.remove('open');
 window.CM=CM;window.OM=OM;
+// 팝업 드래그 기능
+function makeDraggable(overlayId){
+  const overlay=document.getElementById(overlayId);
+  if(!overlay)return;
+  const modal=overlay.querySelector('.modal');
+  const header=modal?.querySelector('.modal-header');
+  if(!header||!modal)return;
+  let isDragging=false,startX=0,startY=0,curX=0,curY=0;
+  header.addEventListener('mousedown',e=>{
+    if(e.target.classList.contains('modal-close'))return;
+    isDragging=true;
+    startX=e.clientX-curX;startY=e.clientY-curY;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!isDragging)return;
+    curX=e.clientX-startX;curY=e.clientY-startY;
+    modal.style.transform=`translate(${curX}px,${curY}px)`;
+  });
+  document.addEventListener('mouseup',()=>{isDragging=false;});
+  // 모달 열릴때 위치 리셋
+  const observer=new MutationObserver(()=>{
+    if(overlay.classList.contains('open')){curX=0;curY=0;modal.style.transform='';}
+  });
+  observer.observe(overlay,{attributes:true,attributeFilter:['class']});
+}
+['modal-staff','modal-stats','modal-part','modal-workman-edit','modal-account'].forEach(makeDraggable);
+
 function brk(p,startT,endT){const s=startT||p.start;const e=endT||p.end;if(p.customBreak!==undefined)return p.customBreak;const h=(toM(e)-toM(s))/60;if(h>=9)return 60;if(h>4)return 30;return 0;}
 function schedH(p){const bm=brk(p);return Math.round((toM(p.end)-toM(p.start)-bm)/60*10)/10;}
 function calcRealH(p,a){
@@ -389,7 +417,7 @@ if(!isAbsent){
 const ph=e.ar?.stdPhrase||'';
 const tagStyle='font-size:10px;font-weight:600;margin-left:4px;padding:1px 5px;border-radius:10px;';
 const tagMap={지각:`<span style="${tagStyle}color:var(--warning);background:var(--warning-light)">지각</span>`,조기퇴근:`<span style="${tagStyle}color:var(--accent);background:var(--accent-light)">조기퇴근</span>`,추가근무:`<span style="${tagStyle}color:var(--orange);background:var(--orange-light)">추가근무</span>`,임시근무:`<span style="${tagStyle}color:#7C3AED;background:#EDE9FE">임시근무</span>`};
-const tag=e.status==='late'?tagMap['지각']:(tagMap[ph]||'');
+const tag=e.status==='late'?tagMap['지각']:e.status==='absent-con'?`<span style="${tagStyle}color:var(--danger);background:var(--danger-light)">결근</span>`:e.status==='absent-pln'?`<span style="${tagStyle}color:#fca5a5;background:#fff0f0">예정결근</span>`:(tagMap[ph]||'');
 const dot=e.status==='absent-unc'?`<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--danger);margin-left:4px;animation:pulse 1s infinite"></span>`:'';
 const absentStyle=e.status==='absent-pln'?'border:2px dashed #fca5a5;background:transparent;':e.status==='absent-unc'?'border-color:#fca5a5;background:#fff5f5;':e.status==='absent-con'?'border-color:#fca5a5;background:#fff8f8;':'';
 const scm={done:'s-done',late:'s-late','absent-unc':'s-absent-unc','absent-con':'s-absent-con','absent-pln':'s-absent-pln',pending:'',changed:''};
@@ -479,6 +507,9 @@ async function saveAcc(){const nm=document.getElementById('acc-name').value.trim
 window.saveAccount=saveAcc;
 async function delAcc(fid){if(!confirm('계정을 삭제하시겠습니까?'))return;SL(true);await remove(ref(db,`accounts/${fid}`));await loadAcc();SL(false);ST('삭제 완료');}
 window.deleteAccount=delAcc;
+window.openAP=openAP;window.openEP=openEP;window.savePF=savePF;window.tDay=tDay;
+window.chgSt=chgSt;window.resignP=resignP;window.reinP=reinP;window.delP=delP;
+window.saveAcc=saveAcc;
 </script>
 </body>
 </html>
