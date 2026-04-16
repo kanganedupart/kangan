@@ -137,7 +137,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .parts-filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
 .parts-table{width:100%;border-collapse:collapse;}
 .parts-table th{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-bottom:2px solid var(--border);text-align:left;white-space:nowrap;}
-.parts-table td{padding:10px 12px;border-bottom:1px solid var(--border-light);font-size:13px;vertical-align:middle;}
+.parts-table td{padding:10px 12px;border-bottom:1px solid var(--border-light);font-size:13px;vertical-align:middle;white-space:nowrap;}
 .parts-table tr:hover td{background:var(--bg);}
 .sbadge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
 .s-active{background:var(--success-light);color:var(--success);}
@@ -152,7 +152,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .acct-filters{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end;}
 .acct-table{width:100%;border-collapse:collapse;font-size:12px;}
 .acct-table th{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;padding:8px 10px;border-bottom:2px solid var(--border);text-align:left;white-space:nowrap;background:var(--bg);}
-.acct-table td{padding:8px 10px;border-bottom:1px solid var(--border-light);vertical-align:middle;}
+.acct-table td{padding:8px 10px;border-bottom:1px solid var(--border-light);vertical-align:middle;white-space:nowrap;}
 .acct-table tfoot td{background:var(--bg);font-weight:700;border-top:2px solid var(--border);}
 .diff-plus{background:var(--orange-light);color:var(--orange);padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700;}
 .diff-minus{background:var(--danger-light);color:var(--danger);padding:1px 6px;border-radius:10px;font-size:10px;font-weight:700;}
@@ -211,6 +211,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   #tab-acct .acct-filters{gap:8px;}
   /* 섹션 카드 */
   .section-card{padding:14px 12px;}
+  /* 테이블 모바일 */
+  .parts-table th{padding:6px 8px;font-size:10px;}
+  .parts-table td{padding:7px 8px;font-size:12px;}
+  .acct-table th{padding:6px 8px;font-size:10px;}
+  .acct-table td{padding:6px 8px;font-size:11px;}
 }
 </style>
 </head>
@@ -340,9 +345,49 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     <div class="tab-content" id="tab-settings">
       <div class="section-card">
         <div class="settings-title">직무 관리</div>
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:10px">직무 수정 시 해당 직무의 모든 직원 데이터가 함께 변경됩니다.</div>
-        <div id="role-list"></div>
-        <button class="btn-primary" style="margin-top:12px" onclick="openAddRoleModal()">+ 직무 추가</button>
+        <div style="display:flex;flex-direction:column;gap:10px;max-width:520px">
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <span style="font-size:13px;font-weight:700">추가</span>
+              <span style="font-size:11px;background:var(--accent-light);color:var(--accent);padding:2px 9px;border-radius:20px;border:1px solid #93c5fd">새 직무</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:10px">
+              <div style="flex:1"><div class="form-label">카테고리</div><select class="form-select" id="add-role-cat"><option value="mgmt">관리</option><option value="tutor">조교</option><option value="etc">기타</option></select></div>
+              <div style="flex:1"><div class="form-label">직무명</div><input class="form-input" id="add-role-name" placeholder="새 직무명 입력"></div>
+            </div>
+            <button class="btn-primary" style="width:100%" onclick="saveNewRoleInline()">추가</button>
+          </div>
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <span style="font-size:13px;font-weight:700">수정</span>
+              <span style="font-size:11px;background:var(--warning-light);color:var(--warning);padding:2px 9px;border-radius:20px;border:1px solid #fcd34d">이름 변경</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:10px">
+              <div style="flex:1"><div class="form-label">카테고리</div><select class="form-select" id="edit-role-cat" onchange="filterRoleSelect('edit')"><option value="">전체</option><option value="mgmt">관리</option><option value="tutor">조교</option><option value="etc">기타</option></select></div>
+              <div style="flex:1"><div class="form-label">수정할 직무</div><select class="form-select" id="edit-role-sel" onchange="document.getElementById('edit-role-before').value=this.value.split('||')[0];document.getElementById('edit-role-cat-val').value=this.value.split('||')[1]||''"><option value="">선택하세요</option></select></div>
+            </div>
+            <input type="hidden" id="edit-role-cat-val">
+            <div style="display:flex;gap:8px;margin-bottom:8px">
+              <div style="flex:1"><div class="form-label">수정 전</div><input class="form-input" id="edit-role-before" readonly style="background:var(--bg);color:var(--text-muted)" placeholder="위에서 선택"></div>
+              <div style="flex:1"><div class="form-label">수정 후</div><input class="form-input" id="edit-role-after" placeholder="새 이름 입력"></div>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">해당 직무의 모든 직원 데이터가 함께 변경됩니다.</div>
+            <button class="btn-primary" style="width:100%;background:var(--warning);border-color:var(--warning)" onclick="saveEditRoleInline()">저장</button>
+          </div>
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <span style="font-size:13px;font-weight:700">삭제</span>
+              <span style="font-size:11px;background:var(--danger-light);color:var(--danger);padding:2px 9px;border-radius:20px;border:1px solid #fca5a5">주의</span>
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:10px">
+              <div style="flex:1"><div class="form-label">카테고리</div><select class="form-select" id="del-role-cat" onchange="filterRoleSelect('del')"><option value="">전체</option><option value="mgmt">관리</option><option value="tutor">조교</option><option value="etc">기타</option></select></div>
+              <div style="flex:1"><div class="form-label">삭제할 직무</div><select class="form-select" id="del-role-sel"><option value="">선택하세요</option></select></div>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">재직 인원이 있는 직무 삭제 시 기존 직원 데이터는 유지됩니다.</div>
+            <button class="btn-primary" style="width:100%;background:var(--danger);border-color:var(--danger)" onclick="deleteRoleInline()">삭제</button>
+          </div>
+        </div>
+        <div id="role-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)"></div>
       </div>
       <div class="section-card" style="margin-top:16px">
         <div class="settings-title">계정 관리</div>
@@ -450,18 +495,75 @@ const DEFAULT_ROLES={mgmt:['순찰','등원','응대','1층','식관'],tutor:['�
 let RL={};
 async function loadRoles(){const s=await get(ref(db,'roles'));if(s.val()){RL=s.val();}else{RL=JSON.parse(JSON.stringify(DEFAULT_ROLES));await set(ref(db,'roles'),RL);}renderRoles();}
 window.loadRoles=loadRoles;
-function renderRoles(){const el=document.getElementById('role-list');if(!el)return;const cats={mgmt:'관리',tutor:'조교',etc:'기타'};el.innerHTML=Object.entries(cats).map(([k,v])=>`<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:700;color:var(--text-secondary);margin-bottom:6px">${v}</div><div style="display:flex;flex-wrap:wrap;gap:6px">${(RL[k]||[]).map(r=>`<div style="display:flex;align-items:center;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:var(--rs);padding:4px 8px"><span style="font-size:13px">${r}</span><button class="icon-btn" style="padding:1px 6px;font-size:11px;margin:0" onclick="openEditRoleModal('${k}','${r}')">수정</button><button class="icon-btn del" style="padding:1px 6px;font-size:11px;margin:0" onclick="deleteRole('${k}','${r}')">삭제</button></div>`).join('')}<button class="icon-btn" style="padding:4px 10px" onclick="openAddRoleModal('${k}')">+ 추가</button></div></div>`).join('');}
+function renderRoles(){
+  const CATL2={mgmt:'관리',tutor:'조교',etc:'기타'};
+  filterRoleSelect('edit');
+  filterRoleSelect('del');
+  const chips=document.getElementById('role-chips');
+  if(!chips)return;
+  const allRoles=[];
+  ['mgmt','tutor','etc'].forEach(cat=>{(RL[cat]||[]).forEach(r=>{const cnt=Object.values(AP).filter(p=>p.role===r&&p.status!=='inactive').length;allRoles.push({r,cat,cnt});});});
+  chips.innerHTML=allRoles.map(({r,cnt})=>`<span style="padding:3px 11px;border-radius:20px;font-size:11px;${cnt>0?'background:#eff6ff;color:#1d4ed8;border:1px solid #93c5fd':'background:var(--bg);color:var(--text-muted);border:1px solid var(--border)'}">${r} ${cnt}명</span>`).join('');
+}
 window.renderRoles=renderRoles;
-function openAddRoleModal(cat){const cats={mgmt:'관리',tutor:'조교',etc:'기타'};document.getElementById('modal-account-body').innerHTML=`<div class="form-group"><label class="form-label">카테고리</label><select class="form-select" id="role-cat">${Object.entries(cats).map(([k,v])=>`<option value="${k}"${cat===k?' selected':''}>${v}</option>`).join('')}</select></div><div class="form-group"><label class="form-label">직무명</label><input class="form-input" id="role-name" placeholder="직무명 입력"></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-account')">취소</button><button class="btn-primary" onclick="saveNewRole()">추가</button></div>`;document.querySelector('#modal-account .modal-title').textContent='직무 추가';OM('modal-account');}
-window.openAddRoleModal=openAddRoleModal;
-async function saveNewRole(){const cat=document.getElementById('role-cat').value;const nm=document.getElementById('role-name').value.trim();if(!nm){ST('직무명을 입력해주세요');return;}if(!RL[cat])RL[cat]=[];if(RL[cat].includes(nm)){ST('이미 존재하는 직무입니다');return;}RL[cat].push(nm);SL(true);await set(ref(db,'roles'),RL);SL(false);ST('추가 완료');renderRoles();CM('modal-account');}
-window.saveNewRole=saveNewRole;
-function openEditRoleModal(cat,oldName){document.getElementById('modal-account-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">수정 시 이 직무의 모든 직원 데이터가 함께 변경됩니다.</div><div class="form-group"><label class="form-label">수정 전</label><div style="font-size:14px;font-weight:700;padding:8px;background:var(--bg);border-radius:var(--rs)">${oldName}</div></div><div class="form-group"><label class="form-label">수정 후</label><input class="form-input" id="role-new-name" value="${oldName}"></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-account')">취소</button><button class="btn-primary" onclick="saveEditRole('${cat}','${oldName}')">저장</button></div>`;document.querySelector('#modal-account .modal-title').textContent='직무 수정';OM('modal-account');}
-window.openEditRoleModal=openEditRoleModal;
-async function saveEditRole(cat,oldName){const newName=document.getElementById('role-new-name').value.trim();if(!newName){ST('직무명을 입력해주세요');return;}if(newName===oldName){CM('modal-account');return;}SL(true);const idx=RL[cat].indexOf(oldName);if(idx>=0)RL[cat][idx]=newName;await set(ref(db,'roles'),RL);const ps=Object.entries(AP).filter(([,p])=>p.role===oldName);for(const[pid]of ps){await update(ref(db,`parts/${pid}`),{role:newName});}SL(false);ST(`"${oldName}" → "${newName}" 변경 완료`);renderRoles();CM('modal-account');}
-window.saveEditRole=saveEditRole;
-async function deleteRole(cat,name){if(!confirm(`"${name}" 직무를 삭제하시겠습니까?`))return;RL[cat]=(RL[cat]||[]).filter(r=>r!==name);SL(true);await set(ref(db,'roles'),RL);SL(false);ST('삭제 완료');renderRoles();}
-window.deleteRole=deleteRole;
+function filterRoleSelect(type){
+  const catVal=document.getElementById(`${type}-role-cat`)?.value||'';
+  const sel=document.getElementById(`${type}-role-sel`);
+  if(!sel)return;
+  const CATL2={mgmt:'관리',tutor:'조교',etc:'기타'};
+  let opts='<option value="">선택하세요</option>';
+  ['mgmt','tutor','etc'].forEach(cat=>{
+    if(catVal&&catVal!==cat)return;
+    (RL[cat]||[]).forEach(r=>{
+      if(type==='del'){const cnt=Object.values(AP).filter(p=>p.role===r&&p.status!=='inactive').length;opts+=`<option value="${r}||${cat}">${r} (${CATL2[cat]}) — 재직 ${cnt}명</option>`;}
+      else opts+=`<option value="${r}||${cat}">${r} (${CATL2[cat]})</option>`;
+    });
+  });
+  sel.innerHTML=opts;
+  if(type==='edit'){document.getElementById('edit-role-before').value='';document.getElementById('edit-role-after').value='';}
+}
+window.filterRoleSelect=filterRoleSelect;
+async function saveNewRoleInline(){
+  const cat=document.getElementById('add-role-cat').value;
+  const nm=document.getElementById('add-role-name').value.trim();
+  if(!nm){ST('직무명을 입력해주세요');return;}
+  if(!RL[cat])RL[cat]=[];
+  if(RL[cat].includes(nm)){ST('이미 존재하는 직무입니다');return;}
+  RL[cat].push(nm);SL(true);await set(ref(db,'roles'),RL);SL(false);
+  document.getElementById('add-role-name').value='';
+  ST('추가 완료');renderRoles();
+}
+window.saveNewRoleInline=saveNewRoleInline;
+async function saveEditRoleInline(){
+  const oldName=document.getElementById('edit-role-before').value.trim();
+  const newName=document.getElementById('edit-role-after').value.trim();
+  const cat=document.getElementById('edit-role-cat-val').value;
+  if(!oldName){ST('수정할 직무를 선택해주세요');return;}
+  if(!newName){ST('새 직무명을 입력해주세요');return;}
+  if(newName===oldName){ST('변경사항이 없습니다');return;}
+  if(!cat){ST('직무를 다시 선택해주세요');return;}
+  SL(true);
+  const idx=(RL[cat]||[]).indexOf(oldName);
+  if(idx>=0)RL[cat][idx]=newName;
+  await set(ref(db,'roles'),RL);
+  const ps=Object.entries(AP).filter(([,p])=>p.role===oldName);
+  for(const[pid]of ps){await update(ref(db,`parts/${pid}`),{role:newName});}
+  SL(false);ST(`"${oldName}" → "${newName}" 변경 완료`);
+  document.getElementById('edit-role-before').value='';
+  document.getElementById('edit-role-after').value='';
+  renderRoles();
+}
+window.saveEditRoleInline=saveEditRoleInline;
+async function deleteRoleInline(){
+  const val=document.getElementById('del-role-sel').value;
+  if(!val){ST('삭제할 직무를 선택해주세요');return;}
+  const [name,cat]=val.split('||');
+  if(!confirm(`"${name}" 직무를 삭제하시겠습니까?`))return;
+  RL[cat]=(RL[cat]||[]).filter(r=>r!==name);
+  SL(true);await set(ref(db,'roles'),RL);SL(false);
+  ST('삭제 완료');renderRoles();
+}
+window.deleteRoleInline=deleteRoleInline;
 function buildTabs(){const nav=document.getElementById('tabnav');nav.innerHTML='';TABS.filter(t=>t.roles.includes(CU.role)).forEach(t=>{const b=document.createElement('button');b.className='tab-btn'+(t.key===AT?' active':'');b.innerHTML=`${t.icon} ${t.label}`;b.onclick=()=>swTab(t.key);nav.appendChild(b);});}
 function swTab(k){AT=k;document.querySelectorAll('.tab-content').forEach(e=>e.classList.remove('active'));document.getElementById('tab-'+k)?.classList.add('active');const ts=TABS.filter(t=>t.roles.includes(CU.role));document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',ts[i]?.key===k));if(k==='parts')renderPT();if(k==='settings'){loadRoles();renderAccList();}}
 window.switchTab=swTab;
