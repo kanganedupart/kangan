@@ -480,12 +480,45 @@ function needsCheck(p,a,nowM,date){
   if(a.inTime&&!a.outTime&&nowM>toM(p.end)+10&&!a.stdPhrase)return true;
   return false;
 }
-async function doLogin(){const id=document.getElementById('login-id').value.trim();const pw=document.getElementById('login-pw').value;SL(true);const s=await get(ref(db,'accounts'));SL(false);const fa=s.val()?Object.values(s.val()):[];const all=[{id:'admin',pw:'3500',role:'관리자',name:'관리자'},...fa];const a=all.find(x=>x.id===id&&x.pw===pw);if(!a){document.getElementById('login-error').textContent='아이디 또는 비밀번호가 올바르지 않습니다.';return;}CU=a;document.getElementById('login-error').textContent='';document.getElementById('login-screen').classList.add('hide');setTimeout(()=>{document.getElementById('login-screen').style.display='none';document.getElementById('app').classList.add('show');init();},400);}
-function doLogout(){CU=null;document.getElementById('app').classList.remove('show');document.getElementById('login-screen').style.display='flex';requestAnimationFrame(()=>document.getElementById('login-screen').classList.remove('hide'));document.getElementById('login-pw').value='';}
+const IDLE_TIMEOUT={관리자:30*60*1000,총무:10*60*60*1000,일반직원:10*60*60*1000};
+let IDLE_TIMER=null;
+function resetIdleTimer(){
+  if(IDLE_TIMER)clearTimeout(IDLE_TIMER);
+  if(!CU)return;
+  const ms=IDLE_TIMEOUT[CU.role]||IDLE_TIMEOUT['일반직원'];
+  IDLE_TIMER=setTimeout(()=>{ST('장시간 활동이 없어 자동 로그아웃됩니다');setTimeout(()=>doLogout(),1500);},ms);
+  // 활동 시마다 localStorage 갱신
+  try{localStorage.setItem('kangan_login',JSON.stringify({user:CU,ts:Date.now()}));}catch(e){}
+}
+function startIdleWatch(){
+  ['mousemove','keydown','click','touchstart','scroll'].forEach(ev=>{
+    document.addEventListener(ev,resetIdleTimer,{passive:true});
+  });
+  resetIdleTimer();
+}
+async function doLogin(){const id=document.getElementById('login-id').value.trim();const pw=document.getElementById('login-pw').value;SL(true);const s=await get(ref(db,'accounts'));SL(false);const fa=s.val()?Object.values(s.val()):[];const all=[{id:'admin',pw:'3500',role:'관리자',name:'관리자'},...fa];const a=all.find(x=>x.id===id&&x.pw===pw);if(!a){document.getElementById('login-error').textContent='아이디 또는 비밀번호가 올바르지 않습니다.';return;}CU=a;try{localStorage.setItem('kangan_login',JSON.stringify({user:CU,ts:Date.now()}));}catch(e){}document.getElementById('login-error').textContent='';document.getElementById('login-screen').classList.add('hide');setTimeout(()=>{document.getElementById('login-screen').style.display='none';document.getElementById('app').classList.add('show');init();startIdleWatch();},400);}
+function doLogout(){CU=null;try{localStorage.removeItem('kangan_login');}catch(e){}if(IDLE_TIMER){clearTimeout(IDLE_TIMER);IDLE_TIMER=null;}document.getElementById('app').classList.remove('show');document.getElementById('login-screen').style.display='flex';requestAnimationFrame(()=>document.getElementById('login-screen').classList.remove('hide'));document.getElementById('login-pw').value='';}
+// 페이지 로드 시 저장된 로그인 정보 확인 (자동 로그인)
+function tryAutoLogin(){
+  try{
+    const saved=localStorage.getItem('kangan_login');
+    if(!saved)return false;
+    const{user,ts}=JSON.parse(saved);
+    if(!user||!ts)return false;
+    const ms=IDLE_TIMEOUT[user.role]||IDLE_TIMEOUT['일반직원'];
+    if(Date.now()-ts>ms){localStorage.removeItem('kangan_login');return false;}
+    CU=user;
+    document.getElementById('login-screen').classList.add('hide');
+    setTimeout(()=>{document.getElementById('login-screen').style.display='none';document.getElementById('app').classList.add('show');init();startIdleWatch();},100);
+    return true;
+  }catch(e){return false;}
+}
 document.getElementById('login-pw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 document.getElementById('login-id').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('login-pw').focus();});
 window.doLogin=doLogin;window.doLogout=doLogout;
 if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(regs=>{regs.forEach(r=>r.unregister());});}
+// 자동 로그인 시도
+setTimeout(()=>{tryAutoLogin();},50);
 function init(){document.getElementById('user-badge').textContent=CU.role;document.getElementById('user-badge').className='ubadge '+CU.role;document.getElementById('user-name-label').textContent=CU.name;const t=kstDate();['acct-from','acct-to'].forEach(id=>{const e=document.getElementById(id);if(e)e.value=t;});const wf=document.getElementById('workman-from');const wt=document.getElementById('workman-to');if(wf)wf.value=t;if(wt)wt.value=t;['mgmt','tutor','etc'].forEach(c=>{DD[c]=t;const el=document.getElementById('dash-date'+(c==='mgmt'?'':'-'+c));if(el)el.value=t;updateDL(c,t);});clk();setInterval(clk,30000);buildTabs();listenP();listenA();loadAcc();loadRoles();}
 function updateDL(cat,date){const today=kstDate();const el=document.getElementById('dash-date-label'+(cat==='mgmt'?'':'-'+cat));if(!el)return;const tl=document.getElementById('tl-title-'+cat);if(date===today){el.textContent='오늘';el.style.color='var(--success)';if(tl)tl.textContent='오늘 근무 현황';}else if(date>today){el.textContent='미래 (스케줄 예정)';el.style.color='var(--accent)';if(tl)tl.textContent=date+' 예정';}else{el.textContent='과거 기록';el.style.color='var(--text-muted)';if(tl)tl.textContent=date+' 기록';}}
 async function changeDashDate(cat){const el=document.getElementById('dash-date'+(cat==='mgmt'?'':'-'+cat));if(!el)return;const date=el.value;if(!date)return;DD[cat]=date;updateDL(cat,date);const sn=await get(ref(db,`attendance/${date}`));TB[cat]=sn.val()||{};renderCat(cat);}
