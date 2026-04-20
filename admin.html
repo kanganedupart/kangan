@@ -206,7 +206,9 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   .btn-primary,.btn-secondary{flex:1;min-width:80px;text-align:center;}
   /* 출근현황 필터 */
   #tab-workman .section-card>div:first-child{flex-direction:column;align-items:stretch;}
-  #tab-workman .form-input,#tab-workman .form-select,#tab-workman .btn-primary,#tab-workman .btn-secondary{width:100%!important;}
+  #tab-workman .form-input,#tab-workman .form-select,#tab-workman .btn-primary,#tab-workman .btn-secondary{width:100%!important;max-width:100%!important;}
+  #tab-workman .section-card>div:first-child>div{width:100%;}
+  #tab-workman .section-card>div:first-child>div .form-input{width:100%!important;}
   /* 시수확인 필터 */
   #tab-acct .acct-filters{gap:8px;}
   /* 섹션 카드 */
@@ -287,11 +289,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <div style="font-size:16px;font-weight:700;margin-bottom:16px">출근 현황</div>
       <div class="section-card">
         <div style="margin-bottom:12px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
-          <div><div class="form-label">시작일</div><input type="date" id="workman-from" class="form-input" style="width:155px"></div>
-          <div><div class="form-label">종료일</div><input type="date" id="workman-to" class="form-input" style="width:155px"></div>
-          <div><div class="form-label">이름 검색</div><input type="text" id="workman-name" class="form-input" style="width:120px" placeholder="비워두면 전체"></div>
+          <div><div class="form-label">시작일</div><input type="date" id="workman-from" class="form-input" style="width:155px;max-width:100%"></div>
+          <div><div class="form-label">종료일</div><input type="date" id="workman-to" class="form-input" style="width:155px;max-width:100%"></div>
+          <div><div class="form-label">이름 검색</div><input type="text" id="workman-name" class="form-input" style="width:120px;max-width:100%" placeholder="비워두면 전체"></div>
           <div style="display:flex;align-items:center;gap:6px;padding-bottom:2px"><input type="checkbox" id="workman-unproc" style="width:16px;height:16px;cursor:pointer"><label for="workman-unproc" style="font-size:13px;cursor:pointer;color:var(--danger);font-weight:600">미처리만</label></div>
-          <select class="form-select" id="workman-phrase" style="width:110px"><option value="">처리구분 전체</option><option value="미처리">미처리</option><option value="지각">지각</option><option value="조기퇴근">조기퇴근</option><option value="추가근무">추가근무</option><option value="결근">결근</option><option value="수동기록">수동기록</option></select>
+          <select class="form-select" id="workman-phrase" style="width:110px;max-width:100%"><option value="">처리구분 전체</option><option value="미처리">미처리</option><option value="지각">지각</option><option value="조기퇴근">조기퇴근</option><option value="추가근무">추가근무</option><option value="결근">결근</option><option value="수동기록">수동기록</option></select>
           <button class="btn-secondary" onclick="setWorkmanToday()">오늘</button>
           <button class="btn-primary" onclick="loadWorkmanData()">조회</button>
           <button class="btn-secondary" onclick="exportWorkmanCSV()">📤 엑셀 다운로드</button>
