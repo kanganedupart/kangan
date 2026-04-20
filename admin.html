@@ -293,7 +293,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <div><div class="form-label">종료일</div><input type="date" id="workman-to" class="form-input" style="width:155px;max-width:100%"></div>
           <div><div class="form-label">이름 검색</div><input type="text" id="workman-name" class="form-input" style="width:120px;max-width:100%" placeholder="비워두면 전체"></div>
           <div style="display:flex;align-items:center;gap:6px;padding-bottom:2px"><input type="checkbox" id="workman-unproc" style="width:16px;height:16px;cursor:pointer"><label for="workman-unproc" style="font-size:13px;cursor:pointer;color:var(--danger);font-weight:600">미처리만</label></div>
-          <select class="form-select" id="workman-phrase" style="width:110px;max-width:100%"><option value="">처리구분 전체</option><option value="미처리">미처리</option><option value="지각">지각</option><option value="조기퇴근">조기퇴근</option><option value="추가근무">추가근무</option><option value="결근">결근</option><option value="수동기록">수동기록</option></select>
+          <select class="form-select" id="workman-phrase" style="width:110px;max-width:100%"><option value="">처리구분 전체</option><option value="미처리">미처리</option><option value="지각">지각</option><option value="조기퇴근">조기퇴근</option><option value="추가근무">연장근무</option><option value="결근">결근</option><option value="수동기록">수동기록</option></select>
           <button class="btn-secondary" onclick="setWorkmanToday()">오늘</button>
           <button class="btn-primary" onclick="loadWorkmanData()">조회</button>
           <button class="btn-secondary" onclick="exportWorkmanCSV()">📤 엑셀 다운로드</button>
@@ -306,7 +306,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
         <div style="font-size:16px;font-weight:700">파트 관리</div>
         <div style="display:flex;gap:8px">
           <button class="btn-secondary" onclick="exportPartsCSV()">📤 엑셀 다운로드</button>
-          <button class="btn-primary" onclick="openAP()">+ 파트 등록</button>
+          <button class="btn-primary" id="btn-add-part" onclick="openAP()">+ 파트 등록</button>
         </div>
       </div>
       <div class="section-card">
@@ -415,10 +415,13 @@ function kstLabel(){const k=new Date(Date.now()+9*3600000);return`${k.getUTCFull
 const DASH_PHRASES=['지각','조기퇴근','추가근무','결근'];
 const PHRASES=['지각','조기퇴근','추가근무','결근','수동기록'];
 const MEMO_QUICK={지각:['사전연락','당일연락','연락없음'],조기퇴근:['사전연락','당일연락','직원지시'],추가근무:['직원지시'],결근:['사전연락','당일연락','연락없음'],수동기록:['패드미체크','패드오류']};
+// UI 표시용: DB값은 '추가근무' 유지, 화면에는 '연장근무'로 표시
+function phraseLabel(p){return p==='추가근무'?'연장근무':p;}
+window.phraseLabel=phraseLabel;
 const COLORS={순찰:'#0ea5e9','1층':'#8b5cf6',식관:'#f59e0b',응대:'#10b981',등원:'#f97316',국어:'#e11d48',수학:'#3b82f6',영어:'#ec4899',지리:'#f59e0b',물리:'#f97316',화학:'#14b8a6',생명:'#16a34a',지학:'#8b5cf6',사문:'#0ea5e9',생윤:'#6366f1',스타터:'#6366f1',디자인:'#e11d48'};
 const CAT={mgmt:{label:'관리',icon:'📊'},tutor:{label:'조교',icon:'🎓'},etc:{label:'기타',icon:'🏢'}};
 const CATL={mgmt:'관리',tutor:'조교',etc:'기타'};
-const TABS=[{key:'mgmt',label:'관리',icon:'📊',roles:['관리자','총무','일반직원']},{key:'tutor',label:'조교',icon:'🎓',roles:['관리자','총무','일반직원']},{key:'etc',label:'기타',icon:'🏢',roles:['관리자','총무','일반직원']},{key:'workman',label:'출근 현황',icon:'📋',roles:['관리자']},{key:'parts',label:'파트 관리',icon:'👥',roles:['관리자']},{key:'acct',label:'시수 확인',icon:'📊',roles:['관리자','총무']},{key:'settings',label:'설정',icon:'⚙️',roles:['관리자']}];
+const TABS=[{key:'mgmt',label:'관리',icon:'📊',roles:['관리자','총무','일반직원']},{key:'tutor',label:'조교',icon:'🎓',roles:['관리자','총무','일반직원']},{key:'etc',label:'기타',icon:'🏢',roles:['관리자','총무','일반직원']},{key:'workman',label:'출근 현황',icon:'📋',roles:['관리자','총무','일반직원']},{key:'parts',label:'파트 관리',icon:'👥',roles:['관리자','총무','일반직원']},{key:'acct',label:'시수 확인',icon:'📊',roles:['관리자','총무','일반직원']},{key:'settings',label:'설정',icon:'⚙️',roles:['관리자']}];
 let CU=null,AT='mgmt',AP={},TA={},AA=[],SP={},AD=[];
 let DD={mgmt:null,tutor:null,etc:null};
 let TB={mgmt:{},tutor:{},etc:{}};
@@ -567,37 +570,107 @@ async function deleteRoleInline(){
 }
 window.deleteRoleInline=deleteRoleInline;
 function buildTabs(){const nav=document.getElementById('tabnav');nav.innerHTML='';TABS.filter(t=>t.roles.includes(CU.role)).forEach(t=>{const b=document.createElement('button');b.className='tab-btn'+(t.key===AT?' active':'');b.innerHTML=`${t.icon} ${t.label}`;b.onclick=()=>swTab(t.key);nav.appendChild(b);});}
-function swTab(k){AT=k;document.querySelectorAll('.tab-content').forEach(e=>e.classList.remove('active'));document.getElementById('tab-'+k)?.classList.add('active');const ts=TABS.filter(t=>t.roles.includes(CU.role));document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',ts[i]?.key===k));if(k==='parts')renderPT();if(k==='settings'){loadRoles();renderAccList();}}
+function swTab(k){AT=k;document.querySelectorAll('.tab-content').forEach(e=>e.classList.remove('active'));document.getElementById('tab-'+k)?.classList.add('active');const ts=TABS.filter(t=>t.roles.includes(CU.role));document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',ts[i]?.key===k));if(k==='parts'){renderPT();const addBtn=document.getElementById('btn-add-part');if(addBtn)addBtn.style.display=CU.role==='관리자'?'':'none';}if(k==='settings'){loadRoles();renderAccList();}}
 window.switchTab=swTab;
 function pfc(cat){return Object.entries(AP).filter(([,p])=>p.cat===cat&&p.status!=='inactive').map(([id,p])=>({...p,id}));}
 function renderCat(cat){const ps=enrich(pfc(cat),cat);rStats(cat,ps);rTL(cat,ps);chkAlert(cat,ps);}
+// 날짜의 적용 스케줄 반환 (우선순위: 기간교체 > 영구변경 > 요일별 > 기본)
 function getDayTime(p,dayOfWeek,date){
   const today=date||kstDate();
-  // 기간별 스케줄 체크
+  // 1. 기간 교체 (scheduleReplaces): 기간 내면 해당 요일일 때만 적용
+  if(p.scheduleReplaces&&p.scheduleReplaces.length){
+    const matched=p.scheduleReplaces.find(r=>today>=r.startDate&&today<=r.endDate);
+    if(matched){
+      if((matched.days||[]).includes(dayOfWeek))return{start:matched.start,end:matched.end,fromReplace:true};
+      return{start:null,end:null,replaced:true};
+    }
+  }
+  // 2. 기간 추가 (기존 schedulePeriods)
   if(p.schedulePeriods&&p.schedulePeriods.length){
     const matched=p.schedulePeriods.find(pd=>today>=pd.startDate&&today<=pd.endDate&&(pd.days||[]).includes(dayOfWeek));
     if(matched)return{start:matched.start,end:matched.end,fromPeriod:true};
   }
-  // 변경 반영 시작일이 있고 아직 안 됐으면 이전 스케줄 사용
+  // 3. 영구 변경 (permChanges): 시작일 이후 가장 최근 변경 적용
+  if(p.permChanges&&p.permChanges.length){
+    const applicable=[...p.permChanges].filter(pc=>today>=pc.startDate).sort((a,b)=>b.startDate.localeCompare(a.startDate));
+    if(applicable.length>0){
+      const latest=applicable[0];
+      if((latest.days||[]).includes(dayOfWeek))return{start:latest.start,end:latest.end,fromPerm:true};
+      return{start:null,end:null,permExcluded:true};
+    }
+  }
+  // 4. 기존 scheduleChangeDate 호환성 (구 데이터)
   if(p.scheduleChangeDate&&today<p.scheduleChangeDate&&p.scheduleHistory&&p.scheduleHistory.length){
     const prev=p.scheduleHistory[p.scheduleHistory.length-1];
     if(prev)return{start:prev.start,end:prev.end};
   }
+  // 5. 요일별 커스텀
   if(p.daySchedule&&p.daySchedule[dayOfWeek])return p.daySchedule[dayOfWeek];
+  // 6. 기본
   return{start:p.start,end:p.end};
 }
-function enrich(parts,cat){const DM=['일','월','화','수','목','금','토'];const date=DD[cat]||kstDate();const d=new Date(date+'T00:00:00+09:00');const td=DM[d.getDay()];const today=kstDate();const isFuture=date>today;const isPast=date<today;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const attData=TB[cat]||{};return parts.map(p=>{if(p.joinDate&&date<p.joinDate)return null;if(p.leaveDate&&date>p.leaveDate)return null;// 기간 스케줄에 해당 요일이 있는지도 체크
-const hasPeriodForDay=p.schedulePeriods&&p.schedulePeriods.some(pd=>date>=pd.startDate&&date<=pd.endDate&&(pd.days||[]).includes(td));
-const tempDay=p.tempDates&&p.tempDates.find(d=>d.date===date);
-if(!(p.days||[]).includes(td)&&!hasPeriodForDay&&!tempDay)return null;const ds=getDayTime(p,td);const a=attData[p.id]||{};const ep={...p,start:ds.start,end:ds.end};if(p.plannedAbsent&&p.plannedAbsent.includes(date))return{...ep,actual:null,status:'absent-pln',ar:a};
-// 임시근무 날짜 체크
-if(tempDay){const tep={...p,id:p.id,start:tempDay.start,end:tempDay.end,cat:p.cat};const ta2=attData[p.id]||{};let tst='pending';if(ta2.stdPhrase==='결근')tst='absent-con';else if(ta2.inTime)tst='done';return{...tep,actual:ta2.inTime||null,status:tst,ar:ta2,isTemp:true};}
+// 날짜가 결근 예정인지 체크 (단일 날짜 + 기간 모두 지원)
+function isPlannedAbsent(p,date){
+  if(p.plannedAbsent&&Array.isArray(p.plannedAbsent)){
+    for(const a of p.plannedAbsent){
+      if(typeof a==='string'){if(a===date)return true;}
+      else if(a.date){if(a.date===date)return true;}
+      else if(a.startDate&&a.endDate){if(date>=a.startDate&&date<=a.endDate)return true;}
+    }
+  }
+  return false;
+}
+// 날짜가 근무일인지 체크
+function isWorkDay(p,dayOfWeek,date){
+  // 1. 기간 교체
+  if(p.scheduleReplaces&&p.scheduleReplaces.length){
+    const matched=p.scheduleReplaces.find(r=>date>=r.startDate&&date<=r.endDate);
+    if(matched)return (matched.days||[]).includes(dayOfWeek);
+  }
+  // 2. 기간 추가
+  if(p.schedulePeriods&&p.schedulePeriods.some(pd=>date>=pd.startDate&&date<=pd.endDate&&(pd.days||[]).includes(dayOfWeek)))return true;
+  // 3. 추가근무 (임시 하루)
+  if(p.tempDates&&p.tempDates.find(d=>d.date===date))return true;
+  // 4. 영구 변경
+  if(p.permChanges&&p.permChanges.length){
+    const applicable=[...p.permChanges].filter(pc=>date>=pc.startDate).sort((a,b)=>b.startDate.localeCompare(a.startDate));
+    if(applicable.length>0)return (applicable[0].days||[]).includes(dayOfWeek);
+  }
+  // 5. 기본 요일
+  return (p.days||[]).includes(dayOfWeek);
+}
+function enrich(parts,cat){const DM=['일','월','화','수','목','금','토'];const date=DD[cat]||kstDate();const d=new Date(date+'T00:00:00+09:00');const td=DM[d.getDay()];const today=kstDate();const isFuture=date>today;const isPast=date<today;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const attData=TB[cat]||{};
+const scheduled=parts.map(p=>{if(p.joinDate&&date<p.joinDate)return null;if(p.leaveDate&&date>p.leaveDate)return null;
+// 근무일 체크 (모든 이벤트 종합)
+const worksDay=isWorkDay(p,td,date);
+const tempDay=p.tempDates&&p.tempDates.find(dt=>dt.date===date);
+if(!worksDay)return null;
+const ds=tempDay?{start:tempDay.start,end:tempDay.end}:getDayTime(p,td,date);
+if(!ds.start||!ds.end)return null;
+const a=attData[p.id]||{};const ep={...p,start:ds.start,end:ds.end};
+// 결근 예정 체크 (단일+기간)
+if(isPlannedAbsent(p,date))return{...ep,actual:null,status:'absent-pln',ar:a};
+// 추가근무(임시) 처리
+if(tempDay){const ta2=attData[p.id]||{};let tst='pending';if(ta2.stdPhrase==='결근')tst='absent-con';else if(ta2.inTime)tst='done';return{...ep,actual:ta2.inTime||null,status:tst,ar:ta2,isTemp:true};}
 if(isFuture){const preA=attData[p.id]||{};const prePh=preA.stdPhrase||'';if(prePh==='결근')return{...ep,actual:null,status:'absent-con',ar:preA};if(prePh==='지각'||prePh==='조기퇴근'||prePh==='임시근무'||prePh==='추가근무')return{...ep,actual:null,status:'changed',ar:preA};return{...ep,actual:null,status:'pending',ar:{}};}
-let st='pending',ac=a.inTime||null;const ph=a.stdPhrase||'';if(ph==='결근')st='absent-con';else if(a.inTime){const effectiveIn=a.adjustedStart||a.inTime;st=toM(effectiveIn)>toM(ds.start)?'late':'done';}else if(isPast)st=ph?'absent-con':'absent-unc';else if(nm>toM(ds.start)+10)st=ph?'absent-con':'absent-unc';if(ph==='조기퇴근'||ph==='추가근무'||ph==='임시근무')st='changed';const nc=needsCheck(ep,a,nm,date);return{...ep,actual:ac,status:st,ar:a,nc};}).filter(Boolean);}
+let st='pending',ac=a.inTime||null;const ph=a.stdPhrase||'';if(ph==='결근')st='absent-con';else if(a.inTime){const effectiveIn=a.adjustedStart||a.inTime;st=toM(effectiveIn)>toM(ds.start)?'late':'done';}else if(isPast)st=ph?'absent-con':'absent-unc';else if(nm>toM(ds.start)+10)st=ph?'absent-con':'absent-unc';if(ph==='조기퇴근'||ph==='추가근무'||ph==='임시근무')st='changed';const nc=needsCheck(ep,a,nm,date);return{...ep,actual:ac,status:st,ar:a,nc};}).filter(Boolean);
+// 스케줄 없는 출근 (오늘 기준): 해당 카테고리 직원 중 출근 기록 있는데 스케줄 없는 사람
+if(date===today){
+  const scIds=new Set(scheduled.map(p=>p.id));
+  Object.entries(attData).forEach(([pid,a])=>{
+    if(!a.inTime)return;
+    if(scIds.has(pid))return;
+    const p=AP[pid];if(!p)return;
+    if(p.cat!==cat)return;
+    if(p.status==='inactive')return;
+    scheduled.push({...p,id:pid,start:a.inTime,end:a.outTime||a.inTime,actual:a.inTime,status:'no-schedule',ar:a,unscheduled:true});
+  });
+}
+return scheduled;}
 function renderAll(){['mgmt','tutor','etc'].forEach(c=>{const ps=enrich(pfc(c),c);rStats(c,ps);rTL(c,ps);chkAlert(c,ps);});}
-function chkAlert(c,ps){const el=document.getElementById('alert-'+c);if(!el)return;const uc=ps.filter(p=>p.status==='absent-unc'||p.nc);if(uc.length>0){el.textContent=`⚠ 처리 필요: ${uc.map(p=>p.name+(p.nc?' (퇴근미확인)':'')).join(', ')}`;el.classList.add('show');}else el.classList.remove('show');}
-function rStats(c,ps){const ab=ps.filter(p=>p.status.startsWith('absent')).length;const unc=ps.filter(p=>p.status==='absent-unc'||p.nc).length;document.getElementById('stats-'+c).innerHTML=`<div class="stat-card danger" style="cursor:${unc>0?'pointer':'default'}" onclick="${unc>0?`"swTab('workman');document.getElementById('workman-unproc').checked=true;setWorkmanToday();loadWorkmanData()"`:''}""><div class="stat-label">미처리${unc>0?'<span class="stat-dot"></span>':''}</div><div class="stat-val">${unc}</div></div><div class="stat-card danger" onclick="openStatsModal('${c}','absent')"><div class="stat-label">결근</div><div class="stat-val">${ab}</div></div><div class="stat-card warning" onclick="openStatsModal('${c}','late')"><div class="stat-label">지각</div><div class="stat-val">${ps.filter(p=>p.status==='late').length}</div></div><div class="stat-card orange" onclick="openStatsModal('${c}','changed')"><div class="stat-label">변경근무</div><div class="stat-val">${ps.filter(p=>p.status==='changed').length}</div></div><div class="stat-card" style="cursor:default"><div class="stat-label">전체</div><div class="stat-val">${ps.length}</div></div>`;}
-function rTL(c,ps){const con=document.getElementById('tl-'+c);document.getElementById('tl-time-'+c).textContent=`기준 ${kstNow()}`;if(!ps.length){con.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">근무 인원 없음</div>';return;}const aS=ps.map(p=>toM(p.start)),aE=ps.map(p=>toM(p.end));let am=Math.floor(Math.min(...aS)/30)*30,ax=Math.ceil(Math.max(...aE)/30)*30;if(ax-am<120)ax=am+120;const asp=ax-am;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const np=Math.max(0,Math.min(100,(nm-am)/asp*100));const ts2=asp<=240?60:asp<=480?120:180;const tk=[];for(let t=Math.ceil(am/ts2)*ts2;t<=ax;t+=ts2)tk.push(t);const ax2=`<div class="tl-axis-row"><div class="tl-colorbar" style="visibility:hidden"></div><div class="tl-axis-info-col"></div><div class="tl-axis-bar-col"><div class="tl-axis-marks">${tk.map(t=>`<div class="tl-axis-mark" style="left:${(t-am)/asp*100}%"><span>${m2hm(t)}</span><div class="tl-axis-mark-line"></div></div>`).join('')}${nm>=am&&nm<=ax?`<div style="position:absolute;top:0;bottom:0;left:${np}%;width:2px;background:rgba(220,38,38,.5);border-radius:1px"></div>`:''}</div></div></div>`;const sorted=[...ps].sort((a,b)=>{const o={'absent-unc':0,'absent-con':1,'absent-pln':2,late:3,changed:4,done:5,pending:6};return(o[a.status]??5)-(o[b.status]??5)||a.start.localeCompare(b.start);});con.innerHTML=ax2+sorted.map(e=>bTL(e,am,asp,np)).join('');}
+function chkAlert(c,ps){const el=document.getElementById('alert-'+c);if(!el)return;const uc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule');if(uc.length>0){el.textContent=`⚠ 처리 필요: ${uc.map(p=>p.name+(p.status==='no-schedule'?' (스케줄없는출근 '+p.actual+')':p.nc?' (퇴근미확인)':'')).join(', ')}`;el.classList.add('show');}else el.classList.remove('show');}
+function rStats(c,ps){const ab=ps.filter(p=>p.status.startsWith('absent')).length;const unc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule').length;document.getElementById('stats-'+c).innerHTML=`<div class="stat-card danger" style="cursor:${unc>0?'pointer':'default'}" onclick="${unc>0?`"swTab('workman');document.getElementById('workman-unproc').checked=true;setWorkmanToday();loadWorkmanData()"`:''}""><div class="stat-label">미처리${unc>0?'<span class="stat-dot"></span>':''}</div><div class="stat-val">${unc}</div></div><div class="stat-card danger" onclick="openStatsModal('${c}','absent')"><div class="stat-label">결근</div><div class="stat-val">${ab}</div></div><div class="stat-card warning" onclick="openStatsModal('${c}','late')"><div class="stat-label">지각</div><div class="stat-val">${ps.filter(p=>p.status==='late').length}</div></div><div class="stat-card orange" onclick="openStatsModal('${c}','changed')"><div class="stat-label">변경근무</div><div class="stat-val">${ps.filter(p=>p.status==='changed').length}</div></div><div class="stat-card" style="cursor:default"><div class="stat-label">전체</div><div class="stat-val">${ps.filter(p=>p.status!=='no-schedule').length}</div></div>`;}
+function rTL(c,ps){const con=document.getElementById('tl-'+c);document.getElementById('tl-time-'+c).textContent=`기준 ${kstNow()}`;ps=ps.filter(p=>p.status!=='no-schedule');if(!ps.length){con.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">근무 인원 없음</div>';return;}const aS=ps.map(p=>toM(p.start)),aE=ps.map(p=>toM(p.end));let am=Math.floor(Math.min(...aS)/30)*30,ax=Math.ceil(Math.max(...aE)/30)*30;if(ax-am<120)ax=am+120;const asp=ax-am;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const np=Math.max(0,Math.min(100,(nm-am)/asp*100));const ts2=asp<=240?60:asp<=480?120:180;const tk=[];for(let t=Math.ceil(am/ts2)*ts2;t<=ax;t+=ts2)tk.push(t);const ax2=`<div class="tl-axis-row"><div class="tl-colorbar" style="visibility:hidden"></div><div class="tl-axis-info-col"></div><div class="tl-axis-bar-col"><div class="tl-axis-marks">${tk.map(t=>`<div class="tl-axis-mark" style="left:${(t-am)/asp*100}%"><span>${m2hm(t)}</span><div class="tl-axis-mark-line"></div></div>`).join('')}${nm>=am&&nm<=ax?`<div style="position:absolute;top:0;bottom:0;left:${np}%;width:2px;background:rgba(220,38,38,.5);border-radius:1px"></div>`:''}</div></div></div>`;const sorted=[...ps].sort((a,b)=>{const o={'absent-unc':0,'absent-con':1,'absent-pln':2,late:3,changed:4,done:5,pending:6};return(o[a.status]??5)-(o[b.status]??5)||a.start.localeCompare(b.start);});con.innerHTML=ax2+sorted.map(e=>bTL(e,am,asp,np)).join('');}
 function bTL(e,am,as,np){
 const col=cof(e.role);
 const sM=toM(e.start),eM=toM(e.end);
@@ -624,7 +697,7 @@ if(!isAbsent){
 }
 const ph=e.ar?.stdPhrase||'';
 const tagStyle='font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;flex-shrink:0;';
-const tagMap={지각:`<span style="${tagStyle}color:var(--warning);background:var(--warning-light)">지각</span>`,조기퇴근:`<span style="${tagStyle}color:var(--accent);background:var(--accent-light)">조기퇴근</span>`,추가근무:`<span style="${tagStyle}color:var(--orange);background:var(--orange-light)">추가근무</span>`,임시근무:`<span style="${tagStyle}color:#7C3AED;background:#EDE9FE">임시근무</span>`};
+const tagMap={지각:`<span style="${tagStyle}color:var(--warning);background:var(--warning-light)">지각</span>`,조기퇴근:`<span style="${tagStyle}color:var(--accent);background:var(--accent-light)">조기퇴근</span>`,추가근무:`<span style="${tagStyle}color:var(--orange);background:var(--orange-light)">연장근무</span>`,임시근무:`<span style="${tagStyle}color:#7C3AED;background:#EDE9FE">추가근무</span>`};
 const tag=e.status==='late'?tagMap['지각']:e.status==='absent-con'?`<span style="${tagStyle}color:var(--danger);background:var(--danger-light)">결근</span>`:e.status==='absent-pln'?`<span style="${tagStyle}color:#fca5a5;background:#fff0f0">예정결근</span>`:e.status==='changed'?(tagMap[ph]||''):(tagMap[ph]||'');
 const dot=e.status==='absent-unc'?`<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--danger);margin-left:4px;animation:pulse 1s infinite"></span>`:'';
 const absentStyle=e.status==='absent-pln'?'border:2px dashed #fca5a5;background:transparent;':e.status==='absent-unc'?'border-color:#fca5a5;background:#fff5f5;':e.status==='absent-con'?'border-color:#fca5a5;background:#fff8f8;':'';
@@ -640,7 +713,7 @@ document.getElementById('modal-staff-title').innerHTML=`<span style="color:${col
 const memoQBtns=MEMO_QUICK[ph]?MEMO_QUICK[ph].map(q=>`<button class="memo-quick-btn" onclick="addMemoQuick('${pid}','${q}')">${q}</button>`).join(''):DASH_PHRASES.map(ph2=>MEMO_QUICK[ph2]||[]).flat().filter((v,i,a)=>a.indexOf(v)===i).map(q=>`<button class="memo-quick-btn" onclick="addMemoQuick('${pid}','${q}')">${q}</button>`).join('');
 const timeSelectS=mkTimeSelect5(`adj-s-${pid}`,a.adjustedStart||a.inTime||'');
 const timeSelectE=mkTimeSelect5(`adj-e-${pid}`,a.adjustedEnd||a.outTime||'');
-document.getElementById('modal-staff-body').innerHTML=`<div class="modal-row"><span class="modal-key">날짜</span><span class="modal-val">${kstLabel()}</span></div><div class="modal-row"><span class="modal-key">상태</span><span class="modal-val" style="color:${stC}">${stL}</span></div><div class="modal-row"><span class="modal-key">휴대폰</span><a class="phone-link" href="tel:${p.phone}">${p.phone||'-'}</a></div><div class="modal-row"><span class="modal-key">스케줄</span><span class="modal-val">${p.start} ~ ${p.end}</span></div>${(a.adjustedStart||a.adjustedEnd)?`<div class="modal-row"><span class="modal-key">적용 시간</span><span class="modal-val" style="color:var(--success)">${a.adjustedStart||a.inTime||p.start} ~ ${a.adjustedEnd||a.outTime||p.end}</span></div>`:''}<div class="modal-row"><span class="modal-key">스케줄 시수</span><span class="modal-val">${sh}h</span></div>${a.inTime?`<div class="modal-row"><span class="modal-key">출근</span><span class="modal-val" style="color:var(--success)">${a.inTime}</span></div>`:''}${a.outTime?`<div class="modal-row"><span class="modal-key">퇴근</span><span class="modal-val">${a.outTime}</span></div>`:''}<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light)"><span class="modal-key" style="align-self:center">실시수</span><span style="font-size:18px;font-weight:700;color:${rh===null?'var(--text-muted)':rh<sh?'var(--danger)':rh>sh?'var(--orange)':'var(--success)'}">${rh===null?'-':rh+'h'}</span>${rh!==null?`<span style="font-size:11px;color:var(--text-muted);align-self:center">(휴게 ${bm}분 제외)</span>`:''}</div>${nc?'<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--orange);margin:6px 0">⚠ 퇴근 패드 미확인</div>':''}${ph?`<div class="modal-row"><span class="modal-key">처리 구분</span><span class="modal-val">${ph}</span></div>`:''}<div style="margin-top:14px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">오늘 메모</div><div class="memo-list">${rML(todayMemos)}</div></div>${ce?`<div style="margin-top:12px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">표준문구 선택 (필수)</div><div class="std-phrase-row" id="spr-${pid}">${DASH_PHRASES.map(ph2=>`<button class="std-btn${ph===ph2?' selected':''}" data-phrase="${ph2}" onclick="selP('${pid}','${ph2}')">${ph2}</button>`).join('')}</div><div style="display:flex;gap:10px;margin-top:10px"><div style="flex:1"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">시작 시각</div>${timeSelectS}</div><div style="flex:1"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">종료 시각</div>${timeSelectE}</div></div><div id="adj-prev-${pid}" style="font-size:12px;color:var(--accent);margin-top:6px;font-weight:600;min-height:18px"></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;margin-top:10px">메모 권장 표현</div><div class="memo-quick" id="mqb-${pid}">${memoQBtns}</div><textarea class="memo-area" id="nm-${pid}" placeholder="메모 입력 (필수)"></textarea><div style="font-size:11px;color:var(--text-muted);margin-top:4px">⚠ 표준문구와 메모 모두 필수</div></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button><button class="btn-primary" onclick="saveMemo('${pid}')">저장</button></div>`:`<div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button></div>`}`;OM('modal-staff');}
+document.getElementById('modal-staff-body').innerHTML=`<div class="modal-row"><span class="modal-key">날짜</span><span class="modal-val">${kstLabel()}</span></div><div class="modal-row"><span class="modal-key">상태</span><span class="modal-val" style="color:${stC}">${stL}</span></div><div class="modal-row"><span class="modal-key">휴대폰</span><a class="phone-link" href="tel:${p.phone}">${p.phone||'-'}</a></div><div class="modal-row"><span class="modal-key">스케줄</span><span class="modal-val">${p.start} ~ ${p.end}</span></div>${(a.adjustedStart||a.adjustedEnd)?`<div class="modal-row"><span class="modal-key">적용 시간</span><span class="modal-val" style="color:var(--success)">${a.adjustedStart||a.inTime||p.start} ~ ${a.adjustedEnd||a.outTime||p.end}</span></div>`:''}<div class="modal-row"><span class="modal-key">스케줄 시수</span><span class="modal-val">${sh}h</span></div>${a.inTime?`<div class="modal-row"><span class="modal-key">출근</span><span class="modal-val" style="color:var(--success)">${a.inTime}</span></div>`:''}${a.outTime?`<div class="modal-row"><span class="modal-key">퇴근</span><span class="modal-val">${a.outTime}</span></div>`:''}<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light)"><span class="modal-key" style="align-self:center">실시수</span><span style="font-size:18px;font-weight:700;color:${rh===null?'var(--text-muted)':rh<sh?'var(--danger)':rh>sh?'var(--orange)':'var(--success)'}">${rh===null?'-':rh+'h'}</span>${rh!==null?`<span style="font-size:11px;color:var(--text-muted);align-self:center">(휴게 ${bm}분 제외)</span>`:''}</div>${nc?'<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--orange);margin:6px 0">⚠ 퇴근 패드 미확인</div>':''}${ph?`<div class="modal-row"><span class="modal-key">처리 구분</span><span class="modal-val">${ph}</span></div>`:''}<div style="margin-top:14px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">오늘 메모</div><div class="memo-list">${rML(todayMemos)}</div></div>${ce?`<div style="margin-top:12px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">표준문구 선택 (필수)</div><div class="std-phrase-row" id="spr-${pid}">${DASH_PHRASES.map(ph2=>`<button class="std-btn${ph===ph2?' selected':''}" data-phrase="${ph2}" onclick="selP('${pid}','${ph2}')">${phraseLabel(ph2)}</button>`).join('')}</div><div style="display:flex;gap:10px;margin-top:10px"><div style="flex:1"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">시작 시각</div>${timeSelectS}</div><div style="flex:1"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">종료 시각</div>${timeSelectE}</div></div><div id="adj-prev-${pid}" style="font-size:12px;color:var(--accent);margin-top:6px;font-weight:600;min-height:18px"></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;margin-top:10px">메모 권장 표현</div><div class="memo-quick" id="mqb-${pid}">${memoQBtns}</div><textarea class="memo-area" id="nm-${pid}" placeholder="메모 입력 (필수)"></textarea><div style="font-size:11px;color:var(--text-muted);margin-top:4px">⚠ 표준문구와 메모 모두 필수</div></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button><button class="btn-primary" onclick="saveMemo('${pid}')">저장</button></div>`:`<div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button></div>`}`;OM('modal-staff');}
 window.openStaffModal=openStaffModal;
 function calcPreview(pid,pStart,pEnd,customBreak){const s=document.getElementById(`adj-s-${pid}`)?.value||pStart;const e=document.getElementById(`adj-e-${pid}`)?.value||pEnd;if(!s||!e)return;const totalM=toM(e)-toM(s);if(totalM<=0){document.getElementById(`adj-prev-${pid}`).textContent='';return;}const bm=customBreak>=0?customBreak:(totalM/60>=9?60:totalM/60>4?30:0);const h=Math.max(0,Math.round((totalM-bm)/60*10)/10);document.getElementById(`adj-prev-${pid}`).textContent=`→ 실시수: ${h}h (휴게 ${bm}분 제외)`;}
 window.calcPreview=calcPreview;
@@ -649,7 +722,19 @@ window.addMemoQuick=addMemoQuick;
 function rML(ms){if(!ms||!ms.length)return'<div style="font-size:12px;color:var(--text-muted);padding:4px 0">메모 없음</div>';return ms.map(m=>`<div class="memo-item"><div class="memo-meta"><span style="background:#eff6ff;color:#2563eb;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-right:4px">${m.phrase||'일반'}</span><span class="memo-who">${m.who}</span><span>${m.date} ${m.time}</span></div><div class="memo-text">${m.text}</div></div>`).join('');}
 function selP(pid,ph){SP[pid]=ph;document.getElementById('spr-'+pid)?.querySelectorAll('.std-btn').forEach(b=>b.classList.toggle('selected',b.dataset.phrase===ph));const mqb=document.getElementById('mqb-'+pid);if(mqb){const qs=MEMO_QUICK[ph]||[];mqb.innerHTML=qs.map(q=>`<button class="memo-quick-btn" onclick="addMemoQuick('${pid}','${q}')">${q}</button>`).join('');}}
 window.selP=selP;
-async function saveMemo(pid){const ta=document.getElementById('nm-'+pid);const txt=ta.value.trim();const ph=SP[pid]||document.querySelector(`#spr-${pid} .std-btn.selected`)?.dataset.phrase||'';const ae=document.getElementById(`adj-e-${pid}`)?.value||'';const as2=document.getElementById(`adj-s-${pid}`)?.value||'';if(!ph){ST('표준문구를 선택해주세요');return;}if(!txt){ST('메모를 입력해주세요');ta.classList.add('error');return;}ta.classList.remove('error');const mo={phrase:ph,who:CU.name,date:kstLabel(),time:kstNow(),text:txt};const ms=[...(AP[pid].memos||[]),mo].slice(-20);const ar=ref(db,`attendance/${kstDate()}/${pid}`);const sn=await get(ar);const ad=sn.val()||{};ad.stdPhrase=ph;if(ae)ad.adjustedEnd=ae;if(ph==='추가근무'){delete ad.adjustedStart;}else if(as2)ad.adjustedStart=as2;ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;ad.memoText=txt;const h=ad.history||[];h.push({phrase:ph,adjEnd:ae||null,adjStart:as2||null,memo:txt,by:CU.name,at:`${kstLabel()} ${kstNow()}`});ad.history=h;SL(true);await update(ref(db,`parts/${pid}`),{memos:ms});await set(ar,ad);SL(false);ST('저장 완료');CM('modal-staff');}
+async function saveMemo(pid){const ta=document.getElementById('nm-'+pid);const txt=ta.value.trim();const ph=SP[pid]||document.querySelector(`#spr-${pid} .std-btn.selected`)?.dataset.phrase||'';const ae=document.getElementById(`adj-e-${pid}`)?.value||'';const as2=document.getElementById(`adj-s-${pid}`)?.value||'';if(!ph){ST('표준문구를 선택해주세요');return;}if(!txt){ST('메모를 입력해주세요');ta.classList.add('error');return;}ta.classList.remove('error');
+// 결근 선택 시 기존 연장근무 확인
+const ar=ref(db,`attendance/${kstDate()}/${pid}`);
+const snPre=await get(ar);
+const adPre=snPre.val()||{};
+if(ph==='결근'&&adPre.adjustedEnd&&adPre.stdPhrase==='추가근무'){
+  if(!confirm('⚠ 이 직원은 오늘 연장근무가 등록되어 있습니다.\n결근 처리하면 연장근무도 자동 취소됩니다.\n계속하시겠습니까?'))return;
+}
+ta.classList.remove('error');const mo={phrase:ph,who:CU.name,date:kstLabel(),time:kstNow(),text:txt};const ms=[...(AP[pid].memos||[]),mo].slice(-20);const ad=adPre;ad.stdPhrase=ph;
+// 결근 처리 시 연장근무 흔적 삭제
+if(ph==='결근'){delete ad.adjustedEnd;delete ad.adjustedStart;}
+else{if(ae)ad.adjustedEnd=ae;if(ph==='추가근무'){delete ad.adjustedStart;}else if(as2)ad.adjustedStart=as2;}
+ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;ad.memoText=txt;const h=ad.history||[];h.push({phrase:ph,adjEnd:ae||null,adjStart:as2||null,memo:txt,by:CU.name,at:`${kstLabel()} ${kstNow()}`});ad.history=h;SL(true);await update(ref(db,`parts/${pid}`),{memos:ms});await set(ar,ad);SL(false);ST('저장 완료');CM('modal-staff');}
 window.saveMemo=saveMemo;
 function openStatsModal(c,sk){const mo=document.querySelector('#modal-stats .modal');if(mo)mo.style.maxWidth='';const ps=enrich(pfc(c),c).filter(p=>sk==='absent'?p.status.startsWith('absent'):p.status===sk);const lb={'done':'출근완료','absent':'결근·미출근','late':'지각','changed':'변경근무','pending':'출근 전'}[sk];document.getElementById('modal-stats-title').textContent=lb+' 명단';document.getElementById('modal-stats-body').innerHTML=!ps.length?'<div style="font-size:13px;color:var(--text-muted);padding:12px 0">해당 인원 없음</div>':`<div class="sp-list">${ps.map(p=>{const col=cof(p.role);const uc=p.status==='absent-unc';return`<div class="sp-item" onclick="CM('modal-stats');openStaffModal('${p.id}')"><div><div style="font-size:13px;font-weight:600;color:${col}">${p.role} <span style="color:var(--text-primary)">(${p.name})</span>${uc?'<span class="undot"></span>':''}</div><div style="font-size:12px;color:var(--text-muted)">${p.actual?'출근: '+p.actual:p.start+' ~ '+p.end}</div></div><span style="font-size:11px;color:var(--text-muted)">${uc?'미확인 🔴':(p.memos||[]).length?'메모'+(p.memos||[]).length+'건':'-'}</span></div>`;}).join('')}</div>`;OM('modal-stats');}
 window.openStatsModal=openStatsModal;
@@ -671,20 +756,23 @@ while(cur<=end){
   const sn=await get(ref(db,`attendance/${dt}`));const ad=sn.val()||{};
   const DM=['일','월','화','수','목','금','토'];const dw=DM[cur.getDay()];
   const sc=ps.filter(p=>{
-    if(!(p.days||[]).includes(dw))return false;
+    if(!isWorkDay(p,dw,dt))return false;
     if(p.joinDate&&dt<p.joinDate)return false;
     if(p.leaveDate&&dt>p.leaveDate)return false;
     if(nameF&&!p.name.toLowerCase().includes(nameF)&&!p.role.toLowerCase().includes(nameF))return false;
     return true;
   });
-  // 스케줄 없는 출근 기록
+  // 스케줄 없는 출근 기록 - 행으로 추가
   const scIds=sc.map(p=>p.id);
-  const tempIds=Object.entries(AP).filter(([,p])=>p.tempDates&&p.tempDates.find(td=>td.date===dt)).map(([id])=>id);
-  const unscheduled=Object.entries(ad).filter(([pid,a])=>a.inTime&&!scIds.includes(pid)&&!tempIds.includes(pid)).map(([pid,a])=>{const p=AP[pid];return p?{...p,id:pid,inTime:a.inTime,dt}:null;}).filter(Boolean);
-  let alertHtml='';
-  if(unscheduled.length>0)alertHtml=`<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:var(--r);padding:10px 14px;margin-bottom:10px"><div style="font-size:12px;font-weight:700;color:var(--orange);margin-bottom:4px">⚠ ${dt} 스케줄 없는 출근 — 파트 관리에서 처리</div>${unscheduled.map(p=>`<div style="font-size:12px;padding:2px 0"><span style="color:${cof(p.role)};font-weight:700">${p.role}</span> (${p.name}) — 출근 ${p.inTime}</div>`).join('')}</div>`;
+  const tempIds=Object.entries(AP).filter(([,pp])=>pp.tempDates&&pp.tempDates.find(td=>td.date===dt)).map(([id])=>id);
+  const unscheduled=Object.entries(ad).filter(([pid,a])=>a.inTime&&!scIds.includes(pid)&&!tempIds.includes(pid)).map(([pid,a])=>{const pp=AP[pid];return pp?{...pp,id:pid}:null;}).filter(Boolean);
   sc.forEach(p=>WD.push({dt,p,a:ad[p.id]||{},alertHtml:''}));
-  if(alertHtml&&WD.length>0)WD[WD.length-sc.length].alertHtml=alertHtml;
+  // 이름 필터 + 카테고리 필터 적용
+  unscheduled.forEach(p=>{
+    if(p.status==='inactive')return;
+    if(nameF&&!p.name.toLowerCase().includes(nameF)&&!p.role.toLowerCase().includes(nameF))return;
+    WD.push({dt,p,a:ad[p.id]||{},alertHtml:'',unscheduled:true});
+  });
   cur.setDate(cur.getDate()+1);
 }
 SL(false);
@@ -692,26 +780,29 @@ if(!WD.length){document.getElementById('workman-list').innerHTML='<div style="pa
 const nowM2=(new Date(Date.now()+9*3600000).getUTCHours())*60+(new Date(Date.now()+9*3600000).getUTCMinutes());
 const phraseFilter=document.getElementById('workman-phrase')?.value||'';
 let filtered=WD;
-if(unprocOnly)filtered=WD.filter(({dt,p,a})=>{const isToday=dt===kstDate();return !a.stdPhrase&&((!a.inTime&&isToday&&nowM2>toM(p.start)+10)||(a.inTime&&!a.outTime&&isToday&&nowM2>toM(p.end)+10)||(!a.inTime&&dt<kstDate()));});
+if(unprocOnly)filtered=WD.filter(({dt,p,a,unscheduled})=>{if(unscheduled)return !a.stdPhrase;const isToday=dt===kstDate();return !a.stdPhrase&&((!a.inTime&&isToday&&nowM2>toM(p.start)+10)||(a.inTime&&!a.outTime&&isToday&&nowM2>toM(p.end)+10)||(!a.inTime&&dt<kstDate()));});
 else if(phraseFilter==='미처리')filtered=WD.filter(({a})=>!a.stdPhrase);
 else if(phraseFilter)filtered=WD.filter(({a})=>a.stdPhrase===phraseFilter);
 const sorted=[...filtered].sort((x,y)=>{if(x.dt!==y.dt)return x.dt.localeCompare(y.dt);const au=!x.a.stdPhrase&&(!x.a.inTime||(x.a.inTime&&!x.a.outTime));const bu=!y.a.stdPhrase&&(!y.a.inTime||(y.a.inTime&&!y.a.outTime));return(au?0:1)-(bu?0:1)||x.p.start.localeCompare(y.p.start);});
 const ce=CU.role==='관리자';
 let prevAlert='';
-const rows=sorted.map(({dt,p,a,alertHtml})=>{
-  const sh=schedH(p);const rh=a.inTime?calcRealH(p,a):null;const col=cof(p.role);const hp=!!a.inTime;const unproc=!a.stdPhrase;
-  const alertRow=alertHtml&&alertHtml!==prevAlert?`<tr><td colspan="8" style="padding:0">${alertHtml}</td></tr>`:'' ;
+const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
+  const sh=unscheduled?0:schedH(p);const rh=a.inTime?calcRealH(p,a):null;const col=cof(p.role);const hp=!!a.inTime;const unproc=!a.stdPhrase;
+  const alertRow=alertHtml&&alertHtml!==prevAlert?`<tr><td colspan="9" style="padding:0">${alertHtml}</td></tr>`:'' ;
   prevAlert=alertHtml||prevAlert;
   const isFuture=dt>kstDate();
   const rhDisp=isFuture?'-':rh!==null?rh+'h':'-';
   const rhColor=rh!==null&&rh<sh?'var(--danger)':rh!==null&&rh>sh?'var(--orange)':'var(--text-primary)';
-  return alertRow+`<tr style="${unproc&&!isFuture?'background:#fffbeb;':''}"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})</td><td style="font-family:'DM Mono',monospace">${p.start}~${p.end}</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}${!a.outTime&&a.inTime?'<span style="font-size:10px;color:var(--orange);margin-left:4px">미확인</span>':''}</td><td style="font-weight:700;font-family:'DM Mono',monospace;color:${rhColor}">${rhDisp}</td><td>${a.stdPhrase?`<span class="sbadge s-active" style="font-size:10px">${a.stdPhrase}</span>`:unproc&&!isFuture?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span>':'-'}</td><td>${ce?`<button class="icon-btn" onclick="openWE('${p.id}','${dt}')">수정</button>`:''}${ce&&!hp?`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`:''}${ce&&hp?`<button class="icon-btn del" onclick="deleteAttend('${p.id}','${dt}')">패드기록 삭제</button>`:''}</td></tr>`;
+  if(unscheduled){
+    return `<tr style="background:#fff7ed"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})</td><td style="color:var(--text-muted);font-size:11px">-</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}</td><td style="color:var(--text-muted)">-</td><td><span style="color:#c2410c;font-size:11px;font-weight:700;background:#fff7ed;padding:2px 7px;border-radius:10px;border:1px solid #fed7aa">⚠ 미처리 (스케줄없음)</span></td><td>${ce?`<button class="icon-btn" style="color:#c2410c;border-color:#fed7aa" onclick="openEP('${p.id}')">파트 수정 →</button>`:''}</td></tr>`;
+  }
+  return alertRow+`<tr style="${unproc&&!isFuture?'background:#fffbeb;':''}"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})</td><td style="font-family:'DM Mono',monospace">${p.start}~${p.end}</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}${!a.outTime&&a.inTime?'<span style="font-size:10px;color:var(--orange);margin-left:4px">미확인</span>':''}</td><td style="font-weight:700;font-family:'DM Mono',monospace;color:${rhColor}">${rhDisp}</td><td>${a.stdPhrase?`<span class="sbadge s-active" style="font-size:10px">${phraseLabel(a.stdPhrase)}</span>`:unproc&&!isFuture?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span>':'-'}</td><td>${ce?`<button class="icon-btn" onclick="openWE('${p.id}','${dt}')">수정</button>`:''}${ce&&!hp?`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`:''}${ce&&hp?`<button class="icon-btn del" onclick="deleteAttend('${p.id}','${dt}')">패드기록 삭제</button>`:''}</td></tr>`;
 }).join('');
 document.getElementById('workman-list').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>날짜</th><th>카테고리</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th>실시수</th><th>처리구분</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 window.loadWorkmanData=loadWorkmanData;
 function exportWorkmanCSV(){if(!WD.length){ST('먼저 조회해주세요');return;}const h='날짜,카테고리,직무,이름,스케줄,출근,퇴근,실시수,처리구분,메모,처리자';const rows=WD.map(({dt,p,a})=>[dt,CATL[p.cat]||p.cat,p.role,p.name,p.start+'~'+p.end,a.inTime||'',a.outTime||'',calcRealH(p,a.inTime?a:null),a.stdPhrase||'',a.memoText||'',a.memoBy||''].map(v=>'"'+v+'"').join(',')).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_출근현황_'+document.getElementById('workman-from').value+'_'+document.getElementById('workman-to').value+'.csv';a.click();URL.revokeObjectURL(u);}
 window.exportWorkmanCSV=exportWorkmanCSV;
-function openUnscheduled(pid,dt){const p=AP[pid];if(!p)return;const col=cof(p.role);document.getElementById('modal-workman-title').innerHTML=`<span style="color:${col}">${p.role}</span> (${p.name}) 임시근무 처리`;document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">📌 스케줄 없는 날 출근 기록 — 임시근무로 처리합니다.</div><div style="display:flex;gap:10px;margin-bottom:14px"><div class="form-group" style="flex:1"><label class="form-label">출근 시각</label><input type="time" class="form-input" id="us-in" value="${(function(){const a={}; return a;})().inTime||p.start}"></div><div class="form-group" style="flex:1"><label class="form-label">퇴근 시각</label><input type="time" class="form-input" id="us-out" value="${p.end}"></div></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현</div><div class="memo-quick">${(MEMO_QUICK['임시근무']||[]).map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('us-mo').value+=(document.getElementById('us-mo').value?' / ':'')+'${q}'">${q}</button>`).join('')}</div><div class="form-group" style="margin-top:8px"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="us-mo" placeholder="임시근무 사유"></textarea></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveUnscheduled('${pid}','${dt}')">임시근무 처리</button></div>`;OM('modal-workman-edit');}
+function openUnscheduled(pid,dt){const p=AP[pid];if(!p)return;const col=cof(p.role);document.getElementById('modal-workman-title').innerHTML=`<span style="color:${col}">${p.role}</span> (${p.name}) 추가근무 처리`;document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">📌 스케줄 없는 날 출근 기록 — 추가근무로 처리합니다.</div><div style="display:flex;gap:10px;margin-bottom:14px"><div class="form-group" style="flex:1"><label class="form-label">출근 시각</label><input type="time" class="form-input" id="us-in" value="${(function(){const a={}; return a;})().inTime||p.start}"></div><div class="form-group" style="flex:1"><label class="form-label">퇴근 시각</label><input type="time" class="form-input" id="us-out" value="${p.end}"></div></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현</div><div class="memo-quick">${(MEMO_QUICK['임시근무']||[]).map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('us-mo').value+=(document.getElementById('us-mo').value?' / ':'')+'${q}'">${q}</button>`).join('')}</div><div class="form-group" style="margin-top:8px"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="us-mo" placeholder="추가근무 사유"></textarea></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveUnscheduled('${pid}','${dt}')">추가근무 처리</button></div>`;OM('modal-workman-edit');}
 window.openUnscheduled=openUnscheduled;
 async function saveUnscheduled(pid,dt){const it=document.getElementById('us-in').value;const ot=document.getElementById('us-out').value;const mo=document.getElementById('us-mo').value.trim();if(!mo){ST('메모를 입력해주세요');return;}SL(true);const ar=ref(db,`attendance/${dt}/${pid}`);const sn=await get(ar);const ad=sn.val()||{};
 // 기존 스케줄 출근기록 유지 + 임시근무 시간은 adjustedStart/End로 저장
@@ -719,23 +810,31 @@ ad.stdPhrase='임시근무';
 if(it)ad.adjustedStart=it;
 if(ot)ad.adjustedEnd=ot;
 if(!ad.inTime&&it)ad.inTime=it;
-ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;ad.memoText=mo;const h=ad.history||[];h.push({phrase:'임시근무',adjStart:it,adjEnd:ot,memo:mo,by:CU.name,at:`${kstLabel()} ${kstNow()}`});ad.history=h;await set(ar,ad);SL(false);ST('임시근무 처리 완료');CM('modal-workman-edit');loadWorkmanData();}
+ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;ad.memoText=mo;const h=ad.history||[];h.push({phrase:'임시근무',adjStart:it,adjEnd:ot,memo:mo,by:CU.name,at:`${kstLabel()} ${kstNow()}`});ad.history=h;await set(ar,ad);SL(false);ST('추가근무 처리 완료');CM('modal-workman-edit');loadWorkmanData();}
 window.saveUnscheduled=saveUnscheduled;
 async function deleteAttend(pid,dt){if(!confirm('이 출결 기록을 삭제하시겠습니까?\n(잘못 찍힌 기록 삭제용)'))return;SL(true);await remove(ref(db,`attendance/${dt}/${pid}`));SL(false);ST('기록 삭제 완료');loadWorkmanData();}
 window.deleteAttend=deleteAttend;
 async function openWE(pid,dt){const p=AP[pid];if(!p)return;const col=cof(p.role);document.getElementById('modal-workman-title').innerHTML=`<span style="color:${col}">${p.role}</span> (${p.name}) — ${dt}`;const p2=AP[pid];const sn2=await get(ref(db,`attendance/${dt}/${pid}`));const ad2=sn2.val()||{};const hist=ad2.history||[];const histHtml=hist.length?hist.slice(-3).reverse().map(h=>`<div class="memo-item"><div class="memo-meta"><span style="background:#eff6ff;color:#2563eb;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-right:4px">${h.phrase||'-'}</span><span class="memo-who">${h.by||'-'}</span><span>${h.at||''}</span></div><div class="memo-text">${h.memo||''}</div></div>`).join(''):'<div style="font-size:12px;color:var(--text-muted)">이력 없음</div>';
-document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">📌 패드 기록은 수정 불가. 시수 적용만 조정합니다.</div><div class="form-group"><label class="form-label">표준문구 (필수)</label><select class="form-select" id="we-ph" onchange="updateWEQuick(this.value)"><option value="">선택하세요</option>${PHRASES.map(ph=>`<option value="${ph}" ${ad2.stdPhrase===ph?'selected':''}>${ph}</option>`).join('')}</select></div><div style="display:flex;gap:10px;margin-bottom:8px"><div class="form-group" style="flex:1"><label class="form-label">시작 시각</label>${mkTimeSelect5('we-as',ad2.adjustedStart||ad2.inTime||'')}</div><div class="form-group" style="flex:1"><label class="form-label">종료 시각</label>${mkTimeSelect5('we-ae',ad2.adjustedEnd||ad2.outTime||'')}</div></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현</div><div class="memo-quick" id="we-quick"></div><div class="form-group"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="we-mo" placeholder="사유를 입력하세요"></textarea></div><div style="margin-top:12px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">처리 이력 (최근 3건)</div><div class="memo-list">${histHtml}</div></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveWE('${pid}','${dt}')">저장</button></div>`;OM('modal-workman-edit');}
+document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">📌 패드 기록은 수정 불가. 시수 적용만 조정합니다.</div><div class="form-group"><label class="form-label">표준문구 (필수)</label><select class="form-select" id="we-ph" onchange="updateWEQuick(this.value)"><option value="">선택하세요</option>${PHRASES.map(ph=>`<option value="${ph}" ${ad2.stdPhrase===ph?'selected':''}>${phraseLabel(ph)}</option>`).join('')}</select></div><div style="display:flex;gap:10px;margin-bottom:8px"><div class="form-group" style="flex:1"><label class="form-label">시작 시각</label>${mkTimeSelect5('we-as',ad2.adjustedStart||ad2.inTime||'')}</div><div class="form-group" style="flex:1"><label class="form-label">종료 시각</label>${mkTimeSelect5('we-ae',ad2.adjustedEnd||ad2.outTime||'')}</div></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현</div><div class="memo-quick" id="we-quick"></div><div class="form-group"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="we-mo" placeholder="사유를 입력하세요"></textarea></div><div style="margin-top:12px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">처리 이력 (최근 3건)</div><div class="memo-list">${histHtml}</div></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveWE('${pid}','${dt}')">저장</button></div>`;OM('modal-workman-edit');}
 window.openWE=openWE;
 function updateWEQuick(ph){const qs=MEMO_QUICK[ph]||[];document.getElementById('we-quick').innerHTML=qs.map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('we-mo').value+=(document.getElementById('we-mo').value?' / ':'')+\'${q}\'">${q}</button>`).join('');}
 window.updateWEQuick=updateWEQuick;
-async function saveWE(pid,dt){const ph=document.getElementById('we-ph').value;const mo=document.getElementById('we-mo').value.trim();const ae=document.getElementById('we-ae').value||syncGetTime('we-ae');const as2=document.getElementById('we-as').value||syncGetTime('we-as');if(!ph){ST('표준문구를 선택해주세요');return;}if(!mo){ST('메모를 입력해주세요');return;}SL(true);const ar=ref(db,`attendance/${dt}/${pid}`);const sn=await get(ar);const ad=sn.val()||{};ad.stdPhrase=ph;if(ae)ad.adjustedEnd=ae;if(ph==='추가근무'){delete ad.adjustedStart;}else if(as2)ad.adjustedStart=as2;ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;ad.memoText=mo;const h=ad.history||[];h.push({phrase:ph,adjEnd:ae||null,adjStart:ph==='추가근무'?null:(as2||null),memo:mo,by:CU.name,at:`${kstLabel()} ${kstNow()}`});ad.history=h;await set(ar,ad);SL(false);ST('수정 완료');CM('modal-workman-edit');loadWorkmanData();}
+async function saveWE(pid,dt){const ph=document.getElementById('we-ph').value;const mo=document.getElementById('we-mo').value.trim();const ae=document.getElementById('we-ae').value||syncGetTime('we-ae');const as2=document.getElementById('we-as').value||syncGetTime('we-as');if(!ph){ST('표준문구를 선택해주세요');return;}if(!mo){ST('메모를 입력해주세요');return;}
+const ar=ref(db,`attendance/${dt}/${pid}`);const snPre=await get(ar);const adPre=snPre.val()||{};
+if(ph==='결근'&&adPre.adjustedEnd&&adPre.stdPhrase==='추가근무'){
+  if(!confirm('⚠ 이 날짜에 연장근무가 등록되어 있습니다.\n결근 처리하면 연장근무도 자동 취소됩니다.\n계속하시겠습니까?'))return;
+}
+SL(true);const ad=adPre;ad.stdPhrase=ph;
+if(ph==='결근'){delete ad.adjustedEnd;delete ad.adjustedStart;}
+else{if(ae)ad.adjustedEnd=ae;if(ph==='추가근무'){delete ad.adjustedStart;}else if(as2)ad.adjustedStart=as2;}
+ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;ad.memoText=mo;const h=ad.history||[];h.push({phrase:ph,adjEnd:ae||null,adjStart:ph==='추가근무'?null:(as2||null),memo:mo,by:CU.name,at:`${kstLabel()} ${kstNow()}`});ad.history=h;await set(ar,ad);SL(false);ST('수정 완료');CM('modal-workman-edit');loadWorkmanData();}
 window.saveWE=saveWE;
-function openMA(pid,dt){const p=AP[pid];if(!p)return;const col=cof(p.role);document.getElementById('modal-workman-title').innerHTML=`<span style="color:${col}">${p.role}</span> (${p.name}) 수동기록`;document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">📌 관리자 수동 입력 — 이력에 기록됩니다.</div><div style="display:flex;gap:10px;margin-bottom:14px"><div class="form-group" style="flex:1"><label class="form-label">출근 시각</label>${mkTimeSelect5('ma-in',p.start)}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근 시각</label>${mkTimeSelect5('ma-out',p.end)}</div></div><div class="form-group"><label class="form-label">표준문구 (필수)</label><select class="form-select" id="ma-ph"><option value="수동기록">수동기록</option>${PHRASES.filter(x=>x!=='수동기록').map(ph=>`<option value="${ph}">${ph}</option>`).join('')}</select></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현</div><div class="memo-quick">${(MEMO_QUICK['수동기록']||[]).map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('ma-mo').value+=(document.getElementById('ma-mo').value?'  /  ':'')+\'${q}\'">${q}</button>`).join('')}</div><div class="form-group"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="ma-mo" placeholder="수동기록 사유"></textarea></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveMA('${pid}','${dt}')">저장</button></div>`;OM('modal-workman-edit');}
+function openMA(pid,dt){const p=AP[pid];if(!p)return;const col=cof(p.role);document.getElementById('modal-workman-title').innerHTML=`<span style="color:${col}">${p.role}</span> (${p.name}) 수동기록`;document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">📌 관리자 수동 입력 — 이력에 기록됩니다.</div><div style="display:flex;gap:10px;margin-bottom:14px"><div class="form-group" style="flex:1"><label class="form-label">출근 시각</label>${mkTimeSelect5('ma-in',p.start)}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근 시각</label>${mkTimeSelect5('ma-out',p.end)}</div></div><div class="form-group"><label class="form-label">표준문구 (필수)</label><select class="form-select" id="ma-ph"><option value="수동기록">수동기록</option>${PHRASES.filter(x=>x!=='수동기록').map(ph=>`<option value="${ph}">${phraseLabel(ph)}</option>`).join('')}</select></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현</div><div class="memo-quick">${(MEMO_QUICK['수동기록']||[]).map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('ma-mo').value+=(document.getElementById('ma-mo').value?'  /  ':'')+\'${q}\'">${q}</button>`).join('')}</div><div class="form-group"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="ma-mo" placeholder="수동기록 사유"></textarea></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveMA('${pid}','${dt}')">저장</button></div>`;OM('modal-workman-edit');}
 window.openMA=openMA;
 async function saveMA(pid,dt){const it=document.getElementById('ma-in').value||syncGetTime('ma-in');const ot=document.getElementById('ma-out').value||syncGetTime('ma-out');const ph=document.getElementById('ma-ph').value;const mo=document.getElementById('ma-mo').value.trim();if(!ph){ST('표준문구를 선택해주세요');return;}if(!mo){ST('메모를 입력해주세요');return;}SL(true);await set(ref(db,`attendance/${dt}/${pid}`),{inTime:it,outTime:ot,stdPhrase:ph,memoBy:CU.name,memoAt:`${kstLabel()} ${kstNow()}`,memoText:mo,manual:true,history:[{type:'manual',inTime:it,outTime:ot,phrase:ph,memo:mo,by:CU.name,at:`${kstLabel()} ${kstNow()}`}]});SL(false);ST('수동기록 완료');CM('modal-workman-edit');loadWorkmanData();}
 window.saveMA=saveMA;
 async function loadAcct(){const fr=document.getElementById('acct-from').value;const to=document.getElementById('acct-to').value;if(!fr||!to){ST('기간을 선택해주세요');return;}SL(true);const ps=Object.entries(AP).filter(([,p])=>p.status!=='inactive').map(([id,p])=>({...p,id}));AD=[];let cur=new Date(fr+'T00:00:00+09:00');const end=new Date(to+'T00:00:00+09:00');while(cur<=end){const dk=`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;const sn=await get(ref(db,`attendance/${dk}`));const ad=sn.val()||{};const DM=['일','월','화','수','목','금','토'];const dw=DM[cur.getDay()];const nameFilter=(document.getElementById('acct-name')?.value||'').trim().toLowerCase();const catFilter=document.getElementById('acct-cat')?.value||'';
-ps.filter(p=>{if(!(p.days||[]).includes(dw))return false;if(p.joinDate&&dk<p.joinDate)return false;if(p.leaveDate&&dk>p.leaveDate)return false;if(nameFilter&&!p.name.toLowerCase().includes(nameFilter)&&!p.role.toLowerCase().includes(nameFilter))return false;if(catFilter&&p.cat!==catFilter)return false;return true;}).forEach(p=>{const a=ad[p.id]||{};const sh=schedH(p);const isAbsent=a.stdPhrase==='결근';const rh=a.inTime?calcRealH(p,a):isAbsent?0:null;AD.push({date:dk,part:p,att:a,schedH:sh,realH:rh});});cur.setDate(cur.getDate()+1);}SL(false);if(!AD.length){document.getElementById('acct-body').innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted)">해당 기간 데이터 없음</div>';return;}// 사람별 그룹화
+ps.filter(p=>{if(!isWorkDay(p,dw,dk))return false;if(p.joinDate&&dk<p.joinDate)return false;if(p.leaveDate&&dk>p.leaveDate)return false;if(nameFilter&&!p.name.toLowerCase().includes(nameFilter)&&!p.role.toLowerCase().includes(nameFilter))return false;if(catFilter&&p.cat!==catFilter)return false;return true;}).forEach(p=>{const a=ad[p.id]||{};const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dk);const ds=tempDay?{start:tempDay.start,end:tempDay.end}:getDayTime(p,dw,dk);const pEff={...p,start:ds.start||p.start,end:ds.end||p.end};const sh=schedH(pEff);const isAbsent=a.stdPhrase==='결근'||isPlannedAbsent(p,dk);const rh=a.inTime?calcRealH(pEff,a):isAbsent?0:null;AD.push({date:dk,part:pEff,att:a,schedH:sh,realH:rh});});cur.setDate(cur.getDate()+1);}SL(false);if(!AD.length){document.getElementById('acct-body').innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted)">해당 기간 데이터 없음</div>';return;}// 사람별 그룹화
 const grouped={};AD.forEach(r=>{const key=r.part.id;if(!grouped[key])grouped[key]={name:r.part.name,role:r.part.role,cat:r.part.cat,rows:[],totalSched:0,totalReal:0,hasReal:false};grouped[key].rows.push(r);grouped[key].totalSched=Math.round((grouped[key].totalSched+r.schedH)*10)/10;if(r.realH!==null){grouped[key].totalReal=Math.round((grouped[key].totalReal+r.realH)*10)/10;grouped[key].hasReal=true;}});
 const isSingleDay=fr===to;
 const groupArr=Object.values(grouped);
@@ -752,7 +851,7 @@ const hasOut=!!(r.att.outTime||r.att.adjustedEnd);
 const rhDisp=(rhNull||isAbsentRow||isWorking)?'-':r.realH+'h';
 const df=hasOut&&!isWorking?Math.round((r.realH-r.schedH)*10)/10:null;
 const db2=df===null?'':df<0?`<span class="diff-minus">${df}h</span>`:df>0?`<span class="diff-plus">+${df}h</span>`:'';
-const procDisp=r.att.stdPhrase?`<span class="sbadge s-active" style="font-size:10px">${r.att.stdPhrase}</span>`:isUnproc?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span>':'-';
+const procDisp=r.att.stdPhrase?`<span class="sbadge s-active" style="font-size:10px">${phraseLabel(r.att.stdPhrase)}</span>`:isUnproc?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span>':'-';
 const unc=r.att.inTime&&!r.att.outTime&&!isWorking;
 const rowStyle=`background:${rowBg}${isSingleDay?';border-bottom:2px solid var(--border)':''}`;
 return`<tr style="${rowStyle}"><td style="background:${col};padding:0;width:3px;min-width:3px"></td><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${r.date}</td><td><span class="cat-badge cat-${r.part.cat}">${CATL[r.part.cat]}</span></td><td><span style="color:${col};font-weight:700">${r.part.role}</span></td><td>${r.part.name}</td><td style="font-family:'DM Mono',monospace">${r.part.start}~${r.part.end}</td><td style="font-family:'DM Mono',monospace">${r.att.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${(r.att.adjustedEnd||r.att.outTime)||'-'}${unc?'<span style="color:var(--orange);font-size:10px;margin-left:2px">⚠</span>':''}</td><td style="font-family:'DM Mono',monospace;color:var(--text-muted)">${r.schedH}h</td><td style="font-family:'DM Mono',monospace;font-weight:700">${rhDisp}${db2?' '+db2:''}</td><td>${procDisp}</td><td style="font-size:11px;color:var(--text-muted);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.att.memoText||'-'}</td><td style="font-size:11px;color:var(--text-muted)">${r.att.memoBy||'-'}</td></tr>`;
@@ -945,7 +1044,7 @@ function downloadSchedCSV(){
 }
 window.downloadSchedCSV=downloadSchedCSV;
 function renderPT(){const nf=(document.getElementById('filter-name')?.value||'').trim().toLowerCase();const cf=document.getElementById('filter-cat')?.value||'';const rf=(document.getElementById('filter-role')?.value||'').trim().toLowerCase();const sf=document.getElementById('filter-status')?.value??'active';let ps=Object.entries(AP).map(([id,p])=>({...p,id}));if(nf)ps=ps.filter(p=>p.name&&p.name.toLowerCase().includes(nf));if(cf)ps=ps.filter(p=>p.cat===cf);if(rf)ps=ps.filter(p=>p.role&&p.role.toLowerCase().includes(rf));if(sf==='active')ps=ps.filter(p=>p.status!=='inactive'&&p.status!=='leave');else if(sf==='inactive')ps=ps.filter(p=>p.status==='inactive');else if(sf==='leave')ps=ps.filter(p=>p.status==='leave');if(!ps.length){document.getElementById('parts-table-wrap').innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted)">조건에 맞는 직원 없음</div>';return;}const rows=ps.map(p=>{const col=cof(p.role);const sk=p.status||'active';const sb=sk==='inactive'?'<span class="sbadge s-inactive">퇴사</span>':sk==='leave'?'<span class="sbadge s-leave">휴직</span>':'<span class="sbadge s-active">재직</span>';const hasDaySchedule=p.daySchedule&&Object.keys(p.daySchedule).length>0;const extraDate=sk==='leave'&&p.leaveDate?`<div style="font-size:10px;color:var(--warning)">휴직 ${p.leaveDate}</div>`:sk==='inactive'&&p.leaveDate?`<div style="font-size:10px;color:var(--danger)">퇴사 ${p.leaveDate}</div>`:'';
-return`<tr><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span></td><td>${p.name}</td><td style="font-family:'Noto Sans KR',sans-serif">${p.phone||'-'}</td><td style="font-family:'Noto Sans KR',sans-serif">${sk==='inactive'?`<span style="text-decoration:line-through;color:var(--text-muted);letter-spacing:2px;font-size:12px">${p.pin||'-'}</span><span style="font-size:10px;color:var(--danger);background:var(--danger-light);padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:600">비활성</span>`:`<span style="font-weight:700;letter-spacing:3px">${p.pin||'-'}</span>`}</td><td>${(p.days||[]).join('·')}${hasDaySchedule?'<span style="color:var(--warning);font-size:10px;margin-left:4px">요일별</span>':''}</td><td style="font-family:'DM Mono',monospace">${p.start||'-'}~${p.end||'-'}${p.customBreak!==undefined?`<span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span>`:''}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${p.joinDate||'-'}${extraDate}</td><td>${sb}</td><td><button class="icon-btn" onclick="openEP('${p.id}')">수정</button><button class="icon-btn" onclick="openSchedHist('${p.id}')" style="color:var(--accent)">히스토리</button></td></tr>`;}).join('');document.getElementById('parts-table-wrap').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>카테고리</th><th>직무</th><th>이름</th><th>휴대폰</th><th>PIN</th><th>요일</th><th>기본시간</th><th>입사일</th><th>상태</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
+return`<tr><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span></td><td>${p.name}</td><td style="font-family:'Noto Sans KR',sans-serif">${p.phone||'-'}</td><td style="font-family:'Noto Sans KR',sans-serif">${sk==='inactive'?`<span style="text-decoration:line-through;color:var(--text-muted);letter-spacing:2px;font-size:12px">${p.pin||'-'}</span><span style="font-size:10px;color:var(--danger);background:var(--danger-light);padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:600">비활성</span>`:`<span style="font-weight:700;letter-spacing:3px">${p.pin||'-'}</span>`}</td><td>${(p.days||[]).join('·')}${hasDaySchedule?'<span style="color:var(--warning);font-size:10px;margin-left:4px">요일별</span>':''}</td><td style="font-family:'DM Mono',monospace">${p.start||'-'}~${p.end||'-'}${p.customBreak!==undefined?`<span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span>`:''}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${p.joinDate||'-'}${extraDate}</td><td>${sb}</td><td>${CU.role==='관리자'?`<button class="icon-btn" onclick="openEP('${p.id}')">수정</button>`:''}<button class="icon-btn" onclick="openSchedHist('${p.id}')" style="color:var(--accent)">${CU.role==='관리자'?'히스토리':'보기'}</button></td></tr>`;}).join('');document.getElementById('parts-table-wrap').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>카테고리</th><th>직무</th><th>이름</th><th>휴대폰</th><th>PIN</th><th>요일</th><th>기본시간</th><th>입사일</th><th>상태</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 window.renderPartsTable=renderPT;window.renderPT=renderPT;
 function exportPartsCSV(){let ps=Object.entries(AP).map(([id,p])=>({...p,id}));const sf=document.getElementById('filter-status')?.value??'active';if(sf==='active')ps=ps.filter(p=>p.status!=='inactive'&&p.status!=='leave');else if(sf==='inactive')ps=ps.filter(p=>p.status==='inactive');else if(sf==='leave')ps=ps.filter(p=>p.status==='leave');const h='카테고리,직무,이름,휴대폰,PIN,요일,출근,퇴근,입사일,상태';const rows=ps.map(p=>[CATL[p.cat]||p.cat,p.role,p.name,p.phone||'',p.pin||'',(p.days||[]).join('·'),p.start||'',p.end||'',p.joinDate||'',p.status||'active'].map(v=>`"${v}"`).join(',')).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_직원목록.csv';a.click();URL.revokeObjectURL(u);}
 window.exportPartsCSV=exportPartsCSV;
@@ -1018,7 +1117,7 @@ const dayTimes=sd.map(d=>{
 const periods=p&&p.schedulePeriods?[...p.schedulePeriods].sort((a,b)=>a.startDate.localeCompare(b.startDate)):[];
 const periodsHtml=periods.length?periods.map((pd,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg);border-radius:var(--rs);margin-bottom:4px;flex-wrap:wrap"><span style="font-size:11px;color:var(--accent)">${pd.startDate} ~ ${pd.endDate}</span><span style="font-size:12px">${(pd.days||[]).join('·')} ${pd.start}~${pd.end}</span><button type="button" class="icon-btn del" style="padding:2px 6px;font-size:10px" onclick="removePeriod('${pid}',${i})">삭제</button></div>`).join(''):'<div style="font-size:12px;color:var(--text-muted)">등록된 변경 기간 없음</div>';
 const tempDatesArr=p&&p.tempDates?[...p.tempDates].sort((a,b)=>a.date.localeCompare(b.date)):[];
-const tempDatesHtml=tempDatesArr.length?tempDatesArr.map(d=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding:4px 8px;background:var(--orange-light);border-radius:var(--rs)"><span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--orange)">${d.date}</span><span style="font-size:12px;color:var(--text-secondary)">${d.start}~${d.end}</span><button type="button" class="icon-btn del" style="padding:2px 6px;font-size:10px;margin-left:auto" onclick="removeTempDate('${pid}','${d.date}')">삭제</button></div>`).join(''):'<div style="font-size:12px;color:var(--text-muted);padding:4px 0">등록된 임시근무 없음</div>';
+const tempDatesHtml=tempDatesArr.length?tempDatesArr.map(d=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding:4px 8px;background:var(--orange-light);border-radius:var(--rs)"><span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--orange)">${d.date}</span><span style="font-size:12px;color:var(--text-secondary)">${d.start}~${d.end}</span><button type="button" class="icon-btn del" style="padding:2px 6px;font-size:10px;margin-left:auto" onclick="removeTempDate('${pid}','${d.date}')">삭제</button></div>`).join(''):'<div style="font-size:12px;color:var(--text-muted);padding:4px 0">등록된 추가근무 없음</div>';
 const periodDayBtns=days.map(d=>`<button type="button" class="day-btn" onclick="tPDay('${d}')" id="pd-${d}">${d}</button>`).join('');
 schedDiv.innerHTML=`
 <div class="form-group"><label class="form-label">근무 요일 (더블클릭: 해당 요일 시간 개별 수정)</label>
@@ -1029,33 +1128,20 @@ schedDiv.innerHTML=`
 <div class="form-group" style="flex:1"><label class="form-label">기본 퇴근</label>${mkTimeSelect('pf-end',p?p.end:'18:00','width:100%')}</div>
 </div>
 <div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">휴게시간(분) — 비워두면 자동<span id="brk-badge" style="${p&&p.customBreak!==undefined?'':'display:none;'}font-size:10px;font-weight:600;background:var(--warning-light);color:var(--warning);padding:1px 7px;border-radius:10px;border:1px solid #fcd34d">⚠ 수동설정</span></label><input class="form-input" id="pf-brk" type="number" placeholder="자동" value="${p&&p.customBreak!==undefined?p.customBreak:''}" oninput="const b=document.getElementById('brk-badge');if(b)b.style.display=this.value?'inline':'none'"></div>
-${pid?`<div class="form-group"><label class="form-label">스케줄 변경 시작일 <span style="font-size:11px;color:var(--text-muted);font-weight:400">(이 날짜부터 위 요일/시간 적용)</span></label><input type="date" class="form-input" id="pf-change-date" value="${p&&p.scheduleChangeDate?p.scheduleChangeDate:''}"></div>`:''}
-${pid?`<div class="divider-section">
-<div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">기간별 스케줄 변경</div>
-<div id="periods-list-${pid}">${periodsHtml}</div>
-<div style="margin-top:8px;padding:10px;background:var(--bg);border-radius:var(--rs);border:1px solid var(--border)">
-<div style="font-size:11px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">기간 추가</div>
-<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px">
-<input type="date" class="form-input" id="period-start" style="width:148px" onchange="autoSelectPeriodDays()"><span style="color:var(--text-muted)">~</span><input type="date" class="form-input" id="period-end" style="width:148px" onchange="autoSelectPeriodDays()"></div>
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px" id="period-days-wrap">${periodDayBtns}</div>
-<div style="display:flex;gap:6px;margin-bottom:8px">${mkTimeSelect('period-start-time','09:00','flex:1')}<span style="color:var(--text-muted);align-self:center">~</span>${mkTimeSelect('period-end-time','18:00','flex:1')}</div>
-<div id="add-period-btn-wrap"></div>
-</div></div>`:''}
-${pid?`<div class="divider-section"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">📋 스케줄 변경 이력 (최근 ${Math.min((p&&p.scheduleHistory?p.scheduleHistory.length:0),10)}건)</div><div style="display:flex;flex-direction:column;gap:4px">${p&&p.scheduleHistory&&p.scheduleHistory.length?[...p.scheduleHistory].reverse().slice(0,10).map(h=>`<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border-radius:var(--rs);font-size:12px;flex-wrap:wrap"><span style="font-family:'DM Mono',monospace;color:var(--accent);flex-shrink:0">${h.date||''} 적용</span><span style="color:var(--text-primary)">${(h.days||[]).join('·')} ${h.start||''}~${h.end||''}</span><span style="color:var(--text-muted);font-size:11px;margin-left:auto">${h.by||''}</span></div>`).join(''):'<div style="font-size:12px;color:var(--text-muted);padding:4px 0">스케줄 변경 이력 없음 — 스케줄 변경 시작일 설정 후 저장 시 기록됩니다</div>'}</div></div>`:''}
+${pid?`<div class="divider-section" id="wa-section"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px"><div style="font-size:13px;font-weight:700;color:var(--text-primary)">🗓️ 근무 조정</div><div style="display:flex;gap:4px;align-items:center"><button type="button" class="icon-btn" id="wa-tab-cal" onclick="waSwitchTab('cal')" style="background:var(--accent-light);color:var(--accent);border-color:var(--accent)">📅 달력</button><button type="button" class="icon-btn" id="wa-tab-list" onclick="waSwitchTab('list')">📋 목록</button><button type="button" class="icon-btn" onclick="waExportMonth('${pid}')" style="border-color:#86efac;color:#15803d;background:#f0fdf4">📥 출력</button></div></div><div id="wa-cal-panel"></div><div id="wa-list-panel" style="display:none"></div>${CU.role==='관리자'?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"><button type="button" class="icon-btn" style="border-color:#93c5fd;color:#1d4ed8;background:#eff6ff;font-weight:600" onclick="waOpenModal('${pid}','perm')">🔄 영구 변경</button><button type="button" class="icon-btn" style="border-color:#86efac;color:#15803d;background:#f0fdf4;font-weight:600" onclick="waOpenModal('${pid}','replace')">🔁 기간 교체</button><button type="button" class="icon-btn" style="border-color:#fca5a5;color:#b91c1c;background:#fef2f2;font-weight:600" onclick="waOpenModal('${pid}','absent')">❌ 결근 예정</button><button type="button" class="icon-btn" style="border-color:#e9d5ff;color:#7e22ce;background:#fdf4ff;font-weight:600" onclick="waOpenModal('${pid}','oneday')">⭐ 추가근무</button></div>`:''}</div>`:''}
 `;
 el.appendChild(schedDiv);
-
-// 기간 추가 버튼 (DOM으로)
-if(pid){
-  const apBtn=document.createElement('button');apBtn.type='button';apBtn.className='btn-secondary';apBtn.style.cssText='font-size:12px;padding:6px 14px';apBtn.textContent='+ 기간 추가';apBtn.onclick=()=>addPeriod(pid);
-  const wrap=document.getElementById('add-period-btn-wrap');if(wrap)wrap.appendChild(apBtn);
-}
-
 // 버튼 행
 const btnRow=document.createElement('div');btnRow.className='btn-row';
-const cancelBtn=document.createElement('button');cancelBtn.type='button';cancelBtn.className='btn-secondary';cancelBtn.textContent='취소';cancelBtn.onclick=()=>CM('modal-part');
-const saveBtn=document.createElement('button');saveBtn.type='button';saveBtn.className='btn-primary';saveBtn.textContent='저장';saveBtn.onclick=()=>savePF(pid||'');
-btnRow.appendChild(cancelBtn);btnRow.appendChild(saveBtn);el.appendChild(btnRow);}
+const cancelBtn=document.createElement('button');cancelBtn.type='button';cancelBtn.className='btn-secondary';cancelBtn.textContent=CU.role==='관리자'?'취소':'닫기';cancelBtn.onclick=()=>CM('modal-part');
+btnRow.appendChild(cancelBtn);
+if(CU.role==='관리자'){
+  const saveBtn=document.createElement('button');saveBtn.type='button';saveBtn.className='btn-primary';saveBtn.textContent='저장';saveBtn.onclick=()=>savePF(pid||'');
+  btnRow.appendChild(saveBtn);
+}
+el.appendChild(btnRow);
+if(pid){WA_PID=pid;setTimeout(()=>{if(typeof waRenderCal==='function')waRenderCal();},100);}
+}
 
 function switchPTab(tab){
   document.getElementById('ptab-basic-content').style.display=tab==='basic'?'block':'none';
@@ -1129,6 +1215,418 @@ function tDay(d){document.querySelectorAll('#pf-days .day-btn').forEach(b=>{if(b
 window.toggleDay=tDay;
 function toggleDayTime(d){const container=document.getElementById('day-times');const existing=container.querySelector(`[data-day="${d}"]`);if(existing){existing.remove();}else{const p=AP[document.querySelector('#pf-pin')?.value];const start=document.getElementById('pf-start')?.value||'09:00';const end=document.getElementById('pf-end')?.value||'18:00';const row=document.createElement('div');row.className='day-time-row';row.dataset.day=d;row.innerHTML=`<span style="font-weight:600;width:20px;color:var(--warning)">${d}</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="ds-s-${d}" value="${start}"><span style="color:var(--text-muted)">~</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="ds-e-${d}" value="${end}"><button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="this.parentElement.remove()">✕</button>`;container.appendChild(row);}}
 window.toggleDayTime=toggleDayTime;
+
+// ===== 근무 조정 (근무 조정) =====
+const WA_LABELS={perm:'🔄 영구 변경',replace:'🔁 기간 교체',absent:'❌ 결근 예정',oneday:'⭐ 추가근무',period:'➕ 기간 추가'};
+const WA_COLORS={perm:{bg:'#eff6ff',border:'#93c5fd',text:'#1d4ed8'},replace:{bg:'#f0fdf4',border:'#86efac',text:'#15803d'},period:{bg:'#fff7ed',border:'#fed7aa',text:'#c2410c'},absent:{bg:'#fef2f2',border:'#fca5a5',text:'#b91c1c'},oneday:{bg:'#fdf4ff',border:'#e9d5ff',text:'#7e22ce'}};
+
+function waGetAllEvents(p){
+  const list=[];
+  (p.permChanges||[]).forEach((e,i)=>list.push({type:'perm',idx:i,startDate:e.startDate,endDate:null,days:e.days||[],start:e.start,end:e.end,by:e.by,at:e.at}));
+  (p.scheduleReplaces||[]).forEach((e,i)=>list.push({type:'replace',idx:i,startDate:e.startDate,endDate:e.endDate,days:e.days||[],start:e.start,end:e.end,by:e.by,at:e.at}));
+  (p.schedulePeriods||[]).forEach((e,i)=>list.push({type:'period',idx:i,startDate:e.startDate,endDate:e.endDate,days:e.days||[],start:e.start,end:e.end,legacy:true}));
+  // 결근 예정 (기존 단일 날짜 + 신규 기간)
+  (p.plannedAbsent||[]).forEach((e,i)=>{
+    if(typeof e==='string')list.push({type:'absent',idx:i,startDate:e,endDate:e,memo:'',legacyStr:true});
+    else list.push({type:'absent',idx:i,startDate:e.startDate||e.date,endDate:e.endDate||e.date,memo:e.memo||'',by:e.by,at:e.at});
+  });
+  (p.tempDates||[]).forEach((e,i)=>list.push({type:'oneday',idx:i,startDate:e.date,endDate:e.date,start:e.start,end:e.end,by:e.by,at:e.at}));
+  list.sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||''));
+  return list;
+}
+window.waGetAllEvents=waGetAllEvents;
+
+function waRenderList(pid){
+  const p=AP[pid];if(!p)return;
+  const events=waGetAllEvents(p);
+  const el=document.getElementById('wa-list-panel');if(!el)return;
+  if(!events.length){el.innerHTML='<div style="padding:12px;text-align:center;color:var(--text-muted);font-size:12px;background:var(--bg);border-radius:var(--rs)">등록된 근무 조정이 없습니다. 아래 버튼으로 추가하세요.</div>';return;}
+  el.innerHTML=events.map(e=>{
+    const c=WA_COLORS[e.type];const lb=WA_LABELS[e.type];
+    const dateStr=e.startDate===e.endDate||!e.endDate?e.startDate:`${e.startDate} ~ ${e.endDate}`;
+    const daysStr=(e.days||[]).length?(e.days||[]).join('·')+' &nbsp;':'';
+    const timeStr=e.start&&e.end?`${e.start}~${e.end}`:'';
+    const memoStr=e.memo?` <span style="color:var(--text-muted);font-size:11px">${e.memo}</span>`:'';
+    const legacy=e.legacy?'<span style="font-size:9px;color:var(--text-muted);background:var(--bg);padding:1px 5px;border-radius:8px;margin-left:3px">기존</span>':'';
+    return `<div style="border:1px solid ${c.border};background:${c.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px"><span style="font-size:10px;font-weight:700;color:${c.text};background:#fff;padding:2px 7px;border-radius:10px;border:1px solid ${c.border}">${lb}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);flex:1">${dateStr}${e.type==='perm'?' ~ 계속':''}</span>${CU.role==='관리자'?`<button type="button" class="icon-btn del" style="padding:2px 7px;font-size:10px" onclick="waDelete('${pid}','${e.type}',${e.idx})">삭제</button>`:''}</div><div style="font-size:12px;color:${c.text}">${daysStr}${timeStr}${memoStr}${legacy}</div></div>`;
+  }).join('');
+}
+window.waRenderList=waRenderList;
+
+function waSwitchTab(tab){
+  const lBtn=document.getElementById('wa-tab-list');
+  const cBtn=document.getElementById('wa-tab-cal');
+  const lPan=document.getElementById('wa-list-panel');
+  const cPan=document.getElementById('wa-cal-panel');
+  if(!lBtn||!cBtn||!lPan||!cPan)return;
+  if(tab==='list'){
+    lPan.style.display='';cPan.style.display='none';
+    lBtn.style.cssText='background:var(--accent-light);color:var(--accent);border-color:var(--accent)';
+    cBtn.style.cssText='';
+    if(WA_PID)waRenderList(WA_PID);
+  }else{
+    lPan.style.display='none';cPan.style.display='';
+    cBtn.style.cssText='background:var(--accent-light);color:var(--accent);border-color:var(--accent)';
+    lBtn.style.cssText='';
+    waRenderCal();
+  }
+}
+window.waSwitchTab=waSwitchTab;
+
+let WA_PID=null,WA_CAL_Y=null,WA_CAL_M=null,WA_ATT_CACHE={};
+
+async function waLoadAttCache(y,m){
+  // 해당 월의 출근 데이터 로드 (연장근무 표시용)
+  const lastDate=new Date(y,m+1,0).getDate();
+  const fr=`${y}-${String(m+1).padStart(2,'0')}-01`;
+  const to=`${y}-${String(m+1).padStart(2,'0')}-${String(lastDate).padStart(2,'0')}`;
+  WA_ATT_CACHE={};
+  const today=kstDate();
+  // 당월 과거 날짜만 로드 (미래는 출결 없음)
+  for(let d=1;d<=lastDate;d++){
+    const dk=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if(dk>today)continue;
+    try{
+      const sn=await get(ref(db,`attendance/${dk}/${WA_PID}`));
+      if(sn.val())WA_ATT_CACHE[dk]=sn.val();
+    }catch(e){}
+  }
+}
+
+async function waRenderCal(){
+  const pid=WA_PID;
+  const p=AP[WA_PID];if(!p){const el=document.getElementById('wa-cal-panel');if(el)el.innerHTML='<div style="padding:12px;color:var(--text-muted);font-size:12px">직원 저장 후 미리보기 가능</div>';return;}
+  if(WA_CAL_Y===null){const now=new Date(Date.now()+9*3600000);WA_CAL_Y=now.getUTCFullYear();WA_CAL_M=now.getUTCMonth();}
+  const y=WA_CAL_Y,m=WA_CAL_M;
+  await waLoadAttCache(y,m);
+  const lastDate=new Date(y,m+1,0).getDate();
+  const today=kstDate();
+  const DM=['일','월','화','수','목','금','토'];
+  const first=new Date(y,m,1).getDay();
+  let html=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><button type="button" class="icon-btn" onclick="waChangeMonth(-1)">◀</button><span style="font-size:13px;font-weight:700">${y}년 ${m+1}월</span><button type="button" class="icon-btn" onclick="waChangeMonth(1)">▶</button></div><table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed"><tr>${DM.map((d,i)=>`<th style="padding:4px 2px;background:var(--bg);border-bottom:1px solid var(--border);color:${i===0?'#dc2626':i===6?'#2563eb':'var(--text-secondary)'}">${d}</th>`).join('')}</tr><tr>`;
+  for(let i=0;i<first;i++)html+=`<td style="border:1px solid var(--border-light);background:var(--bg);min-height:60px"></td>`;
+  let cl=first;
+  for(let d=1;d<=lastDate;d++){
+    const dk=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dt=new Date(y,m,d);const dow=DM[dt.getDay()];
+    const isToday=dk===today;
+    const joinOk=!p.joinDate||dk>=p.joinDate;
+    const leaveOk=!p.leaveDate||dk<=p.leaveDate;
+    const works=joinOk&&leaveOk&&isWorkDay(p,dow,dk);
+    const absent=isPlannedAbsent(p,dk);
+    const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dk);
+    const ds=tempDay?{start:tempDay.start,end:tempDay.end}:getDayTime(p,dow,dk);
+    const hasSchedule=works&&ds.start&&ds.end;
+    const conflict=absent&&hasSchedule;
+    const att=WA_ATT_CACHE[dk];
+    const hasExt=att&&att.adjustedEnd&&att.stdPhrase==='추가근무';
+    let bg='#fff';
+    if(isToday)bg='#fffbe6';
+    if(absent&&!conflict)bg='#fef2f2';
+    else if(hasSchedule)bg='#f8fafc';
+    if(conflict)bg='#fef9c3';
+    const numColor=dt.getDay()===0?'#dc2626':dt.getDay()===6?'#2563eb':'var(--text-secondary)';
+    let inner=`<div style="font-size:10px;font-weight:600;color:${isToday?'#2563eb':numColor};margin-bottom:1px">${d}</div>`;
+    if(absent)inner+=`<div style="font-size:8px;padding:1px 2px;background:#fee2e2;color:#b91c1c;border-radius:2px;font-weight:700">결근</div>`;
+    else if(hasSchedule){
+      const timeStr=`${ds.start.slice(0,5)}~${ds.end.slice(3,5)==='00'?ds.end.slice(0,2):ds.end.slice(0,5)}`;
+      inner+=`<div style="font-size:8px;color:#4338ca;font-family:monospace;line-height:1.1">${ds.start}</div><div style="font-size:8px;color:#4338ca;font-family:monospace;line-height:1.1">~${ds.end}</div>`;
+    }
+    if(hasExt){
+      const extMin=toM(att.adjustedEnd)-toM(ds.end||p.end);
+      if(extMin>0)inner+=`<div style="font-size:8px;padding:0 2px;background:#fff7ed;color:#c2410c;border-radius:2px;font-weight:700;margin-top:1px">+${(extMin/60).toFixed(1)}h</div>`;
+    }
+    if(conflict)inner+=`<div style="font-size:9px;color:#854d0e">⚠</div>`;
+    html+=`<td style="border:1px solid var(--border-light);padding:2px;vertical-align:top;height:62px;background:${bg};cursor:pointer" onclick="waShowDayDetail('${dk}','${dow}')">${inner}</td>`;
+    cl++;if(cl%7===0&&d<lastDate)html+=`</tr><tr>`;
+  }
+  const rem=cl%7;if(rem>0)for(let i=rem;i<7;i++)html+=`<td style="border:1px solid var(--border-light);background:var(--bg)"></td>`;
+  html+=`</tr></table><div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;font-size:10px"><span style="padding:1px 6px;background:#f8fafc;color:#4338ca;border-radius:3px;border:1px solid var(--border)">근무</span><span style="padding:1px 6px;background:#fee2e2;color:#b91c1c;border-radius:3px">결근</span><span style="padding:1px 6px;background:#fff7ed;color:#c2410c;border-radius:3px">+연장</span><span style="padding:1px 6px;background:#fef9c3;color:#854d0e;border-radius:3px">⚠ 충돌</span></div><div id="wa-day-detail" style="margin-top:8px"></div>`;
+  const el=document.getElementById('wa-cal-panel');if(el)el.innerHTML=html;
+}
+window.waRenderCal=waRenderCal;
+
+function waChangeMonth(dir){WA_CAL_M+=dir;if(WA_CAL_M>11){WA_CAL_M=0;WA_CAL_Y++;}if(WA_CAL_M<0){WA_CAL_M=11;WA_CAL_Y--;}waRenderCal();}
+window.waChangeMonth=waChangeMonth;
+
+function waShowDayDetail(dk,dow){
+  const p=AP[WA_PID];if(!p)return;
+  const el=document.getElementById('wa-day-detail');if(!el)return;
+  const absent=isPlannedAbsent(p,dk);
+  const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dk);
+  const ds=tempDay?{start:tempDay.start,end:tempDay.end,_t:'oneday'}:getDayTime(p,dow,dk);
+  const works=isWorkDay(p,dow,dk);
+  const att=WA_ATT_CACHE[dk]||{};
+  let source='기본 스케줄';
+  if(ds.fromReplace)source='🔁 기간 교체';
+  else if(ds.fromPeriod)source='➕ 기간 추가';
+  else if(ds.fromPerm)source='🔄 영구 변경';
+  else if(ds._t==='oneday')source='⭐ 추가근무';
+  else source='📌 기본 스케줄';
+  let content=`<div style="font-size:13px;font-weight:700;margin-bottom:6px;color:var(--text-primary)">${dk} (${dow})</div>`;
+  if(absent){
+    content+=`<div style="font-size:12px;color:#b91c1c;margin-bottom:4px;padding:4px 8px;background:#fef2f2;border-radius:4px">❌ 결근 예정</div>`;
+  }
+  if(works&&ds.start&&ds.end){
+    content+=`<div style="font-size:12px;color:var(--text-primary);margin-bottom:4px">${source}: <b style="font-family:monospace">${ds.start}~${ds.end}</b></div>`;
+  }
+  if(att.adjustedEnd&&att.stdPhrase==='추가근무'){
+    const extMin=toM(att.adjustedEnd)-toM(ds.end||p.end);
+    content+=`<div style="font-size:12px;color:#c2410c;margin-bottom:4px;padding:4px 8px;background:#fff7ed;border-radius:4px">🕐 연장근무: ${att.adjustedEnd}까지 (+${(extMin/60).toFixed(1)}h)</div>`;
+  }
+  if(!works&&!absent){
+    content+=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">근무 없음</div>`;
+  }
+  // 액션 버튼들 (관리자만)
+  const actions=[];
+  if(CU.role==='관리자'){
+    if(absent){
+      actions.push(`<button type="button" class="icon-btn del" onclick="waQuickRemoveAbsent('${dk}')">❌ 결근 취소</button>`);
+    }else if(works){
+      actions.push(`<button type="button" class="icon-btn" style="color:#b91c1c;border-color:#fca5a5" onclick="waQuickAddAbsent('${dk}')">❌ 이 날 결근 처리</button>`);
+      if(dk>=kstDate()){
+        actions.push(`<button type="button" class="icon-btn" style="color:#c2410c;border-color:#fed7aa" onclick="waQuickAddExt('${dk}','${ds.end||p.end}')">🕐 연장근무 예약</button>`);
+      }
+    }else if(!absent){
+      actions.push(`<button type="button" class="icon-btn" style="color:#7e22ce;border-color:#e9d5ff" onclick="waQuickAddOneday('${dk}')">⭐ 추가근무 등록</button>`);
+    }
+  }
+  const actionsHtml=actions.length?`<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">${actions.join('')}</div>`:'';
+  el.innerHTML=`<div style="padding:10px 12px;background:var(--bg);border-radius:var(--rs);border:1px solid var(--border)">${content}${actionsHtml}</div>`;
+}
+window.waShowDayDetail=waShowDayDetail;
+
+// 빠른 액션: 결근 처리
+async function waQuickAddAbsent(dk){
+  const p=AP[WA_PID];if(!p)return;
+  if(!confirm(`${dk} 결근 예정으로 처리하시겠습니까?`))return;
+  // 연장근무 체크
+  const att=WA_ATT_CACHE[dk]||{};
+  if(att.adjustedEnd&&att.stdPhrase==='추가근무'){
+    if(!confirm('⚠ 이 날짜에 연장근무가 등록되어 있습니다.\n결근 처리하면 연장근무도 자동 취소됩니다.\n계속하시겠습니까?'))return;
+    await set(ref(db,`attendance/${dk}/${WA_PID}`),null);
+  }
+  const newAbs=[...(p.plannedAbsent||[]),{startDate:dk,endDate:dk,memo:'달력에서 추가',by:CU.name,at:`${kstLabel()} ${kstNow()}`}];
+  SL(true);await update(ref(db,`parts/${WA_PID}`),{plannedAbsent:newAbs});SL(false);
+  ST('결근 예정 등록 완료');waRenderCal();waRenderList(WA_PID);
+}
+window.waQuickAddAbsent=waQuickAddAbsent;
+
+async function waQuickRemoveAbsent(dk){
+  const p=AP[WA_PID];if(!p)return;
+  if(!confirm(`${dk} 결근 예정을 취소하시겠습니까?`))return;
+  const newAbs=(p.plannedAbsent||[]).filter(a=>{
+    if(typeof a==='string')return a!==dk;
+    if(a.date)return a.date!==dk;
+    if(a.startDate&&a.endDate)return !(dk>=a.startDate&&dk<=a.endDate);
+    return true;
+  });
+  SL(true);await update(ref(db,`parts/${WA_PID}`),{plannedAbsent:newAbs});SL(false);
+  ST('결근 예정 취소');waRenderCal();waRenderList(WA_PID);
+}
+window.waQuickRemoveAbsent=waQuickRemoveAbsent;
+
+async function waQuickAddOneday(dk){
+  const p=AP[WA_PID];if(!p)return;
+  const st=prompt('추가근무 출근 시각 (예: 09:00)',p.start||'09:00');if(!st)return;
+  const et=prompt('추가근무 퇴근 시각 (예: 18:00)',p.end||'18:00');if(!et)return;
+  if(!/^\d{2}:\d{2}$/.test(st)||!/^\d{2}:\d{2}$/.test(et)){ST('시간 형식이 올바르지 않습니다');return;}
+  const newTemps=[...(p.tempDates||[]),{date:dk,start:st,end:et,by:CU.name,at:`${kstLabel()} ${kstNow()}`}];
+  SL(true);await update(ref(db,`parts/${WA_PID}`),{tempDates:newTemps});SL(false);
+  ST('추가근무 등록 완료');waRenderCal();waRenderList(WA_PID);
+}
+window.waQuickAddOneday=waQuickAddOneday;
+
+async function waQuickAddExt(dk,defaultEnd){
+  const p=AP[WA_PID];if(!p)return;
+  const newEnd=prompt(`연장근무 퇴근 시각 (기존 ${defaultEnd})`,defaultEnd);if(!newEnd)return;
+  if(!/^\d{2}:\d{2}$/.test(newEnd)){ST('시간 형식이 올바르지 않습니다');return;}
+  if(toM(newEnd)<=toM(defaultEnd)){ST('연장 퇴근 시각은 기존 퇴근 시각보다 늦어야 합니다');return;}
+  SL(true);
+  const ar=ref(db,`attendance/${dk}/${WA_PID}`);const sn=await get(ar);const ad=sn.val()||{};
+  ad.stdPhrase='추가근무';ad.adjustedEnd=newEnd;
+  ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;ad.memoText='달력에서 연장근무 예약';
+  const h=ad.history||[];h.push({phrase:'추가근무',adjEnd:newEnd,memo:'달력에서 연장근무 예약',by:CU.name,at:`${kstLabel()} ${kstNow()}`});ad.history=h;
+  await set(ar,ad);
+  SL(false);ST('연장근무 예약 완료');waRenderCal();
+}
+window.waQuickAddExt=waQuickAddExt;
+
+async function waExportMonth(pid){
+  const p=AP[pid];if(!p){ST('직원을 먼저 저장해주세요');return;}
+  if(WA_CAL_Y===null){const now=new Date(Date.now()+9*3600000);WA_CAL_Y=now.getUTCFullYear();WA_CAL_M=now.getUTCMonth();}
+  const y=WA_CAL_Y,m=WA_CAL_M;const lastDate=new Date(y,m+1,0).getDate();
+  const DM=['일','월','화','수','목','금','토'];
+  SL(true);
+  let csv='날짜,요일,근무종류,출근,퇴근,연장,결근,비고\n';
+  for(let d=1;d<=lastDate;d++){
+    const dk=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const dt=new Date(y,m,d);const dow=DM[dt.getDay()];
+    const joinOk=!p.joinDate||dk>=p.joinDate;
+    const leaveOk=!p.leaveDate||dk<=p.leaveDate;
+    if(!joinOk||!leaveOk){csv+=`${dk},${dow},-,-,-,-,-,재직기간 외\n`;continue;}
+    const absent=isPlannedAbsent(p,dk);
+    const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dk);
+    const ds=tempDay?{start:tempDay.start,end:tempDay.end,_t:'oneday'}:getDayTime(p,dow,dk);
+    const works=isWorkDay(p,dow,dk);
+    let src='';
+    if(ds.fromReplace)src='기간교체';
+    else if(ds.fromPeriod)src='기간추가';
+    else if(ds.fromPerm)src='영구변경';
+    else if(ds._t==='oneday')src='추가근무';
+    else if(works)src='기본';
+    const sn=await get(ref(db,`attendance/${dk}/${pid}`));const att=sn.val()||{};
+    const ext=att.adjustedEnd&&att.stdPhrase==='추가근무'?att.adjustedEnd:'';
+    csv+=`${dk},${dow},${absent?'결근예정':src},${works&&ds.start?ds.start:''},${works&&ds.end?ds.end:''},${ext},${absent?'O':''},${att.memoText||''}\n`;
+  }
+  SL(false);
+  const b=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+  const u=URL.createObjectURL(b);const a=document.createElement('a');
+  a.href=u;a.download=`${p.name}_${y}년${m+1}월_근무표.csv`;a.click();URL.revokeObjectURL(u);
+  ST('다운로드 완료');
+}
+window.waExportMonth=waExportMonth;
+
+// 겹침 체크
+function waCheckConflict(pid,type,newEvent){
+  const p=AP[pid];if(!p)return null;
+  const conflicts=[];
+  const dates=[];
+  const s=newEvent.startDate;const e=newEvent.endDate||newEvent.startDate;
+  let cur=new Date(s+'T00:00:00+09:00');const end=new Date(e+'T00:00:00+09:00');
+  while(cur<=end){const dk=`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;dates.push(dk);cur.setDate(cur.getDate()+1);}
+  const DM=['일','월','화','수','목','금','토'];
+  for(const dk of dates){
+    const dt=new Date(dk+'T00:00:00+09:00');const dow=DM[dt.getDay()];
+    // newEvent 자체가 이 날에 적용되는지 확인 (요일 있는 이벤트일 때)
+    if(newEvent.days&&newEvent.days.length&&!newEvent.days.includes(dow))continue;
+    // 결근 등록 시 기존 근무 체크
+    if(type==='absent'){
+      if(isWorkDay(p,dow,dk))conflicts.push({date:dk,dow,desc:'기존 근무'});
+    }
+    // 근무 등록 시 기존 결근 체크
+    else if(type==='replace'||type==='oneday'||type==='perm'){
+      if(isPlannedAbsent(p,dk))conflicts.push({date:dk,dow,desc:'결근 예정'});
+    }
+  }
+  return conflicts.length?conflicts:null;
+}
+window.waCheckConflict=waCheckConflict;
+
+// 이벤트 모달 열기
+function waOpenModal(pid,type){
+  WA_PID=pid;
+  const cats={perm:'영구 변경',replace:'기간 교체',absent:'결근 예정',oneday:'추가근무'};
+  document.getElementById('modal-workman-title').innerHTML=`<span style="color:var(--accent)">${WA_LABELS[type]}</span> — 등록`;
+  const today=kstDate();
+  const DAYS=['월','화','수','목','금','토','일'];
+  let body='';
+  if(type==='perm'){
+    body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 이 날짜부터 요일/시간이 완전히 교체됩니다. 이전 날짜는 기존 스케줄 유지.</div>
+<div class="form-group"><label class="form-label">변경 시작일</label><input type="date" class="form-input" id="wa-start" value="${today}"></div>
+<div class="form-group"><label class="form-label">근무 요일</label><div class="day-btns" id="wa-days">${DAYS.map(d=>`<button type="button" class="day-btn" onclick="this.classList.toggle('selected')">${d}</button>`).join('')}</div></div>
+<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time','09:00','width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time','18:00','width:100%')}</div></div>`;
+  }else if(type==='replace'){
+    body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 기간 내에는 기존 스케줄을 무시하고 여기 설정된 요일/시간만 적용. 기간 종료 후 자동 복귀.</div>
+<div style="display:flex;gap:6px;margin-bottom:10px"><div class="form-group" style="flex:1"><label class="form-label">시작일</label><input type="date" class="form-input" id="wa-start" value="${today}" onchange="waAutoDays()"></div><div class="form-group" style="flex:1"><label class="form-label">종료일</label><input type="date" class="form-input" id="wa-end" value="${today}" onchange="waAutoDays()"></div></div>
+<div class="form-group"><label class="form-label">기간 내 근무 요일</label><div class="day-btns" id="wa-days">${DAYS.map(d=>`<button type="button" class="day-btn" onclick="this.classList.toggle('selected')">${d}</button>`).join('')}</div></div>
+<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time','09:00','width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time','18:00','width:100%')}</div></div>`;
+  }else if(type==='absent'){
+    body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 하루 또는 연속 날짜 결근을 사전 등록합니다.</div>
+<div style="display:flex;gap:6px;margin-bottom:10px"><div class="form-group" style="flex:1"><label class="form-label">시작일</label><input type="date" class="form-input" id="wa-start" value="${today}"></div><div class="form-group" style="flex:1"><label class="form-label">종료일</label><input type="date" class="form-input" id="wa-end" value="${today}"></div></div>
+<div class="form-group"><label class="form-label">메모</label><div class="memo-quick" style="margin-bottom:6px">${['사전연락','당일연락','연락없음','직원지시'].map(q=>`<button type="button" class="memo-quick-btn" onclick="document.getElementById('wa-memo').value=this.textContent">${q}</button>`).join('')}</div><input class="form-input" id="wa-memo" placeholder="결근 사유"></div>`;
+  }else if(type==='oneday'){
+    body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 근무일이 아닌 날 하루만 근무를 추가합니다.</div>
+<div class="form-group"><label class="form-label">날짜</label><input type="date" class="form-input" id="wa-start" value="${today}"></div>
+<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time','09:00','width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time','18:00','width:100%')}</div></div>`;
+  }
+  body+=`<div class="btn-row"><button type="button" class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button type="button" class="btn-primary" onclick="waSave('${pid}','${type}')">저장</button></div>`;
+  document.getElementById('modal-workman-body').innerHTML=body;
+  OM('modal-workman-edit');
+}
+window.waOpenModal=waOpenModal;
+
+function waAutoDays(){
+  const ps=document.getElementById('wa-start')?.value;
+  const pe=document.getElementById('wa-end')?.value;
+  if(!ps)return;
+  const KDM=['일','월','화','수','목','금','토'];
+  const sd=new Date(ps+'T00:00:00+09:00');const ed=pe?new Date(pe+'T00:00:00+09:00'):sd;
+  const active=new Set();
+  let cur=new Date(sd);while(cur<=ed){active.add(KDM[cur.getDay()]);cur.setDate(cur.getDate()+1);}
+  document.querySelectorAll('#wa-days .day-btn').forEach(btn=>{if(active.has(btn.textContent.trim()))btn.classList.add('selected');});
+}
+window.waAutoDays=waAutoDays;
+
+async function waSave(pid,type){
+  const p=AP[pid];if(!p)return;
+  const start=document.getElementById('wa-start')?.value;
+  if(!start){ST('날짜를 입력해주세요');return;}
+  let newEvent={startDate:start};
+  if(type==='perm'){
+    const days=[...document.querySelectorAll('#wa-days .day-btn.selected')].map(b=>b.textContent.trim());
+    if(!days.length){ST('근무 요일을 선택해주세요');return;}
+    newEvent.days=days;
+    newEvent.start=document.getElementById('wa-s-time').value;
+    newEvent.end=document.getElementById('wa-e-time').value;
+    newEvent.by=CU.name;newEvent.at=kstLabel();
+  }else if(type==='replace'){
+    const end=document.getElementById('wa-end')?.value;
+    if(!end){ST('종료일을 입력해주세요');return;}
+    if(start>end){ST('종료일이 시작일보다 빠릅니다');return;}
+    const days=[...document.querySelectorAll('#wa-days .day-btn.selected')].map(b=>b.textContent.trim());
+    if(!days.length){ST('기간 내 근무 요일을 선택해주세요');return;}
+    newEvent.endDate=end;newEvent.days=days;
+    newEvent.start=document.getElementById('wa-s-time').value;
+    newEvent.end=document.getElementById('wa-e-time').value;
+    newEvent.by=CU.name;newEvent.at=kstLabel();
+  }else if(type==='absent'){
+    const end=document.getElementById('wa-end')?.value;
+    if(!end){ST('종료일을 입력해주세요');return;}
+    if(start>end){ST('종료일이 시작일보다 빠릅니다');return;}
+    newEvent.endDate=end;
+    newEvent.memo=document.getElementById('wa-memo').value.trim();
+    newEvent.by=CU.name;newEvent.at=kstLabel();
+  }else if(type==='oneday'){
+    newEvent.date=start;
+    newEvent.start=document.getElementById('wa-s-time').value;
+    newEvent.end=document.getElementById('wa-e-time').value;
+    newEvent.by=CU.name;newEvent.at=kstLabel();
+  }
+  // 겹침 체크
+  const conflicts=waCheckConflict(pid,type,newEvent);
+  if(conflicts){
+    const list=conflicts.slice(0,5).map(c=>`• ${c.date}(${c.dow}) - ${c.desc}`).join('\n');
+    if(!confirm(`⚠ 아래 날짜에 기존 일정이 있습니다:\n\n${list}${conflicts.length>5?`\n...외 ${conflicts.length-5}건`:''}\n\n계속 저장하시겠습니까?\n(기존 일정은 유지되며 우선순위에 따라 적용됩니다)`))return;
+  }
+  SL(true);
+  const updates={};
+  if(type==='perm'){const arr=[...(p.permChanges||[]),newEvent];updates.permChanges=arr;}
+  else if(type==='replace'){const arr=[...(p.scheduleReplaces||[]),newEvent];updates.scheduleReplaces=arr;}
+  else if(type==='absent'){const arr=[...(p.plannedAbsent||[]),newEvent];updates.plannedAbsent=arr;}
+  else if(type==='oneday'){const arr=[...(p.tempDates||[]),{date:newEvent.date,start:newEvent.start,end:newEvent.end,by:newEvent.by,at:newEvent.at}];arr.sort((a,b)=>a.date.localeCompare(b.date));updates.tempDates=arr;}
+  await update(ref(db,`parts/${pid}`),updates);
+  SL(false);ST('등록 완료');
+  CM('modal-workman-edit');
+  setTimeout(()=>{if(AP[pid]){waRenderList(pid);waRenderCal();}},200);
+}
+window.waSave=waSave;
+
+async function waDelete(pid,type,idx){
+  const p=AP[pid];if(!p)return;
+  if(!confirm('이 근무 조정을 삭제하시겠습니까?'))return;
+  SL(true);const updates={};
+  if(type==='perm'){const arr=[...(p.permChanges||[])];arr.splice(idx,1);updates.permChanges=arr;}
+  else if(type==='replace'){const arr=[...(p.scheduleReplaces||[])];arr.splice(idx,1);updates.scheduleReplaces=arr;}
+  else if(type==='period'){const arr=[...(p.schedulePeriods||[])];arr.splice(idx,1);updates.schedulePeriods=arr;}
+  else if(type==='absent'){const arr=[...(p.plannedAbsent||[])];arr.splice(idx,1);updates.plannedAbsent=arr;}
+  else if(type==='oneday'){const arr=[...(p.tempDates||[])];arr.splice(idx,1);updates.tempDates=arr;}
+  await update(ref(db,`parts/${pid}`),updates);
+  SL(false);ST('삭제 완료');
+  setTimeout(()=>{if(AP[pid]){waRenderList(pid);waRenderCal();}},200);
+}
+window.waDelete=waDelete;
+
 async function savePF(pid){const ro=document.getElementById('pf-role').value.trim();const nm=document.getElementById('pf-name').value.trim();const ph=document.getElementById('pf-phone').value.trim();const st=document.getElementById('pf-start').value;const en=document.getElementById('pf-end').value;const ca=document.getElementById('pf-cat').value;const jd=document.getElementById('pf-jd').value;const dy=[...document.querySelectorAll('#pf-days .day-btn.selected')].map(b=>b.textContent.trim());const bv=document.getElementById('pf-brk').value;if(!ro||!nm){ST('직무와 이름은 필수입니다');return;}if(!dy.length){ST('근무 요일을 선택해주세요');return;}let pin=document.getElementById('pf-pin').value.trim();if(!pin&&pid)pin=AP[pid]?.pin||'';if(!pin&&ph.length>=4)pin=ph.replace(/-/g,'').slice(-4);if(!/^\d{4}$/.test(pin)){ST('PIN은 4자리 숫자여야 합니다');return;}const dup=Object.entries(AP).find(([id,p])=>p.pin===pin&&id!==pid&&p.status!=='inactive');if(dup){ST(`PIN ${pin}은 이미 사용 중입니다`);return;}
 // 요일별 시간 수집
 const daySchedule={};document.querySelectorAll('#day-times [data-day]').forEach(row=>{const d=row.dataset.day;const ds=document.getElementById('ds-s-'+d)?.value;const de=document.getElementById('ds-e-'+d)?.value;if(ds&&de&&(ds!==st||de!==en))daySchedule[d]={start:ds,end:de};});
