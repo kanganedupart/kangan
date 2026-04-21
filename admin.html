@@ -799,7 +799,7 @@ if(date===today){
 return scheduled;}
 function renderAll(){['mgmt','tutor','etc'].forEach(c=>{const ps=enrich(pfc(c),c);rStats(c,ps);rTL(c,ps);chkAlert(c,ps);});}
 function chkAlert(c,ps){const el=document.getElementById('alert-'+c);if(!el)return;const uc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule');if(uc.length>0){el.textContent=`⚠ 처리 필요: ${uc.map(p=>p.name+(p.status==='no-schedule'?' (스케줄없는출근 '+p.actual+')':p.nc?' (퇴근미확인)':'')).join(', ')}`;el.classList.add('show');}else el.classList.remove('show');}
-function rStats(c,ps){const ab=ps.filter(p=>p.status.startsWith('absent')).length;const unc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule').length;document.getElementById('stats-'+c).innerHTML=`<div class="stat-card danger" style="cursor:${unc>0?'pointer':'default'}" onclick="${unc>0?`"swTab('workman');document.getElementById('workman-unproc').checked=true;setWorkmanToday();loadWorkmanData()"`:''}""><div class="stat-label">미처리${unc>0?'<span class="stat-dot"></span>':''}</div><div class="stat-val">${unc}</div></div><div class="stat-card danger" onclick="openStatsModal('${c}','absent')"><div class="stat-label">결근</div><div class="stat-val">${ab}</div></div><div class="stat-card warning" onclick="openStatsModal('${c}','late')"><div class="stat-label">지각</div><div class="stat-val">${ps.filter(p=>p.status==='late').length}</div></div><div class="stat-card orange" onclick="openStatsModal('${c}','changed')"><div class="stat-label">변경근무</div><div class="stat-val">${ps.filter(p=>p.status==='changed').length}</div></div><div class="stat-card" style="cursor:default"><div class="stat-label">전체</div><div class="stat-val">${ps.filter(p=>p.status!=='no-schedule').length}</div></div>`;}
+function rStats(c,ps){const ab=ps.filter(p=>p.status.startsWith('absent')).length;const unc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule').length;document.getElementById('stats-'+c).innerHTML=`<div class="stat-card danger" style="cursor:${unc>0?'pointer':'default'}" ${unc>0?`onclick="openStatsModal('${c}','unproc')"`:''}><div class="stat-label">미처리${unc>0?'<span class="stat-dot"></span>':''}</div><div class="stat-val">${unc}</div></div><div class="stat-card danger" onclick="openStatsModal('${c}','absent')"><div class="stat-label">결근</div><div class="stat-val">${ab}</div></div><div class="stat-card warning" onclick="openStatsModal('${c}','late')"><div class="stat-label">지각</div><div class="stat-val">${ps.filter(p=>p.status==='late').length}</div></div><div class="stat-card orange" onclick="openStatsModal('${c}','changed')"><div class="stat-label">변경근무</div><div class="stat-val">${ps.filter(p=>p.status==='changed').length}</div></div><div class="stat-card" style="cursor:default"><div class="stat-label">전체</div><div class="stat-val">${ps.filter(p=>p.status!=='no-schedule').length}</div></div>`;}
 function rTL(c,ps){const con=document.getElementById('tl-'+c);document.getElementById('tl-time-'+c).textContent=`기준 ${kstNow()}`;ps=ps.filter(p=>p.status!=='no-schedule');if(!ps.length){con.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">근무 인원 없음</div>';return;}const aS=ps.map(p=>toM(p.start)),aE=ps.map(p=>{const ext=p.ar&&p.ar.adjustedEnd?toM(p.ar.adjustedEnd):0;return Math.max(toM(p.end),ext);});let am=Math.floor(Math.min(...aS)/30)*30,ax=Math.ceil(Math.max(...aE)/30)*30;if(ax-am<120)ax=am+120;const asp=ax-am;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const np=Math.max(0,Math.min(100,(nm-am)/asp*100));const ts2=asp<=240?60:asp<=480?120:180;const tk=[];for(let t=Math.ceil(am/ts2)*ts2;t<=ax;t+=ts2)tk.push(t);const ax2=`<div class="tl-axis-row"><div class="tl-colorbar" style="visibility:hidden"></div><div class="tl-axis-info-col"></div><div class="tl-axis-bar-col"><div class="tl-axis-marks">${tk.map(t=>`<div class="tl-axis-mark" style="left:${(t-am)/asp*100}%"><span>${m2hm(t)}</span><div class="tl-axis-mark-line"></div></div>`).join('')}${nm>=am&&nm<=ax?`<div style="position:absolute;top:0;bottom:0;left:${np}%;width:2px;background:rgba(220,38,38,.5);border-radius:1px"></div>`:''}</div></div></div>`;const sorted=[...ps].sort((a,b)=>{const o={'absent-unc':0,'absent-con':1,'absent-pln':2,late:3,changed:4,done:5,pending:6};return(o[a.status]??5)-(o[b.status]??5)||a.start.localeCompare(b.start);});con.innerHTML=ax2+sorted.map(e=>bTL(e,am,asp,np)).join('');}
 function bTL(e,am,as,np){
 const col=cof(e.role);
@@ -941,7 +941,30 @@ if(ph==='결근'){delete ad.adjustedEnd;delete ad.adjustedStart;}
 else{if(ae)ad.adjustedEnd=ae;if(ph==='추가근무'){delete ad.adjustedStart;}else if(as2)ad.adjustedStart=as2;}
 ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;ad.memoText=txt;const h=ad.history||[];h.push({phrase:ph,adjEnd:ae||null,adjStart:as2||null,memo:txt,by:CU.name,at:`${kstLabel()} ${kstNow()}`});ad.history=h;SL(true);await update(ref(db,`parts/${pid}`),{memos:ms});await set(ar,ad);SL(false);ST('저장 완료');CM('modal-staff');setTimeout(()=>renderAll(),100);}
 window.saveMemo=saveMemo;
-function openStatsModal(c,sk){const mo=document.querySelector('#modal-stats .modal');if(mo)mo.style.maxWidth='';const ps=enrich(pfc(c),c).filter(p=>sk==='absent'?p.status.startsWith('absent'):p.status===sk);const lb={'done':'출근완료','absent':'결근·미출근','late':'지각','changed':'변경근무','pending':'출근 전'}[sk];document.getElementById('modal-stats-title').textContent=lb+' 명단';document.getElementById('modal-stats-body').innerHTML=!ps.length?'<div style="font-size:13px;color:var(--text-muted);padding:12px 0">해당 인원 없음</div>':`<div class="sp-list">${ps.map(p=>{const col=cof(p.role);const uc=p.status==='absent-unc';return`<div class="sp-item" onclick="CM('modal-stats');openStaffModal('${p.id}')"><div><div style="font-size:13px;font-weight:600;color:${col}">${p.role} <span style="color:var(--text-primary)">(${p.name})</span>${uc?'<span class="undot"></span>':''}</div><div style="font-size:12px;color:var(--text-muted)">${p.actual?'출근: '+p.actual:p.start+' ~ '+p.end}</div></div><span style="font-size:11px;color:var(--text-muted)">${uc?'미확인 🔴':(p.memos||[]).length?'메모'+(p.memos||[]).length+'건':'-'}</span></div>`;}).join('')}</div>`;OM('modal-stats');}
+function openStatsModal(c,sk){
+  const mo=document.querySelector('#modal-stats .modal');if(mo)mo.style.maxWidth='';
+  let ps;
+  if(sk==='unproc'){
+    // 미처리: 미확인결근 + 퇴근미확인(nc) + 스케줄없는출근
+    ps=enrich(pfc(c),c).filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule');
+  }else if(sk==='absent'){
+    ps=enrich(pfc(c),c).filter(p=>p.status.startsWith('absent'));
+  }else{
+    ps=enrich(pfc(c),c).filter(p=>p.status===sk);
+  }
+  const lb={'done':'출근완료','absent':'결근·미출근','late':'지각','changed':'변경근무','pending':'출근 전','unproc':'⚠ 미처리'}[sk]||sk;
+  document.getElementById('modal-stats-title').textContent=lb+' 명단';
+  document.getElementById('modal-stats-body').innerHTML=!ps.length?'<div style="font-size:13px;color:var(--text-muted);padding:12px 0">해당 인원 없음</div>':`<div class="sp-list">${ps.map(p=>{
+    const col=cof(p.role);
+    const uc=p.status==='absent-unc'||p.nc||p.status==='no-schedule';
+    let reason='';
+    if(p.status==='absent-unc')reason='미확인 결근';
+    else if(p.status==='no-schedule')reason='스케줄없는 출근 '+(p.actual||'');
+    else if(p.nc)reason='퇴근 미확인';
+    return`<div class="sp-item" onclick="CM('modal-stats');openStaffModal('${p.id}')"><div><div style="font-size:13px;font-weight:600;color:${col}">${p.role} <span style="color:var(--text-primary)">(${p.name})</span>${uc&&sk==='unproc'?'<span class="undot"></span>':''}</div><div style="font-size:12px;color:var(--text-muted)">${sk==='unproc'&&reason?reason:(p.actual?'출근: '+p.actual:p.start+' ~ '+p.end)}</div></div><span style="font-size:11px;color:var(--text-muted)">${uc&&sk!=='unproc'?'미확인 🔴':(p.memos||[]).length?'메모'+(p.memos||[]).length+'건':'-'}</span></div>`;
+  }).join('')}</div>`;
+  OM('modal-stats');
+}
 window.openStatsModal=openStatsModal;
 function setWorkmanToday(){const t=kstDate();document.getElementById('workman-from').value=t;document.getElementById('workman-to').value=t;}
 window.setWorkmanToday=setWorkmanToday;
@@ -1365,6 +1388,7 @@ function renderPT(){
     const col=cof(p.role);
     const resigned=isResigned(p);
     const scheduledResign=isScheduledResign(p);
+    const sk=resigned?'inactive':'active';
     const sb=(resigned?`<span class="sbadge s-inactive">퇴사${p.leaveDate?' '+p.leaveDate:''}</span>`:scheduledResign?`<span class="sbadge" style="background:#fef3c7;color:#92400e">퇴사예정 ${p.leaveDate}</span>`:'<span class="sbadge s-active">재직</span>')+(p.isCasual?`<span class="sbadge" style="background:#fdf4ff;color:#7e22ce;border:1px solid #e9d5ff;margin-left:4px">⭐ 단발</span>`:'');
     const hasDaySchedule=p.daySchedule&&Object.keys(p.daySchedule).length>0;
     const extraDate=resigned&&p.leaveDate?`<div style="font-size:10px;color:var(--danger)">퇴사 ${p.leaveDate}</div>`:'';
