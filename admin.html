@@ -1385,20 +1385,50 @@ function toggleDayTime(d){const container=document.getElementById('day-times');c
 window.toggleDayTime=toggleDayTime;
 
 // ===== 근무 조정 (근무 조정) =====
-const WA_LABELS={perm:'🔄 영구 변경',replace:'🔁 기간 교체',absent:'❌ 결근 예정',oneday:'⭐ 추가근무',period:'➕ 기간 추가'};
-const WA_COLORS={perm:{bg:'#eff6ff',border:'#93c5fd',text:'#1d4ed8'},replace:{bg:'#f0fdf4',border:'#86efac',text:'#15803d'},period:{bg:'#fff7ed',border:'#fed7aa',text:'#c2410c'},absent:{bg:'#fef2f2',border:'#fca5a5',text:'#b91c1c'},oneday:{bg:'#fdf4ff',border:'#e9d5ff',text:'#7e22ce'}};
+const WA_LABELS={perm:'🔄 영구 변경',replace:'🔁 기간 교체',absent:'❌ 결근 예정',oneday:'⭐ 추가근무',period:'➕ 기간 추가',ext_end:'🕐 연장근무 (퇴근 연장)',ext_start:'🕐 연장근무 (출근 당김)',early:'⏰ 조기퇴근',late:'⚠ 지각',att_absent:'❌ 결근 처리',att_done:'✅ 출근 완료'};
+const WA_COLORS={perm:{bg:'#eff6ff',border:'#93c5fd',text:'#1d4ed8'},replace:{bg:'#f0fdf4',border:'#86efac',text:'#15803d'},period:{bg:'#fff7ed',border:'#fed7aa',text:'#c2410c'},absent:{bg:'#fef2f2',border:'#fca5a5',text:'#b91c1c'},oneday:{bg:'#fdf4ff',border:'#e9d5ff',text:'#7e22ce'},ext_end:{bg:'#ecfdf5',border:'#86efac',text:'#047857'},ext_start:{bg:'#ecfdf5',border:'#86efac',text:'#047857'},early:{bg:'#eff6ff',border:'#93c5fd',text:'#1d4ed8'},late:{bg:'#fffbeb',border:'#fcd34d',text:'#b45309'},att_absent:{bg:'#fef2f2',border:'#fca5a5',text:'#b91c1c'},att_done:{bg:'#f0fdf4',border:'#86efac',text:'#15803d'}};
 
-function waGetAllEvents(p){
+async function waGetAllEvents(p){
   const list=[];
   (p.permChanges||[]).forEach((e,i)=>list.push({type:'perm',idx:i,startDate:e.startDate,endDate:null,days:e.days||[],start:e.start,end:e.end,by:e.by,at:e.at}));
   (p.scheduleReplaces||[]).forEach((e,i)=>list.push({type:'replace',idx:i,startDate:e.startDate,endDate:e.endDate,days:e.days||[],start:e.start,end:e.end,by:e.by,at:e.at}));
   (p.schedulePeriods||[]).forEach((e,i)=>list.push({type:'period',idx:i,startDate:e.startDate,endDate:e.endDate,days:e.days||[],start:e.start,end:e.end,legacy:true}));
-  // 결근 예정 (기존 단일 날짜 + 신규 기간)
   (p.plannedAbsent||[]).forEach((e,i)=>{
     if(typeof e==='string')list.push({type:'absent',idx:i,startDate:e,endDate:e,memo:'',legacyStr:true});
     else list.push({type:'absent',idx:i,startDate:e.startDate||e.date,endDate:e.endDate||e.date,memo:e.memo||'',by:e.by,at:e.at});
   });
   (p.tempDates||[]).forEach((e,i)=>list.push({type:'oneday',idx:i,startDate:e.date,endDate:e.date,start:e.start,end:e.end,by:e.by,at:e.at}));
+  // attendance 기반 이벤트 (현재 표시 월의 데이터 사용 - 캐시)
+  const pid=WA_PID;
+  if(pid&&WA_ATT_CACHE){
+    Object.entries(WA_ATT_CACHE).forEach(([dk,att])=>{
+      if(!att)return;
+      const ph=att.stdPhrase||'';
+      // 결근 처리 (실제 attendance 결근)
+      if(ph==='결근'){
+        list.push({type:'att_absent',idx:dk,startDate:dk,endDate:dk,memo:att.memoText||'',by:att.memoBy,at:att.memoAt});
+      }
+      // 연장근무 (퇴근 연장)
+      if(ph==='추가근무'&&att.adjustedEnd){
+        list.push({type:'ext_end',idx:dk,startDate:dk,endDate:dk,end:att.adjustedEnd,memo:att.memoText||'',by:att.memoBy,at:att.memoAt});
+      }
+      // 연장근무 (출근 당김)
+      if(att.adjustedStart&&ph!=='지각'&&ph!=='결근'){
+        // 추가근무이면서 adjustedStart도 있으면 출근 당김
+        if(ph==='추가근무'){
+          list.push({type:'ext_start',idx:dk+'_s',startDate:dk,endDate:dk,start:att.adjustedStart,memo:att.memoText||'',by:att.memoBy,at:att.memoAt});
+        }
+      }
+      // 조기퇴근
+      if(ph==='조기퇴근'&&att.adjustedEnd){
+        list.push({type:'early',idx:dk,startDate:dk,endDate:dk,end:att.adjustedEnd,memo:att.memoText||'',by:att.memoBy,at:att.memoAt});
+      }
+      // 지각
+      if(ph==='지각'&&att.adjustedStart){
+        list.push({type:'late',idx:dk,startDate:dk,endDate:dk,start:att.adjustedStart,memo:att.memoText||'',by:att.memoBy,at:att.memoAt});
+      }
+    });
+  }
   list.sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||''));
   return list;
 }
@@ -1406,9 +1436,9 @@ window.waGetAllEvents=waGetAllEvents;
 
 let WA_LIST_MODE='month'; // 'month' or 'all'
 
-function waRenderList(pid){
+async function waRenderList(pid){
   const p=AP[pid];if(!p)return;
-  const events=waGetAllEvents(p);
+  const events=await waGetAllEvents(p);
   const el=document.getElementById('wa-list-panel');if(!el)return;
   // 필터: 월별 (현재 달력의 월) or 전체
   let filtered=events;
@@ -1443,19 +1473,68 @@ function waRenderList(pid){
     const c=WA_COLORS[e.type];const lb=WA_LABELS[e.type];
     const dateStr=e.startDate===e.endDate||!e.endDate?e.startDate:`${e.startDate} ~ ${e.endDate}`;
     const daysStr=(e.days||[]).length?(e.days||[]).join('·')+' &nbsp;':'';
-    const timeStr=e.start&&e.end?`${e.start}~${e.end}`:'';
+    let timeStr='';
+    if(e.start&&e.end)timeStr=`${e.start}~${e.end}`;
+    else if(e.start)timeStr=`${e.start}부터`;
+    else if(e.end)timeStr=`${e.end}까지`;
     const memoStr=e.memo?` <span style="color:var(--text-muted);font-size:11px">${e.memo}</span>`:'';
     const legacy=e.legacy?'<span style="font-size:9px;color:var(--text-muted);background:var(--bg);padding:1px 5px;border-radius:8px;margin-left:3px">기존</span>':'';
     // 종료된 이벤트 흐리게
     const endDate=e.endDate||e.startDate;
     const isPast=endDate&&endDate<today&&e.type!=='perm';
     const opacity=isPast?'opacity:0.55;':'';
-    return `<div style="border:1px solid ${c.border};background:${c.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;${opacity}"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px"><span style="font-size:10px;font-weight:700;color:${c.text};background:#fff;padding:2px 7px;border-radius:10px;border:1px solid ${c.border}">${lb}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);flex:1">${dateStr}${e.type==='perm'?' ~ 계속':''}${isPast?' (종료)':''}</span>${CU.role==='관리자'?`<button type="button" class="icon-btn del" style="padding:2px 7px;font-size:10px" onclick="waDelete('${pid}','${e.type}',${e.idx})">삭제</button>`:''}</div><div style="font-size:12px;color:${c.text}">${daysStr}${timeStr}${memoStr}${legacy}</div></div>`;
+    // attendance 기반 이벤트는 별도 삭제 버튼
+    const isAttEvent=['ext_end','ext_start','early','late','att_absent'].includes(e.type);
+    let delBtn='';
+    if(CU.role==='관리자'){
+      if(isAttEvent){
+        delBtn=`<button type="button" class="icon-btn del" style="padding:2px 7px;font-size:10px" onclick="waDeleteAttEvent('${pid}','${e.startDate}','${e.type}')">삭제</button>`;
+      }else{
+        delBtn=`<button type="button" class="icon-btn del" style="padding:2px 7px;font-size:10px" onclick="waDelete('${pid}','${e.type}','${e.idx}')">삭제</button>`;
+      }
+    }
+    return `<div style="border:1px solid ${c.border};background:${c.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;${opacity}"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px"><span style="font-size:10px;font-weight:700;color:${c.text};background:#fff;padding:2px 7px;border-radius:10px;border:1px solid ${c.border}">${lb}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);flex:1">${dateStr}${e.type==='perm'?' ~ 계속':''}${isPast?' (종료)':''}</span>${delBtn}</div><div style="font-size:12px;color:${c.text}">${daysStr}${timeStr}${memoStr}${legacy}</div></div>`;
   }).join('');
 }
 window.waRenderList=waRenderList;
 function waSetListMode(mode){WA_LIST_MODE=mode;if(WA_PID)waRenderList(WA_PID);}
 window.waSetListMode=waSetListMode;
+
+// attendance 기반 이벤트 삭제 (연장근무/조기퇴근/지각/결근 처리 취소)
+async function waDeleteAttEvent(pid,dk,type){
+  if(!await CC(`${dk}의 ${WA_LABELS[type]} 처리를 취소하시겠습니까?`,{title:'처리 취소',danger:true}))return;
+  SL(true);
+  try{
+    const ar=ref(db,`attendance/${dk}/${pid}`);
+    const sn=await get(ar);
+    const ad=sn.val()||{};
+    if(type==='att_absent'){
+      // 결근 처리 취소: stdPhrase 제거
+      delete ad.stdPhrase;delete ad.memoText;delete ad.memoBy;delete ad.memoAt;
+    }else if(type==='ext_end'){
+      delete ad.adjustedEnd;
+      // adjustedStart도 없으면 stdPhrase도 제거
+      if(!ad.adjustedStart){delete ad.stdPhrase;delete ad.memoText;delete ad.memoBy;delete ad.memoAt;}
+    }else if(type==='ext_start'){
+      delete ad.adjustedStart;
+      if(!ad.adjustedEnd){delete ad.stdPhrase;delete ad.memoText;delete ad.memoBy;delete ad.memoAt;}
+    }else if(type==='early'){
+      delete ad.adjustedEnd;delete ad.stdPhrase;delete ad.memoText;delete ad.memoBy;delete ad.memoAt;
+    }else if(type==='late'){
+      delete ad.adjustedStart;delete ad.stdPhrase;delete ad.memoText;delete ad.memoBy;delete ad.memoAt;
+    }
+    // 출근 기록도 없고 모든 필드가 비었으면 전체 삭제
+    if(!ad.inTime&&!ad.outTime&&!ad.stdPhrase&&!ad.adjustedStart&&!ad.adjustedEnd){
+      await set(ar,null);
+    }else{
+      await set(ar,ad);
+    }
+    SL(false);ST('취소 완료');
+    WA_CACHED_KEY=null;
+    waRenderCal();waRenderList(pid);
+  }catch(e){SL(false);ST('실패: '+e.message);}
+}
+window.waDeleteAttEvent=waDeleteAttEvent;
 
 function waSwitchTab(tab){
   const lBtn=document.getElementById('wa-tab-list');
