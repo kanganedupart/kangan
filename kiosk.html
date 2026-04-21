@@ -17,7 +17,6 @@ body{font-family:'Noto Sans KR',sans-serif;background:#0f172a;color:#fff;min-hei
 .topbar-center{font-size:13px;font-weight:600;color:rgba(255,255,255,.5);letter-spacing:.5px;}
 .topbar-time{font-size:13px;font-family:'DM Mono',monospace;color:rgba(255,255,255,.4);}
 .screen{flex:1;display:flex;align-items:center;justify-content:center;position:relative;}
-/* PIN PAD */
 #pin-screen{display:flex;flex-direction:column;align-items:center;gap:28px;}
 .pin-title{font-size:20px;font-weight:600;color:rgba(255,255,255,.8);text-align:center;}
 .pin-sub{font-size:13px;color:rgba(255,255,255,.35);text-align:center;margin-top:-20px;}
@@ -32,12 +31,12 @@ body{font-family:'Noto Sans KR',sans-serif;background:#0f172a;color:#fff;min-hei
 .key:active{background:rgba(37,99,235,.4);transform:scale(.93);}
 .key.del{font-size:20px;background:rgba(220,38,38,.12);color:rgba(220,38,38,.7);}
 .key.del:active{background:rgba(220,38,38,.25);}
-/* CONFIRM */
 #confirm-screen{display:none;flex-direction:column;align-items:center;gap:24px;animation:fadeIn .25s ease;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 .confirm-name{font-size:42px;font-weight:700;color:#fff;text-align:center;}
 .confirm-role{font-size:16px;color:rgba(255,255,255,.5);text-align:center;margin-top:-16px;}
 .confirm-schedule{font-size:14px;font-family:'DM Mono',monospace;color:rgba(255,255,255,.4);background:rgba(255,255,255,.05);padding:8px 20px;border-radius:20px;}
+.confirm-notice{font-size:12px;color:#fcd34d;background:rgba(252,211,77,.1);padding:6px 14px;border-radius:14px;margin-top:-8px;}
 .confirm-btns{display:flex;gap:14px;margin-top:8px;}
 .confirm-btn{width:160px;height:160px;border-radius:24px;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-family:inherit;transition:transform .1s,background .1s;}
 .confirm-btn:active{transform:scale(.96);}
@@ -49,16 +48,15 @@ body{font-family:'Noto Sans KR',sans-serif;background:#0f172a;color:#fff;min-hei
 .confirm-btn-time{font-size:12px;font-family:'DM Mono',monospace;color:rgba(255,255,255,.5);}
 .confirm-cancel{font-size:13px;color:rgba(255,255,255,.3);cursor:pointer;padding:8px 20px;transition:color .15s;}
 .confirm-cancel:hover{color:rgba(255,255,255,.6);}
-/* RESULT */
 #result-screen{display:none;flex-direction:column;align-items:center;gap:16px;animation:fadeIn .25s ease;}
 .result-icon{font-size:64px;}
 .result-name{font-size:36px;font-weight:700;color:#fff;text-align:center;}
 .result-type{font-size:18px;font-weight:600;text-align:center;}
+.result-sub{font-size:13px;color:#fcd34d;text-align:center;margin-top:-4px;}
 .result-time{font-size:15px;font-family:'DM Mono',monospace;color:rgba(255,255,255,.5);}
 .result-bar{width:200px;height:4px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden;margin-top:8px;}
 .result-bar-fill{height:100%;background:#2563eb;border-radius:2px;animation:progress 3s linear forwards;}
 @keyframes progress{from{width:0}to{width:100%}}
-/* ERROR */
 #error-screen{display:none;flex-direction:column;align-items:center;gap:16px;animation:fadeIn .25s ease;}
 .error-icon{font-size:56px;}
 .error-msg{font-size:18px;color:rgba(255,255,255,.7);text-align:center;}
@@ -72,7 +70,6 @@ body{font-family:'Noto Sans KR',sans-serif;background:#0f172a;color:#fff;min-hei
   <div class="topbar-time" id="top-time"></div>
 </div>
 <div class="screen">
-  <!-- PIN 입력 -->
   <div id="pin-screen">
     <div class="pin-title">PIN 번호를 입력하세요</div>
     <div class="pin-sub">4자리 출결 번호</div>
@@ -97,12 +94,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:#0f172a;color:#fff;min-hei
       <button class="key del" onclick="pressBack()">⌫</button>
     </div>
   </div>
-
-  <!-- 확인 -->
   <div id="confirm-screen">
     <div class="confirm-name" id="cf-name"></div>
     <div class="confirm-role" id="cf-role"></div>
     <div class="confirm-schedule" id="cf-schedule"></div>
+    <div class="confirm-notice" id="cf-notice" style="display:none"></div>
     <div class="confirm-btns">
       <button class="confirm-btn in" onclick="doAttend('in')">
         <div class="confirm-btn-icon">✓</div>
@@ -117,17 +113,14 @@ body{font-family:'Noto Sans KR',sans-serif;background:#0f172a;color:#fff;min-hei
     </div>
     <div class="confirm-cancel" onclick="goPin()">← 다시 입력</div>
   </div>
-
-  <!-- 결과 -->
   <div id="result-screen">
     <div class="result-icon" id="res-icon"></div>
     <div class="result-name" id="res-name"></div>
     <div class="result-type" id="res-type"></div>
+    <div class="result-sub" id="res-sub" style="display:none"></div>
     <div class="result-time" id="res-time"></div>
     <div class="result-bar"><div class="result-bar-fill"></div></div>
   </div>
-
-  <!-- 오류 -->
   <div id="error-screen">
     <div class="error-icon">🔒</div>
     <div class="error-msg" id="err-msg">등록되지 않은 PIN입니다</div>
@@ -145,15 +138,60 @@ function kstDate(){const k=new Date(Date.now()+9*3600000);return`${k.getUTCFullY
 function kstTime(){const k=new Date(Date.now()+9*3600000);return`${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')}`;}
 function kstFull(){const k=new Date(Date.now()+9*3600000);const D=['일','월','화','수','목','금','토'];return`${k.getUTCFullYear()}.${String(k.getUTCMonth()+1).padStart(2,'0')}.${String(k.getUTCDate()).padStart(2,'0')} (${D[k.getUTCDay()]}) ${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')}`;}
 
+// 근무일 체크 (admin.html과 동일 로직)
+function isWorkDay(p,dayOfWeek,date){
+  if(p.scheduleReplaces&&p.scheduleReplaces.length){
+    const matched=p.scheduleReplaces.find(r=>date>=r.startDate&&date<=r.endDate);
+    if(matched)return (matched.days||[]).includes(dayOfWeek);
+  }
+  if(p.schedulePeriods&&p.schedulePeriods.some(pd=>date>=pd.startDate&&date<=pd.endDate&&(pd.days||[]).includes(dayOfWeek)))return true;
+  if(p.tempDates&&p.tempDates.find(d=>d.date===date))return true;
+  if(p.permChanges&&p.permChanges.length){
+    const applicable=[...p.permChanges].filter(pc=>date>=pc.startDate).sort((a,b)=>b.startDate.localeCompare(a.startDate));
+    if(applicable.length>0)return (applicable[0].days||[]).includes(dayOfWeek);
+  }
+  return (p.days||[]).includes(dayOfWeek);
+}
+
+function isPlannedAbsent(p,date){
+  if(p.plannedAbsent&&Array.isArray(p.plannedAbsent)){
+    for(const a of p.plannedAbsent){
+      if(typeof a==='string'){if(a===date)return true;}
+      else if(a.date){if(a.date===date)return true;}
+      else if(a.startDate&&a.endDate){if(date>=a.startDate&&date<=a.endDate)return true;}
+    }
+  }
+  return false;
+}
+
+function getDayTime(p,dayOfWeek,date){
+  if(p.scheduleReplaces&&p.scheduleReplaces.length){
+    const matched=p.scheduleReplaces.find(r=>date>=r.startDate&&date<=r.endDate);
+    if(matched&&(matched.days||[]).includes(dayOfWeek))return{start:matched.start,end:matched.end};
+  }
+  if(p.schedulePeriods&&p.schedulePeriods.length){
+    const matched=p.schedulePeriods.find(pd=>date>=pd.startDate&&date<=pd.endDate&&(pd.days||[]).includes(dayOfWeek));
+    if(matched)return{start:matched.start,end:matched.end};
+  }
+  if(p.tempDates){
+    const td=p.tempDates.find(d=>d.date===date);
+    if(td)return{start:td.start,end:td.end};
+  }
+  if(p.permChanges&&p.permChanges.length){
+    const applicable=[...p.permChanges].filter(pc=>date>=pc.startDate).sort((a,b)=>b.startDate.localeCompare(a.startDate));
+    if(applicable.length>0&&(applicable[0].days||[]).includes(dayOfWeek))return{start:applicable[0].start,end:applicable[0].end};
+  }
+  if(p.daySchedule&&p.daySchedule[dayOfWeek])return p.daySchedule[dayOfWeek];
+  return{start:p.start,end:p.end};
+}
+
 function updateClock(){document.getElementById('top-time').textContent=kstFull();}
 updateClock();setInterval(updateClock,30000);
 
-let pin='',currentPart=null,currentPartId=null;
+let pin='',currentPart=null,currentPartId=null,wasAbsent=false;
 
 function showScreen(id){['pin-screen','confirm-screen','result-screen','error-screen'].forEach(s=>document.getElementById(s).style.display='none');document.getElementById(id).style.display='flex';}
-
 function updateDots(){for(let i=0;i<4;i++){const d=document.getElementById('d'+i);d.classList.toggle('filled',i<pin.length);d.classList.remove('error');}}
-
 function pressKey(k){if(pin.length>=4)return;pin+=k;updateDots();if(pin.length===4)setTimeout(checkPin,100);}
 function pressBack(){if(pin.length>0){pin=pin.slice(0,-1);updateDots();}}
 window.pressKey=pressKey;window.pressBack=pressBack;
@@ -170,11 +208,10 @@ async function checkPin(){
     if(p.status==='inactive')return false;
     if(p.joinDate&&today<p.joinDate)return false;
     if(p.leaveDate&&today>p.leaveDate)return false;
-    if(!(p.days||[]).includes(dw))return false;
+    if(!isWorkDay(p,dw,today))return false;
     return true;
   });
   if(!found){
-    // 오늘 근무 아닌 경우도 체크
     const anyFound=Object.entries(parts).find(([id,p])=>p.pin===pin&&p.status!=='inactive');
     if(anyFound){showErrorScreen('오늘은 근무일이 아닙니다');}
     else{showErrorScreen('등록되지 않은 PIN입니다');}
@@ -182,15 +219,24 @@ async function checkPin(){
   }
   const[pid,p]=found;
   currentPart=p;currentPartId=pid;
+  wasAbsent=isPlannedAbsent(p,today);
   showConfirm(pid,p);
 }
 
 async function showConfirm(pid,p){
-  const snap=await get(ref(db,`attendance/${kstDate()}/${pid}`));
+  const today=kstDate();
+  const DM=['일','월','화','수','목','금','토'];
+  const k=new Date(Date.now()+9*3600000);
+  const dw=DM[k.getUTCDay()];
+  const ds=getDayTime(p,dw,today);
+  const snap=await get(ref(db,`attendance/${today}/${pid}`));
   const att=snap.val()||{};
   document.getElementById('cf-name').textContent=p.name;
   document.getElementById('cf-role').textContent=p.role;
-  document.getElementById('cf-schedule').textContent=`${p.start} ~ ${p.end}`;
+  document.getElementById('cf-schedule').textContent=`${ds.start} ~ ${ds.end}`;
+  const notice=document.getElementById('cf-notice');
+  if(wasAbsent){notice.style.display='';notice.textContent='⚠ 결근 예정이었으나 출근 처리됩니다';}
+  else{notice.style.display='none';}
   document.getElementById('cf-in-time').textContent=att.inTime?`이미 출근: ${att.inTime}`:'현재: '+kstTime();
   document.getElementById('cf-out-time').textContent=att.outTime?`이미 퇴근: ${att.outTime}`:'현재: '+kstTime();
   showScreen('confirm-screen');
@@ -210,11 +256,26 @@ async function doAttend(type){
     att.outTime=now;
   }
   await set(ref(db,`attendance/${date}/${currentPartId}`),att);
-  showResult(currentPart.name,type,now);
+  let absentCanceled=false;
+  if(type==='in'&&wasAbsent){
+    try{
+      const psnap=await get(ref(db,`parts/${currentPartId}`));
+      const pdata=psnap.val()||{};
+      const newAbs=(pdata.plannedAbsent||[]).filter(a=>{
+        if(typeof a==='string')return a!==date;
+        if(a.date)return a.date!==date;
+        if(a.startDate&&a.endDate)return !(date>=a.startDate&&date<=a.endDate);
+        return true;
+      });
+      await update(ref(db,`parts/${currentPartId}`),{plannedAbsent:newAbs});
+      absentCanceled=true;
+    }catch(e){}
+  }
+  showResult(currentPart.name,type,now,absentCanceled);
 }
 window.doAttend=doAttend;
 
-function showResult(name,type,time){
+function showResult(name,type,time,absentCanceled){
   const cfg={
     'in':{icon:'✅',label:'출근 완료',color:'#34d399'},
     'out':{icon:'👋',label:'퇴근 완료',color:'#94a3b8'},
@@ -227,6 +288,9 @@ function showResult(name,type,time){
   document.getElementById('res-name').textContent=name;
   document.getElementById('res-type').textContent=c.label;
   document.getElementById('res-type').style.color=c.color;
+  const sub=document.getElementById('res-sub');
+  if(absentCanceled){sub.style.display='';sub.textContent='결근 예정이 자동 취소되었습니다';}
+  else{sub.style.display='none';}
   document.getElementById('res-time').textContent=time;
   showScreen('result-screen');
   setTimeout(goPin,3000);
@@ -234,7 +298,7 @@ function showResult(name,type,time){
 
 function showErrorScreen(msg){for(let i=0;i<4;i++)document.getElementById('d'+i).classList.add('error');document.getElementById('err-msg').textContent=msg;showScreen('error-screen');setTimeout(goPin,2500);}
 
-function goPin(){pin='';currentPart=null;currentPartId=null;updateDots();showScreen('pin-screen');}
+function goPin(){pin='';currentPart=null;currentPartId=null;wasAbsent=false;updateDots();showScreen('pin-screen');}
 window.goPin=goPin;
 
 showScreen('pin-screen');
