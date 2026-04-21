@@ -518,8 +518,8 @@ function calcRealH(p,a){
   if(!a||!a.inTime)return null; // 출근 안 찍으면 계산 불가
   const ph=a.stdPhrase||'';
   if(ph==='결근')return 0;
-  // 퇴근 안 찍었고 adjustedEnd도 없으면 → 계산 보류
-  if(!a.outTime&&!a.adjustedEnd)return null;
+  // 퇴근(outTime) 찍어야만 실시수 확정 — 예약(adjustedEnd)만으로는 계산 안 함
+  if(!a.outTime)return null;
   // 10분 이내 지각은 스케줄 시작 기준 (양해)
   // 10분 초과 지각은 실제 출근 시각 기준
   let startT;
@@ -531,7 +531,8 @@ function calcRealH(p,a){
   }else{
     startT=p.start;
   }
-  const endT=a.adjustedEnd||a.outTime||p.end;
+  // 종료: adjustedEnd(관리자 확정) 우선, 없으면 outTime
+  const endT=a.adjustedEnd||a.outTime;
   const totalM=toM(endT)-toM(startT);
   if(totalM<=0)return 0;
   const bm=brk(p,startT,endT);
@@ -765,7 +766,13 @@ if(tempDay){
   return{...ep,actual:ta2.inTime||null,status:tst,ar:ta2,isTemp:true,nc:nc2};
 }
 if(isFuture){const preA=attData[p.id]||{};const prePh=preA.stdPhrase||'';if(prePh==='결근')return{...ep,actual:null,status:'absent-con',ar:preA};return{...ep,actual:null,status:'pending',ar:preA};}
-let st='pending',ac=a.inTime||null;const ph=a.stdPhrase||'';if(ph==='결근')st='absent-con';else if(a.inTime){const effectiveIn=a.adjustedStart||a.inTime;st=toM(effectiveIn)>toM(ds.start)?'late':'done';}else if(isPast)st=ph?'absent-con':'absent-unc';else if(nm>toM(ds.start)+10)st=ph?'absent-con':'absent-unc';if(ph==='조기퇴근'||ph==='추가근무')st='changed';const nc=needsCheck(ep,a,nm,date);return{...ep,actual:ac,status:st,ar:a,nc};}).filter(Boolean);
+let st='pending',ac=a.inTime||null;const ph=a.stdPhrase||'';if(ph==='결근')st='absent-con';else if(a.inTime){const effectiveIn=a.adjustedStart||a.inTime;st=toM(effectiveIn)>toM(ds.start)?'late':'done';}else if(isPast)st=ph?'absent-con':'absent-unc';else if(nm>toM(ds.start)+10)st=ph?'absent-con':'absent-unc';
+// 연장근무/조기퇴근 예약이 있어도 실제 퇴근(outTime) 없으면 아직 확정 안 됨
+if((ph==='조기퇴근'||ph==='추가근무')&&a.outTime)st='changed';
+// 예약만 있는 상태 (퇴근 안 찍음) → 미처리로 간주
+const isReservationOnly=(ph==='추가근무'||ph==='조기퇴근')&&!a.outTime;
+const nc=needsCheck(ep,a,nm,date)||isReservationOnly;
+return{...ep,actual:ac,status:st,ar:a,nc};}).filter(Boolean);
 // 스케줄 없는 출근 (오늘 기준): 해당 카테고리 직원 중 출근 기록 있는데 스케줄 없는 사람
 if(date===today){
   const scIds=new Set(scheduled.map(p=>p.id));
@@ -840,12 +847,27 @@ const bm=brk(pEff);const nc=needsCheck(pEff,a,nm,kstDate());const ce=CU.role==='
 const todayLabel=kstLabel();
 const todayMemos=(p.memos||[]).filter(m=>m.date===todayLabel);
 const isTempToday=!!tempDay;
+const hasPreviousExt=a.adjustedEnd||a.adjustedStart;
+const existingPhrase=a.stdPhrase||'';
 document.getElementById('modal-staff-title').innerHTML=`<span style="color:${col};font-weight:700">${p.role}</span> <span style="font-size:14px;color:var(--text-secondary)">(${p.name})</span>`;
 const memoQBtns=MEMO_QUICK[ph]?MEMO_QUICK[ph].map(q=>`<button class="memo-quick-btn" onclick="addMemoQuick('${pid}','${q}')">${q}</button>`).join(''):DASH_PHRASES.map(ph2=>MEMO_QUICK[ph2]||[]).flat().filter((v,i,a)=>a.indexOf(v)===i).map(q=>`<button class="memo-quick-btn" onclick="addMemoQuick('${pid}','${q}')">${q}</button>`).join('');
 const timeSelectS=mkTimeSelect5(`adj-s-${pid}`,a.adjustedStart||a.inTime||'');
 const timeSelectE=mkTimeSelect5(`adj-e-${pid}`,a.adjustedEnd||a.outTime||'');
 const tempBanner=isTempToday?`<div style="background:#fdf4ff;border:1px solid #e9d5ff;border-radius:8px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">⭐</span><div><div style="font-size:13px;font-weight:700;color:#7e22ce">추가근무</div><div style="font-size:11px;color:#86198f">스케줄 없는 날 근무입니다</div></div></div>`:'';
-document.getElementById('modal-staff-body').innerHTML=tempBanner+`<div class="modal-row"><span class="modal-key">날짜</span><span class="modal-val">${kstLabel()}</span></div><div class="modal-row"><span class="modal-key">상태</span><span class="modal-val" style="color:${stC}">${stL}</span></div><div class="modal-row"><span class="modal-key">휴대폰</span><a class="phone-link" href="tel:${p.phone}">${p.phone||'-'}</a></div><div class="modal-row"><span class="modal-key">${isTempToday?'근무 시간':'스케줄'}</span><span class="modal-val">${pEff.start} ~ ${pEff.end}</span></div>${(a.adjustedStart||a.adjustedEnd)?`<div class="modal-row"><span class="modal-key">적용 시간</span><span class="modal-val" style="color:var(--success)">${a.adjustedStart||a.inTime||pEff.start} ~ ${a.adjustedEnd||a.outTime||pEff.end}</span></div>`:''}<div class="modal-row"><span class="modal-key">${isTempToday?'근무 시수':'스케줄 시수'}</span><span class="modal-val">${sh}h</span></div>${a.inTime?`<div class="modal-row"><span class="modal-key">출근</span><span class="modal-val" style="color:var(--success)">${a.inTime}</span></div>`:''}${a.outTime?`<div class="modal-row"><span class="modal-key">퇴근</span><span class="modal-val">${a.outTime}</span></div>`:''}<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light)"><span class="modal-key" style="align-self:center">실시수</span><span style="font-size:18px;font-weight:700;color:${rh===null?'var(--text-muted)':rh<sh?'var(--danger)':rh>sh?'#047857':'var(--success)'}">${rh===null?'-':rh+'h'}</span>${rh!==null?`<span style="font-size:11px;color:var(--text-muted);align-self:center">(휴게 ${bm}분 제외)</span>`:'<span style="font-size:11px;color:var(--text-muted);align-self:center">(퇴근 전)</span>'}</div>${nc?'<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--orange);margin:6px 0">⚠ 퇴근 패드 미확인</div>':''}${ph?`<div class="modal-row"><span class="modal-key">처리 구분</span><span class="modal-val">${phraseLabel(ph)}</span></div>`:''}<div style="margin-top:14px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">오늘 메모</div><div class="memo-list">${rML(todayMemos)}</div></div>${ce?`<div style="margin-top:12px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">표준문구 선택 (필수)</div><div class="std-phrase-row" id="spr-${pid}">${DASH_PHRASES.map(ph2=>`<button class="std-btn${ph===ph2?' selected':''}" data-phrase="${ph2}" onclick="selP('${pid}','${ph2}')">${phraseLabel(ph2)}</button>`).join('')}</div><div style="display:flex;gap:10px;margin-top:10px" id="adj-time-wrap-${pid}"><div style="flex:1"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">시작 시각</div>${timeSelectS}</div><div style="flex:1"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">종료 시각</div>${timeSelectE}</div></div><div id="adj-prev-${pid}" style="font-size:12px;color:var(--accent);margin-top:6px;font-weight:600;min-height:18px"></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;margin-top:10px">메모 권장 표현</div><div class="memo-quick" id="mqb-${pid}">${memoQBtns}</div><textarea class="memo-area" id="nm-${pid}" placeholder="메모 입력 (필수)"></textarea><div style="font-size:11px;color:var(--text-muted);margin-top:4px">⚠ 표준문구와 메모 모두 필수</div></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button><button class="btn-primary" onclick="saveMemo('${pid}')">저장</button></div>`:`<div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button></div>`}`;OM('modal-staff');}
+// 기존 예약 상태 요약
+let reservationBanner='';
+const resList=[];
+if(a.adjustedStart&&existingPhrase!=='지각')resList.push(`출근 ${a.adjustedStart}로 조정`);
+if(a.adjustedEnd){
+  if(existingPhrase==='조기퇴근')resList.push(`조기퇴근 ${a.adjustedEnd} 예약`);
+  else if(existingPhrase==='추가근무'||toM(a.adjustedEnd)>toM(pEff.end))resList.push(`연장근무 ${a.adjustedEnd}까지 예약`);
+  else resList.push(`퇴근 ${a.adjustedEnd}로 조정`);
+}
+if(a.adjustedStart&&existingPhrase==='지각')resList.push(`지각 예약: ${a.adjustedStart} 출근`);
+if(resList.length>0){
+  reservationBanner=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:10px"><div style="font-size:12px;font-weight:700;color:#047857;margin-bottom:4px">📋 기존 예약/처리</div><ul style="margin:0;padding-left:18px;font-size:12px;color:#047857;line-height:1.6">${resList.map(r=>`<li>${r}</li>`).join('')}</ul>${existingPhrase?`<div style="margin-top:6px;padding-top:6px;border-top:1px solid #86efac;font-size:11px;color:#047857">현재 처리구분: <b>${phraseLabel(existingPhrase)}</b></div>`:''}</div>`;
+}
+document.getElementById('modal-staff-body').innerHTML=tempBanner+reservationBanner+`<div class="modal-row"><span class="modal-key">날짜</span><span class="modal-val">${kstLabel()}</span></div><div class="modal-row"><span class="modal-key">상태</span><span class="modal-val" style="color:${stC}">${stL}</span></div><div class="modal-row"><span class="modal-key">휴대폰</span><a class="phone-link" href="tel:${p.phone}">${p.phone||'-'}</a></div><div class="modal-row"><span class="modal-key">${isTempToday?'근무 시간':'스케줄'}</span><span class="modal-val">${pEff.start} ~ ${pEff.end}</span></div>${(a.adjustedStart||a.adjustedEnd)?`<div class="modal-row"><span class="modal-key">적용 시간</span><span class="modal-val" style="color:var(--success)">${a.adjustedStart||a.inTime||pEff.start} ~ ${a.adjustedEnd||a.outTime||pEff.end}</span></div>`:''}<div class="modal-row"><span class="modal-key">${isTempToday?'근무 시수':'스케줄 시수'}</span><span class="modal-val">${sh}h</span></div>${a.inTime?`<div class="modal-row"><span class="modal-key">출근</span><span class="modal-val" style="color:var(--success)">${a.inTime}</span></div>`:''}${a.outTime?`<div class="modal-row"><span class="modal-key">퇴근</span><span class="modal-val">${a.outTime}</span></div>`:''}<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light)"><span class="modal-key" style="align-self:center">실시수</span><span style="font-size:18px;font-weight:700;color:${rh===null?'var(--text-muted)':rh<sh?'var(--danger)':rh>sh?'#047857':'var(--success)'}">${rh===null?'-':rh+'h'}</span>${rh!==null?`<span style="font-size:11px;color:var(--text-muted);align-self:center">(휴게 ${bm}분 제외)</span>`:'<span style="font-size:11px;color:var(--text-muted);align-self:center">(퇴근 전)</span>'}</div>${nc?'<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--orange);margin:6px 0">⚠ 퇴근 패드 미확인</div>':''}${ph?`<div class="modal-row"><span class="modal-key">처리 구분</span><span class="modal-val">${phraseLabel(ph)}</span></div>`:''}<div style="margin-top:14px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">오늘 메모</div><div class="memo-list">${rML(todayMemos)}</div></div>${ce?`<div style="margin-top:12px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">표준문구 선택 (필수)</div><div class="std-phrase-row" id="spr-${pid}">${DASH_PHRASES.map(ph2=>`<button class="std-btn${ph===ph2?' selected':''}" data-phrase="${ph2}" onclick="selP('${pid}','${ph2}')">${phraseLabel(ph2)}</button>`).join('')}</div><div style="display:flex;gap:10px;margin-top:10px" id="adj-time-wrap-${pid}"><div style="flex:1"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">시작 시각</div>${timeSelectS}</div><div style="flex:1"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">종료 시각</div>${timeSelectE}</div></div><div id="adj-prev-${pid}" style="font-size:12px;color:var(--accent);margin-top:6px;font-weight:600;min-height:18px"></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;margin-top:10px">메모 권장 표현</div><div class="memo-quick" id="mqb-${pid}">${memoQBtns}</div><textarea class="memo-area" id="nm-${pid}" placeholder="메모 입력 (필수)"></textarea><div style="font-size:11px;color:var(--text-muted);margin-top:4px">⚠ 표준문구와 메모 모두 필수</div></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button><button class="btn-primary" onclick="saveMemo('${pid}')">저장</button></div>`:`<div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button></div>`}`;OM('modal-staff');}
 window.openStaffModal=openStaffModal;
 function calcPreview(pid,pStart,pEnd,customBreak){
   const s=document.getElementById(`adj-s-${pid}`)?.value||pStart;
@@ -952,14 +974,17 @@ if(!WD.length){document.getElementById('workman-list').innerHTML='<div style="pa
 const nowM2=(new Date(Date.now()+9*3600000).getUTCHours())*60+(new Date(Date.now()+9*3600000).getUTCMinutes());
 const phraseFilter=document.getElementById('workman-phrase')?.value||'';
 let filtered=WD;
-if(unprocOnly)filtered=WD.filter(({dt,p,a,unscheduled})=>{if(unscheduled)return !a.stdPhrase;const isToday=dt===kstDate();return !a.stdPhrase&&((!a.inTime&&isToday&&nowM2>toM(p.start)+10)||(a.inTime&&!a.outTime&&isToday&&nowM2>toM(p.end)+10)||(!a.inTime&&dt<kstDate()));});
+if(unprocOnly)filtered=WD.filter(({dt,p,a,unscheduled})=>{if(unscheduled)return !a.stdPhrase;const isToday=dt===kstDate();const isReservationOnly=a.stdPhrase==='추가근무'&&!a.outTime;const noPhrase=!a.stdPhrase||isReservationOnly;return noPhrase&&((!a.inTime&&isToday&&nowM2>toM(p.start)+10)||(a.inTime&&!a.outTime&&isToday&&nowM2>toM(p.end)+10)||(!a.inTime&&dt<kstDate())||(a.inTime&&!a.outTime&&dt<kstDate())||isReservationOnly);});
 else if(phraseFilter==='미처리')filtered=WD.filter(({a})=>!a.stdPhrase);
 else if(phraseFilter)filtered=WD.filter(({a})=>a.stdPhrase===phraseFilter);
 const sorted=[...filtered].sort((x,y)=>{if(x.dt!==y.dt)return x.dt.localeCompare(y.dt);const au=!x.a.stdPhrase&&(!x.a.inTime||(x.a.inTime&&!x.a.outTime));const bu=!y.a.stdPhrase&&(!y.a.inTime||(y.a.inTime&&!y.a.outTime));return(au?0:1)-(bu?0:1)||x.p.start.localeCompare(y.p.start);});
 const ce=CU.role==='관리자';
 let prevAlert='';
 const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
-  const sh=unscheduled?0:schedH(p);const rh=a.inTime?calcRealH(p,a):null;const col=cof(p.role);const hp=!!a.inTime;const unproc=!a.stdPhrase;
+  const sh=unscheduled?0:schedH(p);const rh=a.inTime?calcRealH(p,a):null;const col=cof(p.role);const hp=!!a.inTime;
+  // 미처리 판정: stdPhrase 없거나, 연장근무 예약(stdPhrase='추가근무')만 있고 실제 퇴근 안 한 경우
+  const isReservationOnly=a.stdPhrase==='추가근무'&&!a.outTime;
+  const unproc=!a.stdPhrase||isReservationOnly;
   const alertRow=alertHtml&&alertHtml!==prevAlert?`<tr><td colspan="9" style="padding:0">${alertHtml}</td></tr>`:'' ;
   prevAlert=alertHtml||prevAlert;
   const isFuture=dt>kstDate();
