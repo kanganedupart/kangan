@@ -205,14 +205,20 @@ async function checkPin(){
   const dw=DM[k.getUTCDay()];
   const found=Object.entries(parts).find(([id,p])=>{
     if(p.pin!==pin)return false;
-    if(p.status==='inactive')return false;
+    // 일반 퇴사자(비단발)는 차단, 단발근무자는 추가근무 예약 있는 날만 허용
+    const hasTempToday=p.tempDates&&p.tempDates.find(td=>td.date===today);
+    if(p.status==='inactive'){
+      if(!(p.isCasual&&hasTempToday))return false;
+    }
     if(p.joinDate&&today<p.joinDate)return false;
-    if(p.leaveDate&&today>p.leaveDate)return false;
+    if(p.leaveDate&&today>p.leaveDate){
+      if(!(p.isCasual&&hasTempToday))return false;
+    }
     if(!isWorkDay(p,dw,today))return false;
     return true;
   });
   if(!found){
-    const anyFound=Object.entries(parts).find(([id,p])=>p.pin===pin&&p.status!=='inactive');
+    const anyFound=Object.entries(parts).find(([id,p])=>p.pin===pin&&(p.status!=='inactive'||p.isCasual));
     if(anyFound){showErrorScreen('오늘은 근무일이 아닙니다');}
     else{showErrorScreen('등록되지 않은 PIN입니다');}
     return;

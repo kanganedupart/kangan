@@ -303,6 +303,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <div><div class="form-label">종료일</div><input type="date" id="workman-to" class="form-input" style="width:155px;max-width:100%" onkeydown="if(event.key==='Enter')loadWorkmanData()"></div>
           <div><div class="form-label">이름 검색</div><input type="text" id="workman-name" class="form-input" style="width:120px;max-width:100%" placeholder="비워두면 전체" onkeydown="if(event.key==='Enter')loadWorkmanData()"></div>
           <div style="display:flex;align-items:center;gap:6px;padding-bottom:2px"><input type="checkbox" id="workman-unproc" style="width:16px;height:16px;cursor:pointer"><label for="workman-unproc" style="font-size:13px;cursor:pointer;color:var(--danger);font-weight:600">미처리만</label></div>
+          <div style="display:flex;align-items:center;gap:6px;padding-bottom:2px"><input type="checkbox" id="workman-include-resigned" style="width:16px;height:16px;cursor:pointer" onchange="loadWorkmanData()"><label for="workman-include-resigned" style="font-size:13px;cursor:pointer;color:#7e22ce;font-weight:600">⭐ 퇴사자/단발근무자 포함</label></div>
           <select class="form-select" id="workman-phrase" style="width:110px;max-width:100%"><option value="">처리구분 전체</option><option value="미처리">미처리</option><option value="지각">지각</option><option value="조기퇴근">조기퇴근</option><option value="추가근무">연장근무</option><option value="결근">결근</option><option value="수동기록">수동기록</option></select>
           <button class="btn-secondary" onclick="setWorkmanToday()">오늘</button>
           <button class="btn-primary" onclick="loadWorkmanData()">조회</button>
@@ -329,11 +330,10 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
             <option value="etc">기타</option>
           </select>
           <input type="text" class="form-input" id="filter-role" placeholder="직무 검색" style="width:120px" oninput="renderPT()">
-          <select class="form-select" id="filter-status" style="width:110px" onchange="renderPT()">
+          <select class="form-select" id="filter-status" style="width:130px" onchange="renderPT()">
             <option value="active">재직 중</option>
+            <option value="inactive">퇴사(예정포함)</option>
             <option value="">전체 상태</option>
-            <option value="inactive">퇴사</option>
-            <option value="leave">휴직(구)</option>
           </select>
         </div>
         <div id="parts-table-wrap"><div style="padding:20px;text-align:center;color:var(--text-muted)">불러오는 중...</div></div>
@@ -347,7 +347,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <div><div class="form-label">종료일</div><input type="date" id="acct-to" class="form-input" style="width:160px" onkeydown="if(event.key==='Enter')loadAcct()"></div>
           <div><div class="form-label">이름/직무 검색</div><input type="text" id="acct-name" class="form-input" style="width:130px" placeholder="비워두면 전체" onkeydown="if(event.key==='Enter')loadAcct()"></div>
           <div><div class="form-label">카테고리</div><select class="form-select" id="acct-cat" style="width:110px"><option value="">전체</option><option value="mgmt">관리</option><option value="tutor">조교</option><option value="etc">기타</option></select></div>
-          <div><div class="form-label">재직상태</div><select class="form-select" id="acct-status" style="width:110px" onchange="loadAcct()"><option value="working">근무자</option><option value="active">재직</option><option value="leave">휴직</option><option value="inactive">퇴사자만</option><option value="all">전체</option></select></div>
+          <div><div class="form-label">재직상태</div><select class="form-select" id="acct-status" style="width:110px" onchange="loadAcct()"><option value="working">근무자</option><option value="active">재직</option><option value="inactive">퇴사자만</option><option value="all">전체</option></select></div>
           <button class="btn-primary" onclick="loadAcct()">조회</button>
           <button class="btn-secondary" onclick="exportCSV()">📤 CSV 다운로드</button>
           <button class="btn-secondary" onclick="exportMonthlyGrid()">📊 월별 근무표</button>
@@ -953,17 +953,24 @@ if(!fr||!to){ST('날짜를 선택해주세요');return;}
 const nameF=(document.getElementById('workman-name')?.value||'').trim().toLowerCase();
 const unprocOnly=document.getElementById('workman-unproc')?.checked;
 SL(true);
-const ps=Object.entries(AP).filter(([,p])=>p.status!=='inactive').map(([id,p])=>({...p,id}));
+const ps=Object.entries(AP).filter(([,p])=>p.status!=='inactive'||p.isCasual).map(([id,p])=>({...p,id}));
 WD=[];
 let cur=new Date(fr+'T00:00:00+09:00');const end=new Date(to+'T00:00:00+09:00');
 while(cur<=end){
   const dt=`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
   const sn=await get(ref(db,`attendance/${dt}`));const ad=sn.val()||{};
   const DM=['일','월','화','수','목','금','토'];const dw=DM[cur.getDay()];
+  const includeResigned=document.getElementById('workman-include-resigned')?.checked;
   const sc=ps.filter(p=>{
     if(!isWorkDay(p,dw,dt))return false;
     if(p.joinDate&&dt<p.joinDate)return false;
-    if(p.leaveDate&&dt>p.leaveDate)return false;
+    // 퇴사일 이후 필터
+    if(p.leaveDate&&dt>p.leaveDate){
+      // 추가근무 예약이 있으면 자동 노출 (예약해둔 단발근무)
+      const hasTemp=p.tempDates&&p.tempDates.find(td=>td.date===dt);
+      // 단발근무자이면서 "포함" 체크됐으면 허용
+      if(!hasTemp&&!(p.isCasual&&includeResigned))return false;
+    }
     if(nameF&&!p.name.toLowerCase().includes(nameF)&&!p.role.toLowerCase().includes(nameF))return false;
     return true;
   });
@@ -979,7 +986,8 @@ while(cur<=end){
   });
   // 이름 필터 + 카테고리 필터 적용
   unscheduled.forEach(p=>{
-    if(p.status==='inactive')return;
+    // 퇴사자도 단발근무자이고 "포함" 체크됐으면 노출, 일반 퇴사자는 출근기록 있어도 제외 (실수 방지)
+    if(p.status==='inactive'&&!(p.isCasual&&includeResigned))return;
     if(nameF&&!p.name.toLowerCase().includes(nameF)&&!p.role.toLowerCase().includes(nameF))return;
     WD.push({dt,p,a:ad[p.id]||{},alertHtml:'',unscheduled:true});
   });
@@ -1006,10 +1014,14 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   const isFuture=dt>kstDate();
   const rhDisp=isFuture?'-':rh!==null?rh+'h':'-';
   const rhColor=rh!==null&&rh<sh?'var(--danger)':rh!==null&&rh>sh?'#047857':'var(--text-primary)';
+  const todayW=kstDate();
+  const pResigned=p.status==='inactive'||(p.leaveDate&&p.leaveDate<=todayW);
+  const pCasualBadge=p.isCasual?' <span style="font-size:9px;color:#7e22ce;background:#fdf4ff;padding:1px 5px;border-radius:8px;font-weight:700;border:1px solid #e9d5ff">⭐ 단발</span>':'';
+  const pResignedBadge=pResigned?` <span style="font-size:9px;color:var(--danger);background:var(--danger-light);padding:1px 5px;border-radius:8px;font-weight:700">퇴사 ${p.leaveDate||''}</span>`:'';
   if(unscheduled){
-    return `<tr style="background:#fff7ed"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})</td><td style="color:var(--text-muted);font-size:11px">-</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}</td><td style="color:var(--text-muted)">-</td><td><span style="color:#c2410c;font-size:11px;font-weight:700;background:#fff7ed;padding:2px 7px;border-radius:10px;border:1px solid #fed7aa">⚠ 미처리 (스케줄없음)</span></td><td>${ce?`<button class="icon-btn" style="color:#c2410c;border-color:#fed7aa" onclick="openEP('${p.id}')">파트 수정 →</button>`:''}</td></tr>`;
+    return `<tr style="background:#fff7ed"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})${pResignedBadge}${pCasualBadge}</td><td style="color:var(--text-muted);font-size:11px">-</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}</td><td style="color:var(--text-muted)">-</td><td><span style="color:#c2410c;font-size:11px;font-weight:700;background:#fff7ed;padding:2px 7px;border-radius:10px;border:1px solid #fed7aa">⚠ 미처리 (스케줄없음)</span></td><td>${ce?`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`:''}${ce?`<button class="icon-btn" style="color:#c2410c;border-color:#fed7aa" onclick="openEP('${p.id}')">파트 수정 →</button>`:''}</td></tr>`;
   }
-  return alertRow+`<tr style="${unproc&&!isFuture?'background:#fffbeb;':''}"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})</td><td style="font-family:'DM Mono',monospace">${p.start}~${p.end}</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}${!a.outTime&&a.inTime?'<span style="font-size:10px;color:var(--orange);margin-left:4px">미확인</span>':''}</td><td style="font-weight:700;font-family:'DM Mono',monospace;color:${rhColor}">${rhDisp}</td><td>${isReservationOnly?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:#047857;background:#d1fae5;padding:1px 5px;border-radius:8px;margin-left:3px">연장예약</span>':a.stdPhrase?`<span class="sbadge s-active" style="font-size:10px">${phraseLabel(a.stdPhrase)}</span>`:unproc&&!isFuture?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span>':'-'}</td><td>${ce?`<button class="icon-btn" onclick="openWE('${p.id}','${dt}')">수정</button>`:''}${ce&&!hp?`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`:''}${ce&&hp?`<button class="icon-btn del" onclick="deleteAttend('${p.id}','${dt}')">패드기록 삭제</button>`:''}</td></tr>`;
+  return alertRow+`<tr style="${unproc&&!isFuture?'background:#fffbeb;':''}"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})${pResignedBadge}${pCasualBadge}</td><td style="font-family:'DM Mono',monospace">${p.start}~${p.end}</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}${!a.outTime&&a.inTime?'<span style="font-size:10px;color:var(--orange);margin-left:4px">미확인</span>':''}</td><td style="font-weight:700;font-family:'DM Mono',monospace;color:${rhColor}">${rhDisp}</td><td>${isReservationOnly?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:#047857;background:#d1fae5;padding:1px 5px;border-radius:8px;margin-left:3px">연장예약</span>':a.stdPhrase?`<span class="sbadge s-active" style="font-size:10px">${phraseLabel(a.stdPhrase)}</span>`:unproc&&!isFuture?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span>':'-'}</td><td>${ce?`<button class="icon-btn" onclick="openWE('${p.id}','${dt}')">수정</button>`:''}${ce&&!hp?`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`:''}${ce&&hp?`<button class="icon-btn del" onclick="deleteAttend('${p.id}','${dt}')">패드기록 삭제</button>`:''}</td></tr>`;
 }).join('');
 document.getElementById('workman-list').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>날짜</th><th>카테고리</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th>실시수</th><th>처리구분</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 window.loadWorkmanData=loadWorkmanData;
@@ -1062,14 +1074,12 @@ window.saveMA=saveMA;
 async function loadAcct(){const fr=document.getElementById('acct-from').value;const to=document.getElementById('acct-to').value;if(!fr||!to){ST('기간을 선택해주세요');return;}SL(true);
 // 재직상태 필터
 const statusFilter=document.getElementById('acct-status')?.value||'working';
-// working: 기간 내 근무이력 있는 모두 (재직+휴직+퇴사 실근무자)
+// working: 기간 내 근무이력 있는 모두 (재직+퇴사 실근무자)
 // active: 재직자만
-// leave: 휴직자만  
 // inactive: 퇴사자 (기간 내 근무이력 있는)
-// all: 전체 (퇴사/휴직 포함, 근무 이력 무관)
+// all: 전체
 const ps=Object.entries(AP).filter(([,p])=>{
-  if(statusFilter==='active')return p.status!=='inactive'&&p.status!=='leave';
-  if(statusFilter==='leave')return p.status==='leave';
+  if(statusFilter==='active')return p.status!=='inactive';
   if(statusFilter==='inactive')return p.status==='inactive';
   if(statusFilter==='all')return true;
   // working: 모두 일단 포함 (나중에 근무이력 있는 사람만 필터링)
@@ -1077,8 +1087,8 @@ const ps=Object.entries(AP).filter(([,p])=>{
 }).map(([id,p])=>({...p,id}));
 AD=[];let cur=new Date(fr+'T00:00:00+09:00');const end=new Date(to+'T00:00:00+09:00');while(cur<=end){const dk=`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;const sn=await get(ref(db,`attendance/${dk}`));const ad=sn.val()||{};const DM=['일','월','화','수','목','금','토'];const dw=DM[cur.getDay()];const nameFilter=(document.getElementById('acct-name')?.value||'').trim().toLowerCase();const catFilter=document.getElementById('acct-cat')?.value||'';
 ps.filter(p=>{
-  // 휴직/퇴사자도 기간 내 근무이력이 있다면 포함되어야 함 (isWorkDay는 재직 기준)
-  // 하지만 실 출근 기록(a.inTime)이 있는 날짜는 항상 포함
+  // 퇴사자도 기간 내 근무이력이 있다면 포함되어야 함 (isWorkDay는 재직 기준)
+  // 실 출근 기록(a.inTime)이 있는 날짜는 항상 포함
   const hasActual=!!(ad[p.id]&&ad[p.id].inTime);
   if(!isWorkDay(p,dw,dk)&&!hasActual)return false;
   if(p.joinDate&&dk<p.joinDate)return false;
@@ -1103,15 +1113,14 @@ SL(false);
 // working 모드: 근무이력 있는 사람만 남김 (실제 출근 or 스케줄된 근무일)
 if(statusFilter==='working'){
   const activePids=new Set(AD.filter(r=>r.att.inTime||r.realH!==null).map(r=>r.part.id));
-  // 재직자/휴직자 중 스케줄된 근무일도 포함 (출근 안 했어도)
   AD=AD.filter(r=>{
     if(r.part.status==='inactive')return activePids.has(r.part.id); // 퇴사자는 실근무자만
-    return true; // 재직/휴직자는 모두 (스케줄 대비 확인용)
+    return true; // 재직자는 모두 (스케줄 대비 확인용)
   });
 }
 if(!AD.length){document.getElementById('acct-body').innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted)">해당 기간 데이터 없음</div>';return;}
 // 사람별 그룹화
-const grouped={};AD.forEach(r=>{const key=r.part.id;if(!grouped[key])grouped[key]={name:r.part.name,role:r.part.role,cat:r.part.cat,status:r.part.status,leaveDate:r.part.leaveDate,rows:[],totalSched:0,totalReal:0,hasReal:false};grouped[key].rows.push(r);grouped[key].totalSched=Math.round((grouped[key].totalSched+r.schedH)*10)/10;if(r.realH!==null){grouped[key].totalReal=Math.round((grouped[key].totalReal+r.realH)*10)/10;grouped[key].hasReal=true;}});
+const grouped={};AD.forEach(r=>{const key=r.part.id;if(!grouped[key])grouped[key]={name:r.part.name,role:r.part.role,cat:r.part.cat,status:r.part.status,leaveDate:r.part.leaveDate,isCasual:r.part.isCasual,rows:[],totalSched:0,totalReal:0,hasReal:false};grouped[key].rows.push(r);grouped[key].totalSched=Math.round((grouped[key].totalSched+r.schedH)*10)/10;if(r.realH!==null){grouped[key].totalReal=Math.round((grouped[key].totalReal+r.realH)*10)/10;grouped[key].hasReal=true;}});
 const isSingleDay=fr===to;
 const groupArr=Object.values(grouped);
 const tr2=groupArr.map((g,gi)=>{
@@ -1129,8 +1138,13 @@ const df=hasOut&&!isWorking?Math.round((r.realH-r.schedH)*10)/10:null;
 const db2=df===null?'':df<0?`<span class="diff-minus">${df}h</span>`:df>0?`<span class="diff-plus">+${df}h</span>`:'';
 const procDisp=r.att.stdPhrase?`<span class="sbadge s-active" style="font-size:10px">${phraseLabel(r.att.stdPhrase)}</span>`:isUnproc?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span>':'-';
 const unc=r.att.inTime&&!r.att.outTime&&!isWorking;
+const today2=kstDate();
+const pResigned=r.part.status==='inactive'||(r.part.leaveDate&&r.part.leaveDate<=today2);
+const pScheduledResign=r.part.leaveDate&&r.part.leaveDate>today2&&r.part.status!=='inactive';
+const pCasualBadge=r.part.isCasual?`<span style="font-size:9px;color:#7e22ce;background:#fdf4ff;padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:700;border:1px solid #e9d5ff">⭐ 단발</span>`:'';
+const nameBadge=(pResigned?`<span style="font-size:9px;color:var(--danger);background:var(--danger-light);padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:700">퇴사 ${r.part.leaveDate||''}</span>`:pScheduledResign?`<span style="font-size:9px;color:#92400e;background:#fef3c7;padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:700">퇴사예정 ${r.part.leaveDate}</span>`:'')+pCasualBadge;
 const rowStyle=`background:${rowBg}${isSingleDay?';border-bottom:2px solid var(--border)':''}`;
-return`<tr style="${rowStyle}"><td style="background:${col};padding:0;width:3px;min-width:3px"></td><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${r.date}</td><td><span class="cat-badge cat-${r.part.cat}">${CATL[r.part.cat]}</span></td><td><span style="color:${col};font-weight:700">${r.part.role}</span></td><td>${r.part.name}</td><td style="font-family:'DM Mono',monospace">${r.part.start}~${r.part.end}</td><td style="font-family:'DM Mono',monospace">${r.att.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${(r.att.adjustedEnd||r.att.outTime)||'-'}${unc?'<span style="color:var(--orange);font-size:10px;margin-left:2px">⚠</span>':''}</td><td style="font-family:'DM Mono',monospace;color:var(--text-muted)">${r.schedH}h</td><td style="font-family:'DM Mono',monospace;font-weight:700">${rhDisp}${db2?' '+db2:''}</td><td>${procDisp}</td><td style="font-size:11px;color:var(--text-muted);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.att.memoText||'-'}</td><td style="font-size:11px;color:var(--text-muted)">${r.att.memoBy||'-'}</td></tr>`;
+return`<tr style="${rowStyle}"><td style="background:${col};padding:0;width:3px;min-width:3px"></td><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${r.date}</td><td><span class="cat-badge cat-${r.part.cat}">${CATL[r.part.cat]}</span></td><td><span style="color:${col};font-weight:700">${r.part.role}</span></td><td>${r.part.name}${nameBadge}</td><td style="font-family:'DM Mono',monospace">${r.part.start}~${r.part.end}</td><td style="font-family:'DM Mono',monospace">${r.att.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${(r.att.adjustedEnd||r.att.outTime)||'-'}${unc?'<span style="color:var(--orange);font-size:10px;margin-left:2px">⚠</span>':''}</td><td style="font-family:'DM Mono',monospace;color:var(--text-muted)">${r.schedH}h</td><td style="font-family:'DM Mono',monospace;font-weight:700">${rhDisp}${db2?' '+db2:''}</td><td>${procDisp}</td><td style="font-size:11px;color:var(--text-muted);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.att.memoText||'-'}</td><td style="font-size:11px;color:var(--text-muted)">${r.att.memoBy||'-'}</td></tr>`;
 }).join('');
 if(isSingleDay)return rowsHtml;
 const doneRows=g.rows.filter(r=>r.att.outTime||r.att.adjustedEnd);
@@ -1139,12 +1153,18 @@ const doneSched=Math.round(doneRows.reduce((s,r)=>s+r.schedH,0)*10)/10;
 const df2=doneReal!==null?Math.round((doneReal-doneSched)*10)/10:null;
 const db3=df2===null?'':df2<0?`<span class="diff-minus">${df2}h</span>`:df2>0?`<span class="diff-plus">+${df2}h</span>`:'';
 const subtotalDisp=doneReal!==null?`${doneReal}h${db3?' '+db3:''}`:'-';
-// 재직상태 배지
+// 재직상태 배지 (leaveDate가 오늘 이전이면 퇴사로 간주)
+const todayG=kstDate();
+const gResigned=g.status==='inactive'||(g.leaveDate&&g.leaveDate<=todayG);
+const gScheduledResign=g.leaveDate&&g.leaveDate>todayG&&g.status!=='inactive';
 let statusBadge='';
-if(g.status==='inactive'){
+if(gResigned){
   statusBadge=`<span style="font-size:10px;color:var(--danger);background:var(--danger-light);padding:1px 7px;border-radius:10px;margin-left:6px;font-weight:700">퇴사${g.leaveDate?' '+g.leaveDate:''}</span>`;
-}else if(g.status==='leave'){
-  statusBadge=`<span style="font-size:10px;color:var(--warning);background:var(--warning-light);padding:1px 7px;border-radius:10px;margin-left:6px;font-weight:700">휴직${g.leaveDate?' '+g.leaveDate:''}</span>`;
+}else if(gScheduledResign){
+  statusBadge=`<span style="font-size:10px;color:#92400e;background:#fef3c7;padding:1px 7px;border-radius:10px;margin-left:6px;font-weight:700">퇴사예정 ${g.leaveDate}</span>`;
+}
+if(g.isCasual){
+  statusBadge+=`<span style="font-size:10px;color:#7e22ce;background:#fdf4ff;padding:1px 7px;border-radius:10px;margin-left:6px;font-weight:700;border:1px solid #e9d5ff">⭐ 단발근무자</span>`;
 }
 const subtotal=`<tr style="background:${subBg};border-bottom:2px solid var(--border)"><td style="background:${col};padding:0;width:3px;min-width:3px"></td><td colspan="7" style="padding:7px 10px;font-size:12px;font-weight:700;color:${col}">${g.role} (${g.name}) 소계 ${g.rows.length}일${statusBadge}</td><td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--text-muted)">${g.totalSched}h</td><td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700">${subtotalDisp}</td><td colspan="3"></td></tr>`;
 return rowsHtml+subtotal;}).join('');
@@ -1159,7 +1179,7 @@ const tdb=td2===null?'':td2<0?`<span class="diff-minus">${td2}h</span>`:td2>0?`<
 const totalRealDisp=tf!==null?`${tf}h${tdb?' '+tdb:''}`:'-';
 document.getElementById('acct-body').innerHTML=`<table class="acct-table"><thead><tr><th style="width:3px;padding:0"></th><th>날짜</th><th>카테고리</th><th>직무</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th style="color:var(--text-muted)">스케줄시수</th><th>실시수</th><th>처리구분</th><th>메모</th><th>처리자</th></tr></thead><tbody>${tr}</tbody><tfoot><tr><td style="padding:0;background:var(--border)"></td><td colspan="7" style="padding:10px;font-size:13px;color:var(--text-secondary)">합계 (${AD.length}건)</td><td style="padding:10px;font-family:'DM Mono',monospace;color:var(--text-muted)">${ts}h</td><td style="padding:10px;font-family:'DM Mono',monospace;font-weight:700">${totalRealDisp}</td><td colspan="3"></td></tr></tfoot></table>`;}
 window.loadAcct=loadAcct;
-function exportCSV(){if(!AD.length){ST('먼저 조회해주세요');return;}const h='날짜,카테고리,직무,이름,재직상태,퇴사일,스케줄,출근,퇴근,스케줄시수,실시수,처리구분,메모,처리자';const statusLbl=s=>s==='inactive'?'퇴사':s==='leave'?'휴직':'재직';const rows=AD.map(r=>[r.date,CATL[r.part.cat]||r.part.cat,r.part.role,r.part.name,statusLbl(r.part.status),r.part.leaveDate||'',`${r.part.start}~${r.part.end}`,r.att.inTime||'',r.att.outTime||'',r.schedH,r.realH,r.att.stdPhrase||'',r.att.memoText||'',r.att.memoBy||''].map(v=>`"${v}"`).join(',')).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`강안교육_시수_${document.getElementById('acct-from').value}_${document.getElementById('acct-to').value}.csv`;a.click();URL.revokeObjectURL(u);}
+function exportCSV(){if(!AD.length){ST('먼저 조회해주세요');return;}const h='날짜,카테고리,직무,이름,재직상태,퇴사일,스케줄,출근,퇴근,스케줄시수,실시수,처리구분,메모,처리자';const todayC=kstDate();const statusLbl=p=>{if(p.status==='inactive')return '퇴사';if(p.leaveDate&&p.leaveDate<=todayC)return '퇴사';if(p.leaveDate&&p.leaveDate>todayC)return '퇴사예정';return '재직';};const rows=AD.map(r=>[r.date,CATL[r.part.cat]||r.part.cat,r.part.role,r.part.name,statusLbl(r.part),r.part.leaveDate||'',`${r.part.start}~${r.part.end}`,r.att.inTime||'',r.att.outTime||'',r.schedH,r.realH,r.att.stdPhrase||'',r.att.memoText||'',r.att.memoBy||''].map(v=>`"${v}"`).join(',')).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`강안교육_시수_${document.getElementById('acct-from').value}_${document.getElementById('acct-to').value}.csv`;a.click();URL.revokeObjectURL(u);}
 window.exportCSV=exportCSV;
 function exportMonthlyGrid(){
   const fr=document.getElementById('acct-from').value;
@@ -1322,10 +1342,35 @@ function downloadSchedCSV(){
   a.download=`${p.role}_${p.name}_${y}년${m+1}월.csv`;a.click();
 }
 window.downloadSchedCSV=downloadSchedCSV;
-function renderPT(){const nf=(document.getElementById('filter-name')?.value||'').trim().toLowerCase();const cf=document.getElementById('filter-cat')?.value||'';const rf=(document.getElementById('filter-role')?.value||'').trim().toLowerCase();const sf=document.getElementById('filter-status')?.value??'active';let ps=Object.entries(AP).map(([id,p])=>({...p,id}));if(nf)ps=ps.filter(p=>p.name&&p.name.toLowerCase().includes(nf));if(cf)ps=ps.filter(p=>p.cat===cf);if(rf)ps=ps.filter(p=>p.role&&p.role.toLowerCase().includes(rf));if(sf==='active')ps=ps.filter(p=>p.status!=='inactive'&&p.status!=='leave');else if(sf==='inactive')ps=ps.filter(p=>p.status==='inactive');else if(sf==='leave')ps=ps.filter(p=>p.status==='leave');if(!ps.length){document.getElementById('parts-table-wrap').innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted)">조건에 맞는 직원 없음</div>';return;}const rows=ps.map(p=>{const col=cof(p.role);const sk=p.status||'active';const sb=sk==='inactive'?'<span class="sbadge s-inactive">퇴사</span>':sk==='leave'?'<span class="sbadge s-leave">휴직</span>':'<span class="sbadge s-active">재직</span>';const hasDaySchedule=p.daySchedule&&Object.keys(p.daySchedule).length>0;const extraDate=sk==='leave'&&p.leaveDate?`<div style="font-size:10px;color:var(--warning)">휴직 ${p.leaveDate}</div>`:sk==='inactive'&&p.leaveDate?`<div style="font-size:10px;color:var(--danger)">퇴사 ${p.leaveDate}</div>`:'';
+function renderPT(){
+  const nf=(document.getElementById('filter-name')?.value||'').trim().toLowerCase();
+  const cf=document.getElementById('filter-cat')?.value||'';
+  const rf=(document.getElementById('filter-role')?.value||'').trim().toLowerCase();
+  const sf=document.getElementById('filter-status')?.value??'active';
+  const today=kstDate();
+  let ps=Object.entries(AP).map(([id,p])=>({...p,id}));
+  if(nf)ps=ps.filter(p=>p.name&&p.name.toLowerCase().includes(nf));
+  if(cf)ps=ps.filter(p=>p.cat===cf);
+  if(rf)ps=ps.filter(p=>p.role&&p.role.toLowerCase().includes(rf));
+  // 퇴사자 판정: status==='inactive' OR 퇴사일이 오늘 이전
+  const isResigned=p=>p.status==='inactive'||(p.leaveDate&&p.leaveDate<=today);
+  const isScheduledResign=p=>p.leaveDate&&p.leaveDate>today&&p.status!=='inactive';
+  // 이름/직무 검색 중이면 퇴사자도 자동 포함 (단발근무자 지정하려면 먼저 찾아야 하므로)
+  const isSearching=nf||rf;
+  if(sf==='active'&&!isSearching)ps=ps.filter(p=>!isResigned(p)||p.isCasual);
+  else if(sf==='inactive')ps=ps.filter(p=>isResigned(p)||isScheduledResign(p));
+  // 검색 중이면 필터 무관하게 전체 노출 (카테고리/이름/직무 필터는 적용됨)
+  if(!ps.length){document.getElementById('parts-table-wrap').innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted)">조건에 맞는 직원 없음</div>';return;}
+  const rows=ps.map(p=>{
+    const col=cof(p.role);
+    const resigned=isResigned(p);
+    const scheduledResign=isScheduledResign(p);
+    const sb=(resigned?`<span class="sbadge s-inactive">퇴사${p.leaveDate?' '+p.leaveDate:''}</span>`:scheduledResign?`<span class="sbadge" style="background:#fef3c7;color:#92400e">퇴사예정 ${p.leaveDate}</span>`:'<span class="sbadge s-active">재직</span>')+(p.isCasual?`<span class="sbadge" style="background:#fdf4ff;color:#7e22ce;border:1px solid #e9d5ff;margin-left:4px">⭐ 단발</span>`:'');
+    const hasDaySchedule=p.daySchedule&&Object.keys(p.daySchedule).length>0;
+    const extraDate=resigned&&p.leaveDate?`<div style="font-size:10px;color:var(--danger)">퇴사 ${p.leaveDate}</div>`:'';
 return`<tr><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span></td><td>${p.name}</td><td style="font-family:'Noto Sans KR',sans-serif">${p.phone||'-'}</td><td style="font-family:'Noto Sans KR',sans-serif">${sk==='inactive'?`<span style="text-decoration:line-through;color:var(--text-muted);letter-spacing:2px;font-size:12px">${p.pin||'-'}</span><span style="font-size:10px;color:var(--danger);background:var(--danger-light);padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:600">비활성</span>`:`<span style="font-weight:700;letter-spacing:3px">${p.pin||'-'}</span>`}</td><td>${(p.days||[]).join('·')}${hasDaySchedule?'<span style="color:var(--warning);font-size:10px;margin-left:4px">요일별</span>':''}</td><td style="font-family:'DM Mono',monospace">${p.start||'-'}~${p.end||'-'}${p.customBreak!==undefined?`<span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span>`:''}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${p.joinDate||'-'}${extraDate}</td><td>${sb}</td><td>${CU.role==='관리자'?`<button class="icon-btn" onclick="openEP('${p.id}')">수정</button>`:''}<button class="icon-btn" onclick="openSchedHist('${p.id}')" style="color:var(--accent)">${CU.role==='관리자'?'히스토리':'보기'}</button></td></tr>`;}).join('');document.getElementById('parts-table-wrap').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>카테고리</th><th>직무</th><th>이름</th><th>휴대폰</th><th>PIN</th><th>요일</th><th>기본시간</th><th>입사일</th><th>상태</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 window.renderPartsTable=renderPT;window.renderPT=renderPT;
-function exportPartsCSV(){let ps=Object.entries(AP).map(([id,p])=>({...p,id}));const sf=document.getElementById('filter-status')?.value??'active';if(sf==='active')ps=ps.filter(p=>p.status!=='inactive'&&p.status!=='leave');else if(sf==='inactive')ps=ps.filter(p=>p.status==='inactive');else if(sf==='leave')ps=ps.filter(p=>p.status==='leave');const h='카테고리,직무,이름,휴대폰,PIN,요일,출근,퇴근,입사일,상태';const rows=ps.map(p=>[CATL[p.cat]||p.cat,p.role,p.name,p.phone||'',p.pin||'',(p.days||[]).join('·'),p.start||'',p.end||'',p.joinDate||'',p.status||'active'].map(v=>`"${v}"`).join(',')).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_직원목록.csv';a.click();URL.revokeObjectURL(u);}
+function exportPartsCSV(){let ps=Object.entries(AP).map(([id,p])=>({...p,id}));const sf=document.getElementById('filter-status')?.value??'active';const today=kstDate();const isResigned=p=>p.status==='inactive'||(p.leaveDate&&p.leaveDate<=today);const isScheduledResign=p=>p.leaveDate&&p.leaveDate>today&&p.status!=='inactive';if(sf==='active')ps=ps.filter(p=>!isResigned(p));else if(sf==='inactive')ps=ps.filter(p=>isResigned(p)||isScheduledResign(p));const h='카테고리,직무,이름,휴대폰,PIN,요일,출근,퇴근,입사일,퇴사일,상태';const statusLbl=p=>{if(p.status==='inactive')return '퇴사';if(p.leaveDate&&p.leaveDate<=today)return '퇴사';if(p.leaveDate&&p.leaveDate>today)return '퇴사예정';return '재직';};const rows=ps.map(p=>[CATL[p.cat]||p.cat,p.role,p.name,p.phone||'',p.pin||'',(p.days||[]).join('·'),p.start||'',p.end||'',p.joinDate||'',p.leaveDate||'',statusLbl(p)].map(v=>`"${v}"`).join(',')).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_직원목록.csv';a.click();URL.revokeObjectURL(u);}
 window.exportPartsCSV=exportPartsCSV;
 function openAP(){document.getElementById('modal-part-title').textContent='파트 등록';rPF(null);OM('modal-part');}
 function openEP(id){document.getElementById('modal-part-title').textContent='파트 수정';rPF(id);OM('modal-part');}
@@ -1369,6 +1414,7 @@ ${Object.entries(cats).map(([k,v])=>`<option value="${k}"${p&&p.cat===k?' select
 <div class="form-group" style="flex:1"><label class="form-label">입사일</label><input type="date" class="form-input" id="pf-jd" value="${p&&p.joinDate?p.joinDate:kstDate()}"></div>
 <div class="form-group" style="flex:1"><label class="form-label">퇴사일</label><input type="date" class="form-input" id="pf-leave" value="${p&&p.leaveDate?p.leaveDate:''}"></div>
 </div>
+<div class="form-group"><label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:10px 12px;background:#fdf4ff;border:1px solid #e9d5ff;border-radius:6px"><input type="checkbox" id="pf-casual" ${p&&p.isCasual?'checked':''} style="width:16px;height:16px;cursor:pointer"><span><span style="font-weight:600;color:#7e22ce">⭐ 단발근무자</span> <span style="font-size:11px;color:var(--text-muted)">- 퇴사 후에도 간헐적으로 근무 오는 경우 (출결현황에 항상 노출, 수동기록 가능)</span></span></label></div>
 ${pid?`<div class="divider-section"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">상태 변경</div><div id="state-btns"></div></div>`:''}
 `;
 el.appendChild(basicDiv);
@@ -2097,7 +2143,20 @@ async function waDelete(pid,type,idx){
 }
 window.waDelete=waDelete;
 
-async function savePF(pid){const ro=document.getElementById('pf-role').value.trim();const nm=document.getElementById('pf-name').value.trim();const ph=document.getElementById('pf-phone').value.trim();const st=document.getElementById('pf-start').value||syncGetTime('pf-start');const en=document.getElementById('pf-end').value||syncGetTime('pf-end');const ca=document.getElementById('pf-cat').value;const jd=document.getElementById('pf-jd').value;const dy=[...document.querySelectorAll('#pf-days .day-btn.selected')].map(b=>b.textContent.trim());const bv=document.getElementById('pf-brk').value;if(!ro||!nm){ST('직무와 이름은 필수입니다');return;}if(!st||!en){ST('기본 출퇴근 시각을 입력해주세요');return;}if(!dy.length){ST('근무 요일을 선택해주세요');return;}let pin=document.getElementById('pf-pin').value.trim();if(!pin&&pid)pin=AP[pid]?.pin||'';if(!pin&&ph.length>=4)pin=ph.replace(/-/g,'').slice(-4);if(!/^\d{4}$/.test(pin)){ST('PIN은 4자리 숫자여야 합니다');return;}const dup=Object.entries(AP).find(([id,p])=>p.pin===pin&&id!==pid&&p.status!=='inactive');if(dup){ST(`PIN ${pin}은 이미 사용 중입니다`);return;}
+async function savePF(pid){const ro=document.getElementById('pf-role').value.trim();const nm=document.getElementById('pf-name').value.trim();const ph=document.getElementById('pf-phone').value.trim();const st=document.getElementById('pf-start').value||syncGetTime('pf-start');const en=document.getElementById('pf-end').value||syncGetTime('pf-end');const ca=document.getElementById('pf-cat').value;const jd=document.getElementById('pf-jd').value;const dy=[...document.querySelectorAll('#pf-days .day-btn.selected')].map(b=>b.textContent.trim());const bv=document.getElementById('pf-brk').value;if(!ro||!nm){ST('직무와 이름은 필수입니다');return;}if(!st||!en){ST('기본 출퇴근 시각을 입력해주세요');return;}if(!dy.length){ST('근무 요일을 선택해주세요');return;}let pin=document.getElementById('pf-pin').value.trim();if(!pin&&pid)pin=AP[pid]?.pin||'';if(!pin&&ph.length>=4)pin=ph.replace(/-/g,'').slice(-4);if(!/^\d{4}$/.test(pin)){ST('PIN은 4자리 숫자여야 합니다');return;}const dup=Object.entries(AP).find(([id,p])=>{
+  if(p.pin!==pin||id===pid)return false;
+  // 재직자는 PIN 점유
+  if(p.status!=='inactive')return true;
+  // 퇴사자라도 단발근무자는 PIN 점유 (재방문 시 충돌 방지)
+  if(p.isCasual)return true;
+  return false;
+});
+if(dup){
+  const dupP=dup[1];
+  const isDupCasual=dupP.isCasual;
+  ST(`PIN ${pin}은 ${isDupCasual?'단발근무자 ':''}${dupP.name}이(가) 사용 중입니다`);
+  return;
+}
 // 요일별 시간 수집
 const daySchedule={};document.querySelectorAll('#day-times [data-day]').forEach(row=>{const d=row.dataset.day;const ds=document.getElementById('ds-s-'+d)?.value;const de=document.getElementById('ds-e-'+d)?.value;if(ds&&de&&(ds!==st||de!==en))daySchedule[d]={start:ds,end:de};});
 // daySchedule이 있는 요일은 반드시 days 에도 포함 (일관성 보장)
@@ -2113,7 +2172,7 @@ if(pid&&changeDate){
     if(newHistory.length>10)newHistory.splice(0,newHistory.length-10);
   }
 }
-const data={cat:ca,role:ro,name:nm,phone:ph,pin,start:st,end:en,days:dy,joinDate:jd||kstDate(),leaveDate:document.getElementById('pf-leave')?.value||null,status:pid?(AP[pid]?.status||'active'):'active',pinActive:pid?(AP[pid]?.pinActive!==false):true,memos:pid?(AP[pid].memos||[]):[],scheduleHistory:newHistory};
+const data={cat:ca,role:ro,name:nm,phone:ph,pin,start:st,end:en,days:dy,joinDate:jd||kstDate(),leaveDate:document.getElementById('pf-leave')?.value||null,isCasual:!!document.getElementById('pf-casual')?.checked,status:pid?(AP[pid]?.status||'active'):'active',pinActive:pid?(AP[pid]?.pinActive!==false):true,memos:pid?(AP[pid].memos||[]):[],scheduleHistory:newHistory};
 if(changeDate)data.scheduleChangeDate=changeDate;
 if(Object.keys(daySchedule).length>0)data.daySchedule=daySchedule;
 if(bv!=='')data.customBreak=parseInt(bv);SL(true);if(pid)await update(ref(db,`parts/${pid}`),data);else await push(ref(db,'parts'),data);SL(false);ST(pid?'수정 완료':'등록 완료');CM('modal-part');}
