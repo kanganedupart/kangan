@@ -301,7 +301,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
         <div style="margin-bottom:12px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
           <div><div class="form-label">시작일</div><input type="date" id="workman-from" class="form-input" style="width:155px;max-width:100%" onkeydown="if(event.key==='Enter')loadWorkmanData()"></div>
           <div><div class="form-label">종료일</div><input type="date" id="workman-to" class="form-input" style="width:155px;max-width:100%" onkeydown="if(event.key==='Enter')loadWorkmanData()"></div>
-          <div><div class="form-label">이름 검색</div><input type="text" id="workman-name" class="form-input" style="width:120px;max-width:100%" placeholder="비워두면 전체" onkeydown="if(event.key==='Enter')loadWorkmanData()"></div>
+          <div><div class="form-label">이름 검색</div><input type="text" id="workman-name" class="form-input" style="width:120px;max-width:100%" placeholder="비워두면 전체" oninput="filterWorkmanByName()" onkeydown="if(event.key==='Enter')loadWorkmanData()"></div>
           <div style="display:flex;align-items:center;gap:6px;padding-bottom:2px"><input type="checkbox" id="workman-unproc" style="width:16px;height:16px;cursor:pointer"><label for="workman-unproc" style="font-size:13px;cursor:pointer;color:var(--danger);font-weight:600">미처리만</label></div>
           <div style="display:flex;align-items:center;gap:6px;padding-bottom:2px"><input type="checkbox" id="workman-include-resigned" style="width:16px;height:16px;cursor:pointer" onchange="loadWorkmanData()"><label for="workman-include-resigned" style="font-size:13px;cursor:pointer;color:#7e22ce;font-weight:600">⭐ 퇴사자/단발근무자 포함</label></div>
           <select class="form-select" id="workman-phrase" style="width:110px;max-width:100%"><option value="">처리구분 전체</option><option value="미처리">미처리</option><option value="지각">지각</option><option value="조기퇴근">조기퇴근</option><option value="추가근무">연장근무</option><option value="결근">결근</option><option value="수동기록">수동기록</option></select>
@@ -616,7 +616,17 @@ function goToday(cat){const t=kstDate();DD[cat]=t;const el=document.getElementBy
 window.goToday=goToday;
 function clk(){const k=new Date(Date.now()+9*3600000);const D=['일','월','화','수','목','금','토'];document.getElementById('top-date').textContent=`${k.getUTCFullYear()}.${String(k.getUTCMonth()+1).padStart(2,'0')}.${String(k.getUTCDate()).padStart(2,'0')} (${D[k.getUTCDay()]})  ${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')}`;}
 function listenP(){onValue(ref(db,'parts'),s=>{AP=s.val()||{};renderAll();renderPT();});}
-function listenA(){onValue(ref(db,`attendance/${kstDate()}`),s=>{TA=s.val()||{};['mgmt','tutor','etc'].forEach(c=>{if(DD[c]===kstDate())TB[c]=TA;});renderAll();});}
+function listenA(){onValue(ref(db,`attendance/${kstDate()}`),s=>{TA=s.val()||{};['mgmt','tutor','etc'].forEach(c=>{if(DD[c]===kstDate())TB[c]=TA;});renderAll();
+// 출결현황이 오늘 날짜 조회 중이면 자동 갱신
+const wf=document.getElementById('workman-from')?.value;
+const wt=document.getElementById('workman-to')?.value;
+const today=kstDate();
+if(wf===today&&wt===today&&WD&&WD.length){
+  // WD를 최신 데이터로 업데이트
+  WD.forEach(item=>{if(item.dt===today&&TA[item.p.id]){item.a=TA[item.p.id];}});
+  renderWorkmanList();
+}
+});}
 async function loadAcc(){const s=await get(ref(db,'accounts'));AA=s.val()?Object.entries(s.val()).map(([id,v])=>({fbId:id,...v})):[];renderAccList();}
 const DEFAULT_ROLES={mgmt:['순찰','등원','응대','1층','식관'],tutor:['국어','영어','수학','지리','물리','화학','생명','지학','생윤','사문'],etc:['스타터','디자인']};
 let RL={};
@@ -1006,7 +1016,6 @@ async function loadWorkmanData(){
 const fr=document.getElementById('workman-from').value;
 const to=document.getElementById('workman-to').value;
 if(!fr||!to){ST('날짜를 선택해주세요');return;}
-const nameF=(document.getElementById('workman-name')?.value||'').trim().toLowerCase();
 const unprocOnly=document.getElementById('workman-unproc')?.checked;
 SL(true);
 const ps=Object.entries(AP).filter(([,p])=>p.status!=='inactive'||p.isCasual).map(([id,p])=>({...p,id}));
@@ -1027,7 +1036,6 @@ while(cur<=end){
       // 단발근무자이면서 "포함" 체크됐으면 허용
       if(!hasTemp&&!(p.isCasual&&includeResigned))return false;
     }
-    if(nameF&&!p.name.toLowerCase().includes(nameF)&&!p.role.toLowerCase().includes(nameF))return false;
     return true;
   });
   // 스케줄 없는 출근 기록 - 행으로 추가
@@ -1040,23 +1048,29 @@ while(cur<=end){
     const pEff={...p,start:ds.start||p.start,end:ds.end||p.end};
     WD.push({dt,p:pEff,a:ad[p.id]||{},alertHtml:''});
   });
-  // 이름 필터 + 카테고리 필터 적용
+  // 스케줄 없는 출근 (이름 필터는 렌더 단계에서)
   unscheduled.forEach(p=>{
     // 퇴사자도 단발근무자이고 "포함" 체크됐으면 노출, 일반 퇴사자는 출근기록 있어도 제외 (실수 방지)
     if(p.status==='inactive'&&!(p.isCasual&&includeResigned))return;
-    if(nameF&&!p.name.toLowerCase().includes(nameF)&&!p.role.toLowerCase().includes(nameF))return;
     WD.push({dt,p,a:ad[p.id]||{},alertHtml:'',unscheduled:true});
   });
   cur.setDate(cur.getDate()+1);
 }
 SL(false);
+renderWorkmanList();
+}
+function renderWorkmanList(){
 if(!WD.length){document.getElementById('workman-list').innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">해당 조건 근무 인원 없음</div>';return;}
+const unprocOnly=document.getElementById('workman-unproc')?.checked;
 const nowM2=(new Date(Date.now()+9*3600000).getUTCHours())*60+(new Date(Date.now()+9*3600000).getUTCMinutes());
 const phraseFilter=document.getElementById('workman-phrase')?.value||'';
+// 이름 필터 (실시간 검색용) - WD는 이미 로드된 상태, 이름으로 다시 필터
+const nameFilter2=(document.getElementById('workman-name')?.value||'').trim().toLowerCase();
 let filtered=WD;
-if(unprocOnly)filtered=WD.filter(({dt,p,a,unscheduled})=>{if(unscheduled)return !a.stdPhrase;const isToday=dt===kstDate();const isPlnAbs=isPlannedAbsent(p,dt);if(isPlnAbs&&!a.inTime)return false;const isReservationOnly=a.stdPhrase==='추가근무'&&!a.outTime;const noPhrase=!a.stdPhrase||isReservationOnly;return noPhrase&&((!a.inTime&&isToday&&nowM2>toM(p.start)+10)||(a.inTime&&!a.outTime&&isToday&&nowM2>toM(p.end)+10)||(!a.inTime&&dt<kstDate())||(a.inTime&&!a.outTime&&dt<kstDate())||isReservationOnly);});
-else if(phraseFilter==='미처리')filtered=WD.filter(({a})=>!a.stdPhrase);
-else if(phraseFilter)filtered=WD.filter(({a})=>a.stdPhrase===phraseFilter);
+if(nameFilter2)filtered=filtered.filter(({p})=>p.name.toLowerCase().includes(nameFilter2)||p.role.toLowerCase().includes(nameFilter2));
+if(unprocOnly)filtered=filtered.filter(({dt,p,a,unscheduled})=>{if(unscheduled)return !a.stdPhrase;const isToday=dt===kstDate();const isPlnAbs=isPlannedAbsent(p,dt);if(isPlnAbs&&!a.inTime)return false;const isReservationOnly=a.stdPhrase==='추가근무'&&!a.outTime;const noPhrase=!a.stdPhrase||isReservationOnly;return noPhrase&&((!a.inTime&&isToday&&nowM2>toM(p.start)+10)||(a.inTime&&!a.outTime&&isToday&&nowM2>toM(p.end)+10)||(!a.inTime&&dt<kstDate())||(a.inTime&&!a.outTime&&dt<kstDate())||isReservationOnly);});
+else if(phraseFilter==='미처리')filtered=filtered.filter(({a})=>!a.stdPhrase);
+else if(phraseFilter)filtered=filtered.filter(({a})=>a.stdPhrase===phraseFilter);
 const sorted=[...filtered].sort((x,y)=>{if(x.dt!==y.dt)return x.dt.localeCompare(y.dt);const au=!x.a.stdPhrase&&(!x.a.inTime||(x.a.inTime&&!x.a.outTime));const bu=!y.a.stdPhrase&&(!y.a.inTime||(y.a.inTime&&!y.a.outTime));return(au?0:1)-(bu?0:1)||x.p.start.localeCompare(y.p.start);});
 const ce=CU.role==='관리자';
 let prevAlert='';
@@ -1087,7 +1101,7 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
     else if(autoLate&&!a.stdPhrase)unproc=true; // 자동 지각 미처리
     else if(autoEarly&&!a.stdPhrase)unproc=true; // 자동 조기퇴근 미처리
   }
-  const alertRow=alertHtml&&alertHtml!==prevAlert?`<tr><td colspan="9" style="padding:0">${alertHtml}</td></tr>`:'' ;
+  const alertRow=alertHtml&&alertHtml!==prevAlert?`<tr><td colspan="10" style="padding:0">${alertHtml}</td></tr>`:'' ;
   prevAlert=alertHtml||prevAlert;
   const isFuture=dt>kstDate();
   const rhDisp=isFuture?'-':rh!==null?rh+'h':'-';
@@ -1097,7 +1111,7 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   const pCasualBadge=p.isCasual?' <span style="font-size:9px;color:#7e22ce;background:#fdf4ff;padding:1px 5px;border-radius:8px;font-weight:700;border:1px solid #e9d5ff">⭐ 단발</span>':'';
   const pResignedBadge=pResigned?` <span style="font-size:9px;color:var(--danger);background:var(--danger-light);padding:1px 5px;border-radius:8px;font-weight:700">퇴사 ${p.leaveDate||''}</span>`:'';
   if(unscheduled){
-    return `<tr style="background:#fff7ed"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})${pResignedBadge}${pCasualBadge}</td><td style="color:var(--text-muted);font-size:11px">-</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}</td><td style="color:var(--text-muted)">-</td><td><span style="color:#c2410c;font-size:11px;font-weight:700;background:#fff7ed;padding:2px 7px;border-radius:10px;border:1px solid #fed7aa">⚠ 미처리 (스케줄없음)</span></td><td>${ce?`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`:''}${ce?`<button class="icon-btn" style="color:#c2410c;border-color:#fed7aa" onclick="openEP('${p.id}')">파트 수정 →</button>`:''}</td></tr>`;
+    return `<tr style="background:#fff7ed"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})${pResignedBadge}${pCasualBadge}</td><td style="color:var(--text-muted);font-size:11px">-</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}</td><td style="color:var(--text-muted)">-</td><td style="color:var(--text-muted)">-</td><td><span style="color:#c2410c;font-size:11px;font-weight:700;background:#fff7ed;padding:2px 7px;border-radius:10px;border:1px solid #fed7aa">⚠ 미처리 (스케줄없음)</span></td><td>${ce?`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`:''}${ce?`<button class="icon-btn" style="color:#c2410c;border-color:#fed7aa" onclick="openEP('${p.id}')">파트 수정 →</button>`:''}</td></tr>`;
   }
   // 처리구분 표시 분기
   let procBadge;
@@ -1113,10 +1127,17 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   else if(!a.inTime&&!startPassed&&isToday2)procBadge='<span style="color:var(--text-muted);font-size:11px">출근 전</span>';
   else if(isFuture)procBadge='<span style="color:var(--text-muted);font-size:11px">예정</span>';
   else procBadge='-';
-  return alertRow+`<tr style="${unproc?'background:#fffbeb;':''}"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})${pResignedBadge}${pCasualBadge}</td><td style="font-family:'DM Mono',monospace">${p.start}~${p.end}</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}${!a.outTime&&a.inTime?'<span style="font-size:10px;color:var(--orange);margin-left:4px">미확인</span>':''}</td><td style="font-weight:700;font-family:'DM Mono',monospace;color:${rhColor}">${rhDisp}</td><td>${procBadge}</td><td>${ce?`<button class="icon-btn" onclick="openWE('${p.id}','${dt}')">수정</button>`:''}${ce&&!hp?`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`:''}${ce&&hp?`<button class="icon-btn del" onclick="deleteAttend('${p.id}','${dt}')">패드기록 삭제</button>`:''}</td></tr>`;
+  return alertRow+`<tr style="${unproc?'background:#fffbeb;':''}"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})${pResignedBadge}${pCasualBadge}</td><td style="font-family:'DM Mono',monospace">${p.start}~${p.end}</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}${!a.outTime&&a.inTime?'<span style="font-size:10px;color:var(--orange);margin-left:4px">미확인</span>':''}</td><td style="font-family:'DM Mono',monospace;color:var(--text-muted);font-weight:400">${unscheduled?'-':sh+'h'}</td><td style="font-weight:500;font-family:'DM Mono',monospace;color:${rhColor}">${rhDisp}</td><td>${procBadge}</td><td>${ce?(a.inTime&&!a.outTime?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="퇴근 기록이 없습니다. 수동기록을 사용하세요">수정</button>`:`<button class="icon-btn" onclick="openWE('${p.id}','${dt}')">수정</button>`):''}${ce&&!hp?`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`:''}${ce&&hp?`<button class="icon-btn del" onclick="deleteAttend('${p.id}','${dt}')">패드기록 삭제</button>`:''}</td></tr>`;
 }).join('');
-document.getElementById('workman-list').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>날짜</th><th>카테고리</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th>실시수</th><th>처리구분</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
+document.getElementById('workman-list').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>날짜</th><th>카테고리</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th style="color:var(--text-muted);font-weight:500">스케줄시수</th><th>실시수</th><th>처리구분</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 window.loadWorkmanData=loadWorkmanData;
+window.renderWorkmanList=renderWorkmanList;
+// 실시간 이름 검색 - 이미 로드된 WD 데이터에서 필터링만 (Firebase 재조회 없음)
+function filterWorkmanByName(){
+  if(!WD||!WD.length)return;
+  renderWorkmanList();
+}
+window.filterWorkmanByName=filterWorkmanByName;
 function exportWorkmanCSV(){if(!WD.length){ST('먼저 조회해주세요');return;}const h='날짜,카테고리,직무,이름,스케줄,출근,퇴근,실시수,처리구분,메모,처리자';const rows=WD.map(({dt,p,a})=>[dt,CATL[p.cat]||p.cat,p.role,p.name,p.start+'~'+p.end,a.inTime||'',a.outTime||'',calcRealH(p,a.inTime?a:null),a.stdPhrase||'',a.memoText||'',a.memoBy||''].map(v=>'"'+v+'"').join(',')).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_출근현황_'+document.getElementById('workman-from').value+'_'+document.getElementById('workman-to').value+'.csv';a.click();URL.revokeObjectURL(u);}
 window.exportWorkmanCSV=exportWorkmanCSV;
 function openUnscheduled(pid,dt){const p=AP[pid];if(!p)return;const col=cof(p.role);document.getElementById('modal-workman-title').innerHTML=`<span style="color:${col}">${p.role}</span> (${p.name}) 추가근무 처리`;document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">📌 스케줄 없는 날 출근 기록 — 추가근무로 처리합니다.</div><div style="display:flex;gap:10px;margin-bottom:14px"><div class="form-group" style="flex:1"><label class="form-label">출근 시각</label><input type="time" class="form-input" id="us-in" value="${(function(){const a={}; return a;})().inTime||p.start}"></div><div class="form-group" style="flex:1"><label class="form-label">퇴근 시각</label><input type="time" class="form-input" id="us-out" value="${p.end}"></div></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현</div><div class="memo-quick">${(MEMO_QUICK['추가근무']||[]).map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('us-mo').value+=(document.getElementById('us-mo').value?' / ':'')+'${q}'">${q}</button>`).join('')}</div><div class="form-group" style="margin-top:8px"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="us-mo" placeholder="추가근무 사유"></textarea></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveUnscheduled('${pid}','${dt}')">추가근무 처리</button></div>`;OM('modal-workman-edit');}
