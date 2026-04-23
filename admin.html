@@ -514,7 +514,7 @@ function makeDraggable(overlayId){
 ['modal-staff','modal-stats','modal-part','modal-workman-edit','modal-account'].forEach(makeDraggable);
 
 function brk(p,startT,endT){const s=startT||p.start;const e=endT||p.end;if(p.customBreak!==undefined)return p.customBreak;const h=(toM(e)-toM(s))/60;if(h>=9)return 60;if(h>4)return 30;return 0;}
-function schedH(p){const bm=brk(p);return Math.round((toM(p.end)-toM(p.start)-bm)/60*10)/10;}
+function schedH(p,a){const s=(a&&a.adjustedStart)||p.start;const e=(a&&a.adjustedEnd)||p.end;const bm=brk(p,s,e);return Math.round((toM(e)-toM(s)-bm)/60*10)/10;}
 function calcRealH(p,a){
   if(!a||(!a.inTime&&!a.adjustedStart))return null; // 출근 기록 전혀 없으면 계산 불가
   const ph=a.stdPhrase||'';
@@ -801,9 +801,18 @@ if(tempDay){
   return{...ep,actual:ta2.inTime||null,status:tst,ar:ta2,isTemp:true,nc:nc2};
 }
 if(isFuture){const preA=attData[p.id]||{};const prePh=preA.stdPhrase||'';if(prePh==='결근')return{...ep,actual:null,status:'absent-con',ar:preA};return{...ep,actual:null,status:'pending',ar:preA};}
-let st='pending',ac=a.inTime||null;const ph=a.stdPhrase||'';if(ph==='결근')st='absent-con';else if(ph==='정상')st='done';else if(a.inTime){const effectiveIn=a.adjustedStart||a.inTime;if(toM(effectiveIn)>toM(ds.start))st='late';else if(a.outTime&&!ph&&toM(ds.end)-toM(a.outTime)>10)st='late';else st='done';}else if(isPast)st=ph?'absent-con':'absent-unc';else if(nm>toM(ds.start)+10)st=ph?'absent-con':'absent-unc';
+let st='pending',ac=a.inTime||null;const ph=a.stdPhrase||'';
+// 예정 초과 체크 (adjustedStart/End보다 더 늦거나 이른 경우)
+const lateOverReserved=ph==='지각'&&a.adjustedStart&&a.inTime&&toM(a.inTime)>toM(a.adjustedStart)+10;
+const earlyOverReserved=ph==='조기퇴근'&&a.adjustedEnd&&a.outTime&&toM(a.outTime)<toM(a.adjustedEnd)-10;
+if(ph==='결근')st='absent-con';
+else if(ph==='정상')st='done';
+else if(lateOverReserved||earlyOverReserved)st='absent-unc'; // 예정 초과 → 미처리 표시
+else if(a.inTime){const effectiveIn=a.adjustedStart||a.inTime;if(toM(effectiveIn)>toM(ds.start))st='late';else if(a.outTime&&!ph&&toM(ds.end)-toM(a.outTime)>10)st='late';else st='done';}
+else if(isPast)st=ph?'absent-con':'absent-unc';
+else if(nm>toM(ds.start)+10)st=ph?'absent-con':'absent-unc';
 // 연장근무/조기퇴근 예약이 있어도 실제 퇴근(outTime) 없으면 아직 확정 안 됨
-if((ph==='조기퇴근'||ph==='추가근무')&&a.outTime)st='changed';
+if((ph==='조기퇴근'||ph==='추가근무')&&a.outTime&&!earlyOverReserved)st='changed';
 // 예약만 있는 상태 (퇴근 안 찍음) → 미처리로 간주
 const isReservationOnly=(ph==='추가근무'||ph==='조기퇴근')&&!a.outTime;
 const nc=needsCheck(ep,a,nm,date)||isReservationOnly;
@@ -890,7 +899,7 @@ else if(ph==='결근')st='absent-con';
 else if(a.inTime){const effIn=a.adjustedStart||a.inTime;st=toM(effIn)>toM(pEff.start)?'late':'done';}
 else if(!isViewingToday)st='absent-unc'; // 과거 날짜이면 미출근은 미확인 결근
 else if(nm>toM(pEff.start)+10)st=ph?'absent-con':'absent-unc';
-if(ph==='조기퇴근'||ph==='추가근무')st='changed';const stL={'done':'출근완료','absent-unc':'⚠ 미확인 결근','absent-con':'결근','absent-pln':'예정결근','late':'지각','changed':'변경근무','pending':'출근 전'}[st]||'출근 전';const stC={'done':'var(--success)','absent-unc':'var(--danger)','absent-con':'var(--danger)','absent-pln':'#fca5a5','late':'var(--warning)','changed':'var(--accent)','pending':'var(--text-muted)'}[st];const sh=schedH(pEff);
+if(ph==='조기퇴근'||ph==='추가근무')st='changed';const stL={'done':'출근완료','absent-unc':'⚠ 미확인 결근','absent-con':'결근','absent-pln':'예정결근','late':'지각','changed':'변경근무','pending':'출근 전'}[st]||'출근 전';const stC={'done':'var(--success)','absent-unc':'var(--danger)','absent-con':'var(--danger)','absent-pln':'#fca5a5','late':'var(--warning)','changed':'var(--accent)','pending':'var(--text-muted)'}[st];const sh=schedH(pEff,a);
 const isAbsentOrUnproc=st==='absent-con'||st==='absent-unc'||st==='absent-pln';
 const rh=(!isAbsentOrUnproc&&a.inTime)?calcRealH(pEff,a):null;
 const bm=brk(pEff);const nc=needsCheck(pEff,a,nm,kstDate());const ce=CU.role==='관리자';
@@ -1073,7 +1082,7 @@ const sorted=[...filtered].sort((x,y)=>{if(x.dt!==y.dt)return x.dt.localeCompare
 const ce=CU.role==='관리자';
 let prevAlert='';
 const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
-  const sh=unscheduled?0:schedH(p);
+  const sh=unscheduled?0:schedH(p,a);
   // 예정결근 체크
   const isPlnAbs=isPlannedAbsent(p,dt);
   const rh=a.inTime?calcRealH(p,a):(isPlnAbs?0:null);
@@ -1090,6 +1099,9 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   const autoLate=a.inTime&&(toM(a.inTime)-toM(p.start)>10);
   // 자동 감지: 10분 초과 조기퇴근 (퇴근이 스케줄보다 10분 이상 빠름)
   const autoEarly=a.outTime&&(toM(p.end)-toM(a.outTime)>10);
+  // 예정(adjustedStart/End)보다 더 벗어난 경우 미처리
+  const lateThanReserved=a.stdPhrase==='지각'&&a.adjustedStart&&a.inTime&&toM(a.inTime)>toM(a.adjustedStart)+10;
+  const earlyThanReserved=a.stdPhrase==='조기퇴근'&&a.adjustedEnd&&a.outTime&&toM(a.outTime)<toM(a.adjustedEnd)-10;
   // 미처리 조건
   let unproc=false;
   if(!isPlnAbs&&(!a.stdPhrase||isReservationOnly)){
@@ -1099,6 +1111,8 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
     else if(autoLate&&!a.stdPhrase)unproc=true; // 자동 지각 미처리
     else if(autoEarly&&!a.stdPhrase)unproc=true; // 자동 조기퇴근 미처리
   }
+  // 예정된 지각/조기퇴근인데 예정보다 더 벗어남 → 미처리
+  if(lateThanReserved||earlyThanReserved)unproc=true;
   const alertRow=alertHtml&&alertHtml!==prevAlert?`<tr><td colspan="10" style="padding:0">${alertHtml}</td></tr>`:'' ;
   prevAlert=alertHtml||prevAlert;
   const isFuture=dt>kstDate();
@@ -1116,6 +1130,8 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   if(isPlnAbs&&!a.inTime)procBadge='<span style="color:#fca5a5;font-size:11px;font-weight:600;background:#fff0f0;padding:2px 7px;border-radius:10px">예정결근</span>';
   else if(isReservationOnly&&!endPassed)procBadge='<span style="color:#047857;font-size:11px;font-weight:600;background:#d1fae5;padding:2px 7px;border-radius:10px">연장예약 근무중</span>';
   else if(isReservationOnly&&endPassed)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:#047857;background:#d1fae5;padding:1px 5px;border-radius:8px;margin-left:3px">연장예약</span>';
+  else if(lateThanReserved)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">예정초과 지각</span>';
+  else if(earlyThanReserved)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:8px;margin-left:3px">예정초과 조기</span>';
   else if(a.stdPhrase==='정상')procBadge=`<span style="color:#047857;font-size:11px;font-weight:600;background:#d1fae5;padding:2px 7px;border-radius:10px">정상</span>`;
   else if(a.stdPhrase)procBadge=`<span class="sbadge s-active" style="font-size:10px">${phraseLabel(a.stdPhrase)}</span>`;
   else if(unproc&&autoLate&&autoEarly)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">지각+조기</span>';
@@ -1126,7 +1142,7 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   else if(!a.inTime&&!startPassed&&isToday2)procBadge='<span style="color:var(--text-muted);font-size:11px">출근 전</span>';
   else if(isFuture)procBadge='<span style="color:var(--text-muted);font-size:11px">예정</span>';
   else procBadge='-';
-  return alertRow+`<tr style="${unproc?'background:#fffbeb;':''}"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})${pResignedBadge}${pCasualBadge}</td><td style="font-family:'DM Mono',monospace">${p.start}~${p.end}</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}${a.adjustedStart&&a.adjustedStart!==a.inTime?' <span style="color:var(--accent)">('+a.adjustedStart+')</span>':''}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}${a.adjustedEnd&&a.adjustedEnd!==a.outTime?' <span style="color:var(--accent)">('+a.adjustedEnd+')</span>':''}${!a.outTime&&!a.adjustedEnd&&a.inTime&&!a.stdPhrase?'<span style="font-size:10px;color:var(--orange);margin-left:4px">⚠미확인</span>':''}</td><td style="font-family:'DM Mono',monospace;color:var(--text-muted);font-weight:400">${unscheduled?'-':sh+'h'}</td><td style="font-weight:500;font-family:'DM Mono',monospace;color:${rhColor}">${rhDisp}</td><td>${procBadge}</td><td>${ce?(a.inTime&&!a.outTime&&!a.adjustedEnd?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="퇴근 기록이 없습니다. 수동기록을 사용하세요">수정</button>`:`<button class="icon-btn" onclick="openWE('${p.id}','${dt}')">수정</button>`):''}${ce&&!hp?`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`:''}${ce&&hp?`<button class="icon-btn del" onclick="deleteAttend('${p.id}','${dt}')">패드기록 삭제</button>`:''}</td></tr>`;
+  return alertRow+`<tr style="${unproc?'background:#fffbeb;':''}"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})${pResignedBadge}${pCasualBadge}</td><td style="font-family:'DM Mono',monospace">${p.start}~${p.end}</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}${a.adjustedStart&&a.adjustedStart!==a.inTime?' <span style="color:var(--accent)">('+a.adjustedStart+')</span>':''}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}${a.adjustedEnd&&a.adjustedEnd!==a.outTime?' <span style="color:var(--accent)">('+a.adjustedEnd+')</span>':''}${!a.outTime&&!a.adjustedEnd&&a.inTime&&!a.stdPhrase?'<span style="font-size:10px;color:var(--orange);margin-left:4px">⚠미확인</span>':''}</td><td style="font-family:'DM Mono',monospace;color:var(--text-muted);font-weight:400">${unscheduled?'-':sh+'h'}</td><td style="font-weight:500;font-family:'DM Mono',monospace;color:${rhColor}">${rhDisp}</td><td>${procBadge}</td><td>${ce?(isFuture?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="미래 날짜는 파트관리 달력에서 등록해주세요">수정</button>`:(a.inTime&&!a.outTime&&!a.adjustedEnd?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="퇴근 기록이 없습니다. 수동기록을 사용하세요">수정</button>`:`<button class="icon-btn" onclick="openWE('${p.id}','${dt}')">수정</button>`)):''}${ce&&!hp?(isFuture?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="미래 날짜는 파트관리 달력에서 등록해주세요">수동기록</button>`:`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`):''}${ce&&hp?`<button class="icon-btn del" onclick="deleteAttend('${p.id}','${dt}')">패드기록 삭제</button>`:''}</td></tr>`;
 }).join('');
 document.getElementById('workman-list').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>날짜</th><th>카테고리</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th style="color:var(--text-muted);font-weight:500">스케줄시수</th><th>실시수</th><th>처리구분</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 window.loadWorkmanData=loadWorkmanData;
@@ -1229,7 +1245,7 @@ ps.filter(p=>{
   const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dk);
   const ds=tempDay?{start:tempDay.start,end:tempDay.end}:getDayTime(p,dw,dk);
   const pEff={...p,start:ds.start||p.start,end:ds.end||p.end};
-  const sh=schedH(pEff);
+  const sh=schedH(pEff,a);
   const isAbsent=a.stdPhrase==='결근'||isPlannedAbsent(p,dk);
   const rh=a.inTime?calcRealH(pEff,a):isAbsent?0:null;
   AD.push({date:dk,part:pEff,att:a,schedH:sh,realH:rh});
