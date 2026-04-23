@@ -805,10 +805,15 @@ let st='pending',ac=a.inTime||null;const ph=a.stdPhrase||'';
 // 예정 초과 체크 (adjustedStart/End보다 더 늦거나 이른 경우)
 const lateOverReserved=ph==='지각'&&a.adjustedStart&&a.inTime&&toM(a.inTime)>toM(a.adjustedStart)+10;
 const earlyOverReserved=ph==='조기퇴근'&&a.adjustedEnd&&a.outTime&&toM(a.outTime)<toM(a.adjustedEnd)-10;
+// 자동 감지 조기퇴근 (stdPhrase 없고 퇴근이 스케줄보다 10분 이상 빠름)
+const autoEarlyDetect=a.outTime&&!ph&&toM(ds.end)-toM(a.outTime)>10;
+// 자동 감지 지각 (stdPhrase 없고 출근이 스케줄보다 10분 이상 늦음)
+const autoLateDetect=a.inTime&&!ph&&toM(a.adjustedStart||a.inTime)-toM(ds.start)>10;
 if(ph==='결근')st='absent-con';
 else if(ph==='정상')st='done';
-else if(lateOverReserved||earlyOverReserved)st='absent-unc'; // 예정 초과 → 미처리 표시
-else if(a.inTime){const effectiveIn=a.adjustedStart||a.inTime;if(toM(effectiveIn)>toM(ds.start))st='late';else if(a.outTime&&!ph&&toM(ds.end)-toM(a.outTime)>10)st='late';else st='done';}
+else if(lateOverReserved||earlyOverReserved)st='absent-unc'; // 예정 초과 → 미처리
+else if(autoEarlyDetect||autoLateDetect)st='absent-unc'; // 자동 감지 지각/조기퇴근 → 미처리
+else if(a.inTime){const effectiveIn=a.adjustedStart||a.inTime;if(toM(effectiveIn)>toM(ds.start))st='late';else st='done';}
 else if(isPast)st=ph?'absent-con':'absent-unc';
 else if(nm>toM(ds.start)+10)st=ph?'absent-con':'absent-unc';
 // 연장근무/조기퇴근 예약이 있어도 실제 퇴근(outTime) 없으면 아직 확정 안 됨
@@ -833,7 +838,7 @@ if(date===today){
 return scheduled;}
 function renderAll(){['mgmt','tutor','etc'].forEach(c=>{const ps=enrich(pfc(c),c);rStats(c,ps);rTL(c,ps);chkAlert(c,ps);});}
 function chkAlert(c,ps){const el=document.getElementById('alert-'+c);if(!el)return;const uc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule');if(uc.length>0){el.textContent=`⚠ 처리 필요: ${uc.map(p=>p.name+(p.status==='no-schedule'?' (스케줄없는출근 '+p.actual+')':p.nc?' (퇴근미확인)':'')).join(', ')}`;el.classList.add('show');}else el.classList.remove('show');}
-function rStats(c,ps){const ab=ps.filter(p=>p.status.startsWith('absent')).length;const unc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule').length;document.getElementById('stats-'+c).innerHTML=`<div class="stat-card danger" style="cursor:${unc>0?'pointer':'default'}" ${unc>0?`onclick="openStatsModal('${c}','unproc')"`:''}><div class="stat-label">미처리${unc>0?'<span class="stat-dot"></span>':''}</div><div class="stat-val">${unc}</div></div><div class="stat-card danger" onclick="openStatsModal('${c}','absent')"><div class="stat-label">결근</div><div class="stat-val">${ab}</div></div><div class="stat-card warning" onclick="openStatsModal('${c}','late')"><div class="stat-label">지각</div><div class="stat-val">${ps.filter(p=>p.status==='late').length}</div></div><div class="stat-card orange" onclick="openStatsModal('${c}','changed')"><div class="stat-label">변경근무</div><div class="stat-val">${ps.filter(p=>p.status==='changed').length}</div></div><div class="stat-card" style="cursor:default"><div class="stat-label">전체</div><div class="stat-val">${ps.filter(p=>p.status!=='no-schedule').length}</div></div>`;}
+function rStats(c,ps){const ab=ps.filter(p=>p.status.startsWith('absent')&&p.status!=='absent-unc').length;const unc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule').length;document.getElementById('stats-'+c).innerHTML=`<div class="stat-card danger" style="cursor:${unc>0?'pointer':'default'}" ${unc>0?`onclick="openStatsModal('${c}','unproc')"`:''}><div class="stat-label">미처리${unc>0?'<span class="stat-dot"></span>':''}</div><div class="stat-val">${unc}</div></div><div class="stat-card danger" onclick="openStatsModal('${c}','absent')"><div class="stat-label">결근</div><div class="stat-val">${ab}</div></div><div class="stat-card warning" onclick="openStatsModal('${c}','late')"><div class="stat-label">지각</div><div class="stat-val">${ps.filter(p=>p.status==='late').length}</div></div><div class="stat-card orange" onclick="openStatsModal('${c}','changed')"><div class="stat-label">변경근무</div><div class="stat-val">${ps.filter(p=>p.status==='changed').length}</div></div><div class="stat-card" style="cursor:default"><div class="stat-label">전체</div><div class="stat-val">${ps.filter(p=>p.status!=='no-schedule').length}</div></div>`;}
 function rTL(c,ps){const con=document.getElementById('tl-'+c);document.getElementById('tl-time-'+c).textContent=`기준 ${kstNow()}`;ps=ps.filter(p=>p.status!=='no-schedule');if(!ps.length){con.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">근무 인원 없음</div>';return;}const aS=ps.map(p=>toM(p.start)),aE=ps.map(p=>{const ext=p.ar&&p.ar.adjustedEnd?toM(p.ar.adjustedEnd):0;return Math.max(toM(p.end),ext);});let am=Math.floor(Math.min(...aS)/30)*30,ax=Math.ceil(Math.max(...aE)/30)*30;if(ax-am<120)ax=am+120;const asp=ax-am;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const np=Math.max(0,Math.min(100,(nm-am)/asp*100));const ts2=asp<=240?60:asp<=480?120:180;const tk=[];for(let t=Math.ceil(am/ts2)*ts2;t<=ax;t+=ts2)tk.push(t);const ax2=`<div class="tl-axis-row"><div class="tl-colorbar" style="visibility:hidden"></div><div class="tl-axis-info-col"></div><div class="tl-axis-bar-col"><div class="tl-axis-marks">${tk.map(t=>`<div class="tl-axis-mark" style="left:${(t-am)/asp*100}%"><span>${m2hm(t)}</span><div class="tl-axis-mark-line"></div></div>`).join('')}${nm>=am&&nm<=ax?`<div style="position:absolute;top:0;bottom:0;left:${np}%;width:2px;background:rgba(220,38,38,.5);border-radius:1px"></div>`:''}</div></div></div>`;const sorted=[...ps].sort((a,b)=>{const o={'absent-unc':0,'absent-con':1,'absent-pln':2,late:3,changed:4,done:5,pending:6};return(o[a.status]??5)-(o[b.status]??5)||a.start.localeCompare(b.start);});con.innerHTML=ax2+sorted.map(e=>bTL(e,am,asp,np)).join('');}
 function bTL(e,am,as,np){
 const col=cof(e.role);
@@ -885,8 +890,10 @@ const autoLateDash=e.ar?.inTime&&!ph&&toM(e.ar.adjustedStart||e.ar.inTime)-sM>10
 const tag=ph==='정상'?'':(autoEarlyDash?tagMap['조기퇴근']:(e.status==='late'&&autoLateDash?tagMap['지각']:e.status==='absent-con'?`<span style="${tagStyle}color:var(--danger);background:var(--danger-light)">결근</span>`:e.status==='absent-pln'?`<span style="${tagStyle}color:#fca5a5;background:#fff0f0">예정결근</span>`:e.status==='changed'?(tagMap[ph]||''):pendingExtTag||(tagMap[ph]||'')));
 const combinedTag=tempTag+tag;
 const dot=e.status==='absent-unc'?`<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--danger);margin-left:4px;animation:pulse 1s infinite"></span>`:'';
-const absentStyle=e.status==='absent-pln'?'border:2px dashed #fca5a5;background:transparent;':e.status==='absent-unc'?'border-color:#fca5a5;background:#fff5f5;':e.status==='absent-con'?'border-color:#fca5a5;background:#fff8f8;':'';
-const scm={done:'s-done',late:'s-late','absent-unc':'s-absent-unc','absent-con':'s-absent-con','absent-pln':'s-absent-pln',pending:'',changed:''};
+// 자동 감지 미처리 (출퇴근 찍었는데 지각/조기퇴근) vs 진짜 미확인 결근 구분
+const isAutoDetected=e.status==='absent-unc'&&e.ar?.inTime;
+const absentStyle=e.status==='absent-pln'?'border:2px dashed #fca5a5;background:transparent;':(e.status==='absent-unc'&&!isAutoDetected)?'border-color:#fca5a5;background:#fff5f5;':e.status==='absent-con'?'border-color:#fca5a5;background:#fff8f8;':'';
+const scm={done:'s-done',late:'s-late','absent-unc':isAutoDetected?'':'s-absent-unc','absent-con':'s-absent-con','absent-pln':'s-absent-pln',pending:'',changed:''};
 return`<div class="tl-item ${scm[e.status]||''}" style="${absentStyle}" onclick="openStaffModal('${e.id}')"><div class="tl-colorbar" style="background:${col}"></div><div class="tl-info"><div class="tl-name-row"><span class="tl-role" style="color:${col}">${e.role}</span><span class="tl-name">(${e.name})</span>${dot}</div><div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${combinedTag}<span style="font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace">${ts}</span></div></div><div class="tl-bar-area"><div class="tl-bar-bg"></div>${bar}<div class="tl-now-line" style="left:${np}%"></div></div></div>`;}
 function openStaffModal(pid){const p=AP[pid];if(!p)return;const col=cof(p.role);const cat=p.cat;const attData=TB[cat]||TA;const a=attData[pid]||{};const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const ph=a.stdPhrase||'';
 // 선택된 대시보드 날짜 사용 (오늘이 아닐 수 있음)
@@ -995,10 +1002,11 @@ function openStatsModal(c,sk){
   const mo=document.querySelector('#modal-stats .modal');if(mo)mo.style.maxWidth='';
   let ps;
   if(sk==='unproc'){
-    // 미처리: 미확인결근 + 퇴근미확인(nc) + 스케줄없는출근
+    // 미처리: 미확인결근 + 자동 지각/조기퇴근 + 퇴근미확인 + 스케줄없는출근
     ps=enrich(pfc(c),c).filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule');
   }else if(sk==='absent'){
-    ps=enrich(pfc(c),c).filter(p=>p.status.startsWith('absent'));
+    // 결근: 확정 결근 + 예정 결근만 (미확인 결근은 미처리로)
+    ps=enrich(pfc(c),c).filter(p=>p.status==='absent-con'||p.status==='absent-pln');
   }else{
     ps=enrich(pfc(c),c).filter(p=>p.status===sk);
   }
