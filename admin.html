@@ -301,10 +301,12 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
         <div style="margin-bottom:12px;display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
           <div><div class="form-label">시작일</div><input type="date" id="workman-from" class="form-input" style="width:155px;max-width:100%" onkeydown="if(event.key==='Enter')loadWorkmanData()"></div>
           <div><div class="form-label">종료일</div><input type="date" id="workman-to" class="form-input" style="width:155px;max-width:100%" onkeydown="if(event.key==='Enter')loadWorkmanData()"></div>
+          <div><div class="form-label">카테고리</div><select class="form-select" id="workman-cat" style="width:100px;max-width:100%" onchange="updateWorkmanRoleOptions();filterWorkmanByName()"><option value="">전체</option><option value="mgmt">📊 관리</option><option value="tutor">🎓 조교</option><option value="etc">🏢 기타</option></select></div>
+          <div><div class="form-label">역할(직무)</div><select class="form-select" id="workman-role" style="width:120px;max-width:100%" onchange="filterWorkmanByName()"><option value="">전체</option></select></div>
           <div><div class="form-label">이름 검색</div><input type="text" id="workman-name" class="form-input" style="width:120px;max-width:100%" placeholder="비워두면 전체" oninput="filterWorkmanByName()" onkeydown="if(event.key==='Enter')loadWorkmanData()"></div>
-          <div style="display:flex;align-items:center;gap:6px;padding-bottom:2px"><input type="checkbox" id="workman-unproc" style="width:16px;height:16px;cursor:pointer"><label for="workman-unproc" style="font-size:13px;cursor:pointer;color:var(--danger);font-weight:600">미처리만</label></div>
+          <div style="display:flex;align-items:center;gap:6px;padding-bottom:2px"><input type="checkbox" id="workman-unproc" style="width:16px;height:16px;cursor:pointer" onchange="filterWorkmanByName()"><label for="workman-unproc" style="font-size:13px;cursor:pointer;color:var(--danger);font-weight:600">미처리만</label></div>
           <div style="display:flex;align-items:center;gap:6px;padding-bottom:2px"><input type="checkbox" id="workman-include-resigned" style="width:16px;height:16px;cursor:pointer" onchange="loadWorkmanData()"><label for="workman-include-resigned" style="font-size:13px;cursor:pointer;color:#7e22ce;font-weight:600">⭐ 퇴사자/단발근무자 포함</label></div>
-          <select class="form-select" id="workman-phrase" style="width:110px;max-width:100%"><option value="">처리구분 전체</option><option value="미처리">미처리</option><option value="지각">지각</option><option value="조기퇴근">조기퇴근</option><option value="추가근무">연장근무</option><option value="결근">결근</option><option value="수동기록">수동기록</option></select>
+          <select class="form-select" id="workman-phrase" style="width:110px;max-width:100%" onchange="filterWorkmanByName()"><option value="">처리구분 전체</option><option value="미처리">미처리</option><option value="지각">지각</option><option value="조기퇴근">조기퇴근</option><option value="추가근무">연장근무</option><option value="결근">결근</option><option value="수동기록">수동기록</option></select>
           <button class="btn-secondary" onclick="setWorkmanToday()">오늘</button>
           <button class="btn-primary" onclick="loadWorkmanData()">조회</button>
           <button class="btn-secondary" onclick="exportWorkmanCSV()">📤 엑셀 다운로드</button>
@@ -610,7 +612,7 @@ window.changeDashDate=changeDashDate;
 function goToday(cat){const t=kstDate();DD[cat]=t;const el=document.getElementById('dash-date'+(cat==='mgmt'?'':'-'+cat));if(el)el.value=t;updateDL(cat,t);TB[cat]=TA;renderCat(cat);}
 window.goToday=goToday;
 function clk(){const k=new Date(Date.now()+9*3600000);const D=['일','월','화','수','목','금','토'];document.getElementById('top-date').textContent=`${k.getUTCFullYear()}.${String(k.getUTCMonth()+1).padStart(2,'0')}.${String(k.getUTCDate()).padStart(2,'0')} (${D[k.getUTCDay()]})  ${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')}`;}
-function listenP(){onValue(ref(db,'parts'),s=>{AP=s.val()||{};renderAll();renderPT();});}
+function listenP(){onValue(ref(db,'parts'),s=>{AP=s.val()||{};renderAll();renderPT();if(typeof updateWorkmanRoleOptions==='function')updateWorkmanRoleOptions();});}
 function listenA(){onValue(ref(db,`attendance/${kstDate()}`),s=>{TA=s.val()||{};['mgmt','tutor','etc'].forEach(c=>{if(DD[c]===kstDate())TB[c]=TA;});renderAll();
 // 출결현황이 오늘 날짜 조회 중이면 자동 갱신
 const wf=document.getElementById('workman-from')?.value;
@@ -1094,10 +1096,14 @@ if(!WD.length){document.getElementById('workman-list').innerHTML='<div style="pa
 const unprocOnly=document.getElementById('workman-unproc')?.checked;
 const nowM2=(new Date(Date.now()+9*3600000).getUTCHours())*60+(new Date(Date.now()+9*3600000).getUTCMinutes());
 const phraseFilter=document.getElementById('workman-phrase')?.value||'';
-// 이름 필터 (실시간 검색용) - WD는 이미 로드된 상태, 이름으로 다시 필터
+// 카테고리/역할/이름 필터
+const catFilter=document.getElementById('workman-cat')?.value||'';
+const roleFilter=document.getElementById('workman-role')?.value||'';
 const nameFilter2=(document.getElementById('workman-name')?.value||'').trim().toLowerCase();
 let filtered=WD;
-if(nameFilter2)filtered=filtered.filter(({p})=>p.name.toLowerCase().includes(nameFilter2)||p.role.toLowerCase().includes(nameFilter2));
+if(catFilter)filtered=filtered.filter(({p})=>p.cat===catFilter);
+if(roleFilter)filtered=filtered.filter(({p})=>p.role===roleFilter);
+if(nameFilter2)filtered=filtered.filter(({p})=>p.name.toLowerCase().includes(nameFilter2));
 if(unprocOnly)filtered=filtered.filter(({dt,p,a,unscheduled})=>{if(unscheduled)return !a.stdPhrase;const isToday=dt===kstDate();const isPlnAbs=isPlannedAbsent(p,dt);if(isPlnAbs&&!a.inTime)return false;const isReservationOnly=a.stdPhrase==='추가근무'&&!a.outTime;const noPhrase=!a.stdPhrase||isReservationOnly;
 // 자동 지각/조기퇴근 감지 (10분 이상)
 const autoLate=a.inTime&&!a.stdPhrase&&toM(a.adjustedStart||a.inTime)-toM(p.start)>10;
@@ -1175,18 +1181,48 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   else if(!a.inTime&&!startPassed&&isToday2)procBadge='<span style="color:var(--text-muted);font-size:11px">출근 전</span>';
   else if(isFuture)procBadge='<span style="color:var(--text-muted);font-size:11px">예정</span>';
   else procBadge='-';
-  return alertRow+`<tr style="${unproc?'background:#fffbeb;':''}"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})${pResignedBadge}${pCasualBadge}</td><td style="font-family:'DM Mono',monospace">${p.start}~${p.end}</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}${a.adjustedStart&&a.adjustedStart!==a.inTime?' <span style="color:var(--accent)">('+a.adjustedStart+')</span>':''}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}${a.adjustedEnd&&a.adjustedEnd!==a.outTime?' <span style="color:var(--accent)">('+a.adjustedEnd+')</span>':''}${!a.outTime&&!a.adjustedEnd&&a.inTime&&!a.stdPhrase?'<span style="font-size:10px;color:var(--orange);margin-left:4px">⚠미확인</span>':''}${a.notes&&a.notes.length?'<span style="font-size:10px;color:#92400e;background:#fef3c7;padding:1px 5px;border-radius:8px;margin-left:4px;border:1px solid #fde68a">💬'+a.notes.length+'</span>':''}</td><td style="font-family:'DM Mono',monospace;color:var(--text-muted);font-weight:400">${unscheduled?'-':sh+'h'}</td><td style="font-weight:500;font-family:'DM Mono',monospace;color:${rhColor}">${rhDisp}</td><td>${procBadge}</td><td>${ce?(isFuture?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="미래 날짜는 파트관리 달력에서 등록해주세요">수정</button>`:(a.inTime&&!a.outTime&&!a.adjustedEnd?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="퇴근 기록이 없습니다. 수동기록을 사용하세요">수정</button>`:`<button class="icon-btn" onclick="openWE('${p.id}','${dt}')">수정</button>`)):(isFuture?'':`<button class="icon-btn" style="color:#92400e;border-color:#fde68a" onclick="openWE('${p.id}','${dt}')">💬 메모</button>`)}${ce&&(!hp||!a.outTime)?(isFuture?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="미래 날짜는 파트관리 달력에서 등록해주세요">수동기록</button>`:`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`):''}${ce&&hp?`<button class="icon-btn del" onclick="deleteAttend('${p.id}','${dt}')">패드기록 삭제</button>`:''}</td></tr>`;
+  return alertRow+`<tr style="${unproc?'background:#fffbeb;':''}"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})${pResignedBadge}${pCasualBadge}</td><td style="font-family:'DM Mono',monospace">${p.start}~${p.end}</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}${a.adjustedStart&&a.adjustedStart!==a.inTime?' <span style="color:var(--accent)">('+a.adjustedStart+')</span>':''}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}${a.adjustedEnd&&a.adjustedEnd!==a.outTime?' <span style="color:var(--accent)">('+a.adjustedEnd+')</span>':''}${!a.outTime&&!a.adjustedEnd&&a.inTime&&!a.stdPhrase?'<span style="font-size:10px;color:var(--orange);margin-left:4px">⚠미확인</span>':''}${a.notes&&a.notes.length?'<span style="font-size:10px;color:#92400e;background:#fef3c7;padding:1px 5px;border-radius:8px;margin-left:4px;border:1px solid #fde68a">💬'+a.notes.length+'</span>':''}</td><td style="font-family:'DM Mono',monospace;color:var(--text-muted);font-weight:400">${unscheduled?'-':sh+'h'}</td><td style="font-weight:500;font-family:'DM Mono',monospace;color:${rhColor}">${rhDisp}</td><td>${procBadge}</td><td>${ce?(isFuture?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="미래 날짜는 파트관리 달력에서 등록해주세요">수정</button>`:(a.inTime&&!a.outTime&&!a.adjustedEnd?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="퇴근 기록이 없습니다. 수동기록을 사용하세요">수정</button>`:`<button class="icon-btn" onclick="openWE('${p.id}','${dt}')">수정</button>`)):(isFuture?'':`<button class="icon-btn" style="color:#92400e;border-color:#fde68a" onclick="openWE('${p.id}','${dt}')">💬 메모</button>`)}${ce&&!hp?(isFuture?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="미래 날짜는 파트관리 달력에서 등록해주세요">수동기록</button>`:`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동기록</button>`):''}${ce&&hp?`<button class="icon-btn del" onclick="deleteAttend('${p.id}','${dt}')">패드기록 삭제</button>`:''}</td></tr>`;
 }).join('');
 document.getElementById('workman-list').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>날짜</th><th>카테고리</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th style="color:var(--text-muted);font-weight:500">스케줄시수</th><th>실시수</th><th>처리구분</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 window.loadWorkmanData=loadWorkmanData;
 window.renderWorkmanList=renderWorkmanList;
+// 카테고리 선택에 따라 역할(직무) 드롭다운 동적 업데이트
+function updateWorkmanRoleOptions(){
+  const catSel=document.getElementById('workman-cat');
+  const roleSel=document.getElementById('workman-role');
+  if(!catSel||!roleSel)return;
+  const cat=catSel.value;
+  const currentRole=roleSel.value;
+  // AP에서 해당 카테고리의 고유 role 목록 수집
+  const roles=new Set();
+  Object.values(AP||{}).forEach(p=>{
+    if(!cat||p.cat===cat){
+      if(p.role)roles.add(p.role);
+    }
+  });
+  const sortedRoles=[...roles].sort((a,b)=>a.localeCompare(b,'ko'));
+  roleSel.innerHTML='<option value="">전체</option>'+sortedRoles.map(r=>`<option value="${r}"${r===currentRole?' selected':''}>${r}</option>`).join('');
+  // 선택했던 역할이 새 목록에 없으면 '전체'로
+  if(currentRole&&!sortedRoles.includes(currentRole))roleSel.value='';
+}
+window.updateWorkmanRoleOptions=updateWorkmanRoleOptions;
 // 실시간 이름 검색 - 이미 로드된 WD 데이터에서 필터링만 (Firebase 재조회 없음)
 function filterWorkmanByName(){
   if(!WD||!WD.length)return;
   renderWorkmanList();
 }
 window.filterWorkmanByName=filterWorkmanByName;
-function exportWorkmanCSV(){if(!WD.length){ST('먼저 조회해주세요');return;}const h='날짜,카테고리,직무,이름,스케줄,출근,퇴근,실시수,처리구분,메모,처리자';const rows=WD.map(({dt,p,a})=>[dt,CATL[p.cat]||p.cat,p.role,p.name,p.start+'~'+p.end,a.inTime||'',a.outTime||'',calcRealH(p,a.inTime?a:null),a.stdPhrase||'',a.memoText||'',a.memoBy||''].map(v=>'"'+v+'"').join(',')).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_출근현황_'+document.getElementById('workman-from').value+'_'+document.getElementById('workman-to').value+'.csv';a.click();URL.revokeObjectURL(u);}
+function exportWorkmanCSV(){if(!WD.length){ST('먼저 조회해주세요');return;}
+// 현재 화면 필터 적용
+const catF=document.getElementById('workman-cat')?.value||'';
+const roleF=document.getElementById('workman-role')?.value||'';
+const nameF=(document.getElementById('workman-name')?.value||'').trim().toLowerCase();
+let data=WD;
+if(catF)data=data.filter(({p})=>p.cat===catF);
+if(roleF)data=data.filter(({p})=>p.role===roleF);
+if(nameF)data=data.filter(({p})=>p.name.toLowerCase().includes(nameF));
+if(!data.length){ST('현재 필터 조건에 맞는 데이터가 없습니다');return;}
+const h='날짜,카테고리,직무,이름,스케줄,출근,퇴근,실시수,처리구분,메모,처리자';const rows=data.map(({dt,p,a})=>[dt,CATL[p.cat]||p.cat,p.role,p.name,p.start+'~'+p.end,a.inTime||'',a.outTime||'',calcRealH(p,a.inTime?a:null),a.stdPhrase||'',a.memoText||'',a.memoBy||''].map(v=>'"'+v+'"').join(',')).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_출근현황_'+document.getElementById('workman-from').value+'_'+document.getElementById('workman-to').value+'.csv';a.click();URL.revokeObjectURL(u);}
 window.exportWorkmanCSV=exportWorkmanCSV;
 function openUnscheduled(pid,dt){const p=AP[pid];if(!p)return;const col=cof(p.role);document.getElementById('modal-workman-title').innerHTML=`<span style="color:${col}">${p.role}</span> (${p.name}) 추가근무 처리`;document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">📌 스케줄 없는 날 출근 기록 — 추가근무로 처리합니다.</div><div style="display:flex;gap:10px;margin-bottom:14px"><div class="form-group" style="flex:1"><label class="form-label">출근 시각</label><input type="time" class="form-input" id="us-in" value="${(function(){const a={}; return a;})().inTime||p.start}"></div><div class="form-group" style="flex:1"><label class="form-label">퇴근 시각</label><input type="time" class="form-input" id="us-out" value="${p.end}"></div></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현</div><div class="memo-quick">${(MEMO_QUICK['추가근무']||[]).map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('us-mo').value+=(document.getElementById('us-mo').value?' / ':'')+'${q}'">${q}</button>`).join('')}</div><div class="form-group" style="margin-top:8px"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="us-mo" placeholder="추가근무 사유"></textarea></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveUnscheduled('${pid}','${dt}')">추가근무 처리</button></div>`;OM('modal-workman-edit');}
 window.openUnscheduled=openUnscheduled;
@@ -1288,66 +1324,76 @@ function openMA(pid,dt){
   const ds=tempDay?{start:tempDay.start,end:tempDay.end}:getDayTime(p,dw,dt);
   const defStart=ds.start||p.start;
   const defEnd=ds.end||p.end;
+  // 모드 자동 판단: 오늘이고 퇴근시각 전이면 '출근만' 기본
+  const isToday=dt===kstDate();
+  const k=new Date(Date.now()+9*3600000);
+  const nowM=k.getUTCHours()*60+k.getUTCMinutes();
+  const isStillWorking=isToday&&nowM<toM(defEnd);
+  const defaultMode=isStillWorking?'in-only':'both';
   // 기존 패드 기록 확인
   get(ref(db,`attendance/${dt}/${pid}`)).then(sn=>{
     const adMA=sn.val()||{};
     const inStart=adMA.inTime||defStart;
     const inEnd=adMA.outTime||defEnd;
-    const hasIn=!!adMA.inTime;
-    const hasOut=!!adMA.outTime;
     const schedInfo=`<div style="background:#f9fafb;border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;line-height:1.8"><div><span style="color:var(--text-muted);display:inline-block;width:80px">스케줄</span><span style="font-family:'DM Mono',monospace">${defStart} ~ ${defEnd}</span></div><div><span style="color:var(--text-muted);display:inline-block;width:80px">패드 기록</span><span style="font-family:'DM Mono',monospace">${adMA.inTime||'-'} ~ ${adMA.outTime||'-'}</span></div></div>`;
+    const modeSelector=`<div class="form-group" style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:10px 12px;margin-bottom:12px"><label class="form-label" style="margin-bottom:6px;color:#0369a1">📝 기록 모드</label><div style="display:flex;gap:16px;flex-wrap:wrap"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="ma-mode" value="in-only" ${defaultMode==='in-only'?'checked':''} onchange="toggleMAMode()"><span><b>출근만</b> <span style="color:var(--text-muted);font-size:11px">(아직 근무중)</span></span></label><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="ma-mode" value="both" ${defaultMode==='both'?'checked':''} onchange="toggleMAMode()"><span><b>출근+퇴근</b> <span style="color:var(--text-muted);font-size:11px">(근무 완료)</span></span></label></div></div>`;
+    const outStyle=defaultMode==='in-only'?'display:none;':'';
+    const phStyle=defaultMode==='in-only'?'display:none;':'';
     document.getElementById('modal-workman-title').innerHTML=`<span style="color:${col}">${p.role}</span> (${p.name}) 수동기록`;
-    // 시간 필드 구성: 패드 있으면 고정(disabled), 없으면 편집 가능
-    const inFieldHtml=hasIn?`<div class="form-group" style="flex:1" id="ma-in-wrap"><label class="form-label">출근 시각 <span style="color:var(--success);font-size:10px">✓ 패드</span></label><input type="text" class="form-input" value="${adMA.inTime}" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;font-family:'DM Mono',monospace"><input type="hidden" id="ma-in" value="${adMA.inTime}"></div>`:`<div class="form-group" style="flex:1" id="ma-in-wrap"><label class="form-label">출근 시각</label>${mkTimeSelect5('ma-in',inStart)}</div>`;
-    const outFieldHtml=hasOut?`<div class="form-group" style="flex:1" id="ma-out-wrap"><label class="form-label">퇴근 시각 <span style="color:var(--success);font-size:10px">✓ 패드</span></label><input type="text" class="form-input" value="${adMA.outTime}" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;font-family:'DM Mono',monospace"><input type="hidden" id="ma-out" value="${adMA.outTime}"></div>`:`<div class="form-group" style="flex:1" id="ma-out-wrap"><label class="form-label">퇴근 시각</label>${mkTimeSelect5('ma-out',inEnd)}</div>`;
-    // 안내 메시지: 상황별로 다르게
-    let guideMsg='';
-    if(!hasIn&&!hasOut){guideMsg='💡 <b>출근만 입력</b>: 직원이 나중에 퇴근 패드 찍을 수 있습니다<br>💡 <b>둘 다 입력</b>: 완전 수동 기록 (패드 없음)';}
-    else if(hasIn&&!hasOut){guideMsg='💡 출근은 패드 기록으로 <b>고정</b>됩니다. 퇴근 시간만 입력하세요.';}
-    // 체크박스: 출근X+퇴근X일 때만 "출근만 입력" 표시 (퇴근만 케이스는 자동)
-    const checkboxSection=(!hasIn&&!hasOut)?`<div style="display:flex;gap:14px;margin-bottom:10px;padding:8px;background:#f9fafb;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="ma-in-only" onchange="toggleMAFields()">출근만 입력 (퇴근은 직원이 패드)</label></div>`:'';
-    document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">📌 ${dt} 관리자 수동 입력 — 이력에 기록됩니다.</div>${schedInfo}${guideMsg?`<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#0369a1">${guideMsg}</div>`:''}${checkboxSection}<div style="display:flex;gap:10px;margin-bottom:14px">${inFieldHtml}${outFieldHtml}</div><div class="form-group"><label class="form-label">표준문구 (필수)</label><select class="form-select" id="ma-ph"><option value="">선택하세요</option>${PHRASES.filter(x=>x!=='수동기록').map(ph=>`<option value="${ph}">${phraseLabel(ph)}</option>`).join('')}</select></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현 <span style="color:var(--text-muted)">(수동입력)</span></div><div class="memo-quick">${(MEMO_QUICK['수동기록']||[]).map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('ma-mo').value+=(document.getElementById('ma-mo').value?'  /  ':'')+\'${q}\'">${q}</button>`).join('')}</div><div class="form-group"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="ma-mo" placeholder="수동입력 사유 (예: 패드 오류)"></textarea></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveMA('${pid}','${dt}')">저장</button></div>`;
+    document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">📌 ${dt} 관리자 수동 입력 — 이력에 기록됩니다.</div>${schedInfo}${modeSelector}<div style="display:flex;gap:10px;margin-bottom:14px"><div class="form-group" style="flex:1"><label class="form-label">출근 시각</label>${mkTimeSelect5('ma-in',inStart)}</div><div class="form-group" id="ma-out-wrap" style="flex:1;${outStyle}"><label class="form-label">퇴근 시각</label>${mkTimeSelect5('ma-out',inEnd)}</div></div><div class="form-group" id="ma-ph-wrap" style="${phStyle}"><label class="form-label">표준문구 (필수)</label><select class="form-select" id="ma-ph"><option value="">선택하세요</option>${PHRASES.filter(x=>x!=='수동기록').map(ph=>`<option value="${ph}">${phraseLabel(ph)}</option>`).join('')}</select></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현 <span style="color:var(--text-muted)">(수동입력)</span></div><div class="memo-quick">${(MEMO_QUICK['수동기록']||[]).map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('ma-mo').value+=(document.getElementById('ma-mo').value?'  /  ':'')+\'${q}\'">${q}</button>`).join('')}</div><div class="form-group"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="ma-mo" placeholder="수동입력 사유 (예: 패드 오류)"></textarea></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveMA('${pid}','${dt}')">저장</button></div>`;
     OM('modal-workman-edit');
   });
 }
 window.openMA=openMA;
-// 수동기록 - 출근만 토글 (퇴근X + 출근X 케이스만)
-function toggleMAFields(){
-  const inOnly=document.getElementById('ma-in-only')?.checked;
-  const outWrap=document.getElementById('ma-out-wrap');
-  if(!outWrap)return;
-  outWrap.style.display=inOnly?'none':'';
-}
-window.toggleMAFields=toggleMAFields;
 async function saveMA(pid,dt){
-const inOnly=document.getElementById('ma-in-only')?.checked;
-const ph=document.getElementById('ma-ph').value;
-const mo=document.getElementById('ma-mo').value.trim();
-if(!ph){ST('표준문구를 선택해주세요');return;}
-if(!mo){ST('메모를 입력해주세요');return;}
-SL(true);
-// 기존 데이터 가져와서 history 누적 + 패드 원본 절대 보호
-const arMA=ref(db,`attendance/${dt}/${pid}`);
-const snPreMA=await get(arMA);
-const adPreMA=snPreMA.val()||{};
-const histMA=adPreMA.history||[];
-const hasIn=!!adPreMA.inTime;
-const hasOut=!!adPreMA.outTime;
-// 시간 결정: 패드 있으면 패드값 고정, 없으면 입력값
-const finalIn=hasIn?adPreMA.inTime:(document.getElementById('ma-in').value||syncGetTime('ma-in'));
-const finalOut=hasOut?adPreMA.outTime:(inOnly?null:(document.getElementById('ma-out').value||syncGetTime('ma-out')));
-histMA.push({type:'manual',inTime:finalIn,outTime:finalOut,phrase:ph,memo:mo,by:CU.name,at:`${kstLabel()} ${kstNow()}`,mode:inOnly?'in-only':'both'});
-const newAd={stdPhrase:ph,memoBy:CU.name,memoAt:`${kstLabel()} ${kstNow()}`,memoText:mo,manual:true,history:histMA};
-if(finalIn)newAd.inTime=finalIn;
-if(finalOut)newAd.outTime=finalOut;
-// 기존 notes 보존
-if(adPreMA.notes)newAd.notes=adPreMA.notes;
-// 기존 adjustedStart/End 보존 (수정 이력)
-if(adPreMA.adjustedStart)newAd.adjustedStart=adPreMA.adjustedStart;
-if(adPreMA.adjustedEnd)newAd.adjustedEnd=adPreMA.adjustedEnd;
-await set(arMA,newAd);
-SL(false);ST('수동기록 완료');CM('modal-workman-edit');loadWorkmanData();}
+  const mode=document.querySelector('input[name="ma-mode"]:checked')?.value||'both';
+  const it=document.getElementById('ma-in').value||syncGetTime('ma-in');
+  const mo=document.getElementById('ma-mo').value.trim();
+  if(!it){ST('출근 시각을 입력해주세요');return;}
+  if(!mo){ST('메모를 입력해주세요');return;}
+  let ot='',ph='';
+  if(mode==='both'){
+    ot=document.getElementById('ma-out').value||syncGetTime('ma-out');
+    ph=document.getElementById('ma-ph').value;
+    if(!ot){ST('퇴근 시각을 입력해주세요');return;}
+    if(!ph){ST('표준문구를 선택해주세요');return;}
+  }
+  SL(true);
+  const arMA=ref(db,`attendance/${dt}/${pid}`);
+  const snPreMA=await get(arMA);
+  const adPreMA=snPreMA.val()||{};
+  const histMA=adPreMA.history||[];
+  const now=`${kstLabel()} ${kstNow()}`;
+  let data;
+  if(mode==='in-only'){
+    histMA.push({type:'manual-in',inTime:it,memo:mo,by:CU.name,at:now});
+    data={inTime:it,manual:true,memoBy:CU.name,memoAt:now,memoText:mo,history:histMA};
+  }else{
+    histMA.push({type:'manual',inTime:it,outTime:ot,phrase:ph,memo:mo,by:CU.name,at:now});
+    data={inTime:it,outTime:ot,stdPhrase:ph,memoBy:CU.name,memoAt:now,memoText:mo,manual:true,history:histMA};
+  }
+  // 기존 notes(일반 메모) 보존
+  if(adPreMA.notes)data.notes=adPreMA.notes;
+  await set(arMA,data);
+  SL(false);
+  ST(mode==='in-only'?'출근만 수동기록 완료':'수동기록 완료');
+  CM('modal-workman-edit');
+  loadWorkmanData();
+}
 window.saveMA=saveMA;
+function toggleMAMode(){
+  const mode=document.querySelector('input[name="ma-mode"]:checked')?.value||'both';
+  const outWrap=document.getElementById('ma-out-wrap');
+  const phWrap=document.getElementById('ma-ph-wrap');
+  if(mode==='in-only'){
+    if(outWrap)outWrap.style.display='none';
+    if(phWrap)phWrap.style.display='none';
+  }else{
+    if(outWrap)outWrap.style.display='flex';
+    if(phWrap)phWrap.style.display='';
+  }
+}
+window.toggleMAMode=toggleMAMode;
 async function loadAcct(){const fr=document.getElementById('acct-from').value;const to=document.getElementById('acct-to').value;if(!fr||!to){ST('기간을 선택해주세요');return;}SL(true);
 // 재직상태 필터
 const statusFilter=document.getElementById('acct-status')?.value||'working';
