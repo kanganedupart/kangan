@@ -1209,9 +1209,16 @@ async function saveNoteOnly(pid,dt,sourceId){
   notes.push({text:txt,by:CU.name,at:`${kstLabel()} ${kstNow()}`});
   ad.notes=notes;
   await set(ar,ad);
+  // TB 캐시 갱신 (대시보드 팝업 반영 위해)
+  const pp=AP[pid];
+  if(pp){
+    if(!TB[pp.cat])TB[pp.cat]={};
+    TB[pp.cat][pid]=ad;
+    if(dt===kstDate())TA[pid]=ad;
+  }
   SL(false);
   ST('메모 저장 완료 (미처리 유지)');
-  // 팝업 새로고침 (현재 열려있는 팝업 다시 열기)
+  // 팝업 새로고침
   if(document.getElementById('modal-workman-edit').classList.contains('open')){
     CM('modal-workman-edit');
     setTimeout(()=>openWE(pid,dt),100);
