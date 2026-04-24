@@ -1216,17 +1216,26 @@ async function saveNoteOnly(pid,dt,sourceId){
     TB[pp.cat][pid]=ad;
     if(dt===kstDate())TA[pid]=ad;
   }
+  // 출결현황 WD 캐시 갱신
+  if(WD&&WD.length){
+    WD.forEach(w=>{if(w.p.id===pid&&w.dt===dt){w.a=ad;}});
+  }
   SL(false);
   ST('메모 저장 완료 (미처리 유지)');
-  // 팝업 새로고침
-  if(document.getElementById('modal-workman-edit').classList.contains('open')){
+  // 팝업 새로고침 (DB 재조회 포함되어 있음)
+  const isWorkmanOpen=document.getElementById('modal-workman-edit').classList.contains('open');
+  const isStaffOpen=document.getElementById('modal-staff').classList.contains('open');
+  if(isWorkmanOpen){
     CM('modal-workman-edit');
-    setTimeout(()=>openWE(pid,dt),100);
-  }else if(document.getElementById('modal-staff').classList.contains('open')){
+    await new Promise(r=>setTimeout(r,200));
+    await openWE(pid,dt);
+  }else if(isStaffOpen){
     CM('modal-staff');
-    setTimeout(()=>openStaffModal(pid),100);
+    await new Promise(r=>setTimeout(r,200));
+    openStaffModal(pid);
   }
-  loadWorkmanData();
+  // 출결현황 리스트 갱신 (백그라운드)
+  if(typeof renderWorkmanList==='function')renderWorkmanList();
 }
 window.saveNoteOnly=saveNoteOnly;
 async function openWE(pid,dt){const p=AP[pid];if(!p)return;const col=cof(p.role);document.getElementById('modal-workman-title').innerHTML=`<span style="color:${col}">${p.role}</span> (${p.name}) — ${dt}`;const p2=AP[pid];const sn2=await get(ref(db,`attendance/${dt}/${pid}`));const ad2=sn2.val()||{};const hist=ad2.history||[];const notes=ad2.notes||[];const histHtml=rHistory(hist);const notesHtml=rNotes(notes);
