@@ -1293,21 +1293,59 @@ function openMA(pid,dt){
     const adMA=sn.val()||{};
     const inStart=adMA.inTime||defStart;
     const inEnd=adMA.outTime||defEnd;
+    const hasIn=!!adMA.inTime;
+    const hasOut=!!adMA.outTime;
     const schedInfo=`<div style="background:#f9fafb;border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;line-height:1.8"><div><span style="color:var(--text-muted);display:inline-block;width:80px">스케줄</span><span style="font-family:'DM Mono',monospace">${defStart} ~ ${defEnd}</span></div><div><span style="color:var(--text-muted);display:inline-block;width:80px">패드 기록</span><span style="font-family:'DM Mono',monospace">${adMA.inTime||'-'} ~ ${adMA.outTime||'-'}</span></div></div>`;
     document.getElementById('modal-workman-title').innerHTML=`<span style="color:${col}">${p.role}</span> (${p.name}) 수동기록`;
-    document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">📌 ${dt} 관리자 수동 입력 — 이력에 기록됩니다.</div>${schedInfo}<div style="display:flex;gap:10px;margin-bottom:14px"><div class="form-group" style="flex:1"><label class="form-label">출근 시각</label>${mkTimeSelect5('ma-in',inStart)}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근 시각</label>${mkTimeSelect5('ma-out',inEnd)}</div></div><div class="form-group"><label class="form-label">표준문구 (필수)</label><select class="form-select" id="ma-ph"><option value="">선택하세요</option>${PHRASES.filter(x=>x!=='수동기록').map(ph=>`<option value="${ph}">${phraseLabel(ph)}</option>`).join('')}</select></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현 <span style="color:var(--text-muted)">(수동입력)</span></div><div class="memo-quick">${(MEMO_QUICK['수동기록']||[]).map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('ma-mo').value+=(document.getElementById('ma-mo').value?'  /  ':'')+\'${q}\'">${q}</button>`).join('')}</div><div class="form-group"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="ma-mo" placeholder="수동입력 사유 (예: 패드 오류)"></textarea></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveMA('${pid}','${dt}')">저장</button></div>`;
+    // 시간 필드 구성: 패드 있으면 고정(disabled), 없으면 편집 가능
+    const inFieldHtml=hasIn?`<div class="form-group" style="flex:1" id="ma-in-wrap"><label class="form-label">출근 시각 <span style="color:var(--success);font-size:10px">✓ 패드</span></label><input type="text" class="form-input" value="${adMA.inTime}" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;font-family:'DM Mono',monospace"><input type="hidden" id="ma-in" value="${adMA.inTime}"></div>`:`<div class="form-group" style="flex:1" id="ma-in-wrap"><label class="form-label">출근 시각</label>${mkTimeSelect5('ma-in',inStart)}</div>`;
+    const outFieldHtml=hasOut?`<div class="form-group" style="flex:1" id="ma-out-wrap"><label class="form-label">퇴근 시각 <span style="color:var(--success);font-size:10px">✓ 패드</span></label><input type="text" class="form-input" value="${adMA.outTime}" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed;font-family:'DM Mono',monospace"><input type="hidden" id="ma-out" value="${adMA.outTime}"></div>`:`<div class="form-group" style="flex:1" id="ma-out-wrap"><label class="form-label">퇴근 시각</label>${mkTimeSelect5('ma-out',inEnd)}</div>`;
+    // 안내 메시지: 상황별로 다르게
+    let guideMsg='';
+    if(!hasIn&&!hasOut){guideMsg='💡 <b>출근만 입력</b>: 직원이 나중에 퇴근 패드 찍을 수 있습니다<br>💡 <b>둘 다 입력</b>: 완전 수동 기록 (패드 없음)';}
+    else if(hasIn&&!hasOut){guideMsg='💡 출근은 패드 기록으로 <b>고정</b>됩니다. 퇴근 시간만 입력하세요.';}
+    // 체크박스: 출근X+퇴근X일 때만 "출근만 입력" 표시 (퇴근만 케이스는 자동)
+    const checkboxSection=(!hasIn&&!hasOut)?`<div style="display:flex;gap:14px;margin-bottom:10px;padding:8px;background:#f9fafb;border-radius:6px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="ma-in-only" onchange="toggleMAFields()">출근만 입력 (퇴근은 직원이 패드)</label></div>`:'';
+    document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">📌 ${dt} 관리자 수동 입력 — 이력에 기록됩니다.</div>${schedInfo}${guideMsg?`<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#0369a1">${guideMsg}</div>`:''}${checkboxSection}<div style="display:flex;gap:10px;margin-bottom:14px">${inFieldHtml}${outFieldHtml}</div><div class="form-group"><label class="form-label">표준문구 (필수)</label><select class="form-select" id="ma-ph"><option value="">선택하세요</option>${PHRASES.filter(x=>x!=='수동기록').map(ph=>`<option value="${ph}">${phraseLabel(ph)}</option>`).join('')}</select></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현 <span style="color:var(--text-muted)">(수동입력)</span></div><div class="memo-quick">${(MEMO_QUICK['수동기록']||[]).map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('ma-mo').value+=(document.getElementById('ma-mo').value?'  /  ':'')+\'${q}\'">${q}</button>`).join('')}</div><div class="form-group"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="ma-mo" placeholder="수동입력 사유 (예: 패드 오류)"></textarea></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveMA('${pid}','${dt}')">저장</button></div>`;
     OM('modal-workman-edit');
   });
 }
 window.openMA=openMA;
-async function saveMA(pid,dt){const it=document.getElementById('ma-in').value||syncGetTime('ma-in');const ot=document.getElementById('ma-out').value||syncGetTime('ma-out');const ph=document.getElementById('ma-ph').value;const mo=document.getElementById('ma-mo').value.trim();if(!ph){ST('표준문구를 선택해주세요');return;}if(!mo){ST('메모를 입력해주세요');return;}SL(true);
-// 기존 데이터 가져와서 history 누적
+// 수동기록 - 출근만 토글 (퇴근X + 출근X 케이스만)
+function toggleMAFields(){
+  const inOnly=document.getElementById('ma-in-only')?.checked;
+  const outWrap=document.getElementById('ma-out-wrap');
+  if(!outWrap)return;
+  outWrap.style.display=inOnly?'none':'';
+}
+window.toggleMAFields=toggleMAFields;
+async function saveMA(pid,dt){
+const inOnly=document.getElementById('ma-in-only')?.checked;
+const ph=document.getElementById('ma-ph').value;
+const mo=document.getElementById('ma-mo').value.trim();
+if(!ph){ST('표준문구를 선택해주세요');return;}
+if(!mo){ST('메모를 입력해주세요');return;}
+SL(true);
+// 기존 데이터 가져와서 history 누적 + 패드 원본 절대 보호
 const arMA=ref(db,`attendance/${dt}/${pid}`);
 const snPreMA=await get(arMA);
 const adPreMA=snPreMA.val()||{};
 const histMA=adPreMA.history||[];
-histMA.push({type:'manual',inTime:it,outTime:ot,phrase:ph,memo:mo,by:CU.name,at:`${kstLabel()} ${kstNow()}`});
-await set(arMA,{inTime:it,outTime:ot,stdPhrase:ph,memoBy:CU.name,memoAt:`${kstLabel()} ${kstNow()}`,memoText:mo,manual:true,history:histMA});
+const hasIn=!!adPreMA.inTime;
+const hasOut=!!adPreMA.outTime;
+// 시간 결정: 패드 있으면 패드값 고정, 없으면 입력값
+const finalIn=hasIn?adPreMA.inTime:(document.getElementById('ma-in').value||syncGetTime('ma-in'));
+const finalOut=hasOut?adPreMA.outTime:(inOnly?null:(document.getElementById('ma-out').value||syncGetTime('ma-out')));
+histMA.push({type:'manual',inTime:finalIn,outTime:finalOut,phrase:ph,memo:mo,by:CU.name,at:`${kstLabel()} ${kstNow()}`,mode:inOnly?'in-only':'both'});
+const newAd={stdPhrase:ph,memoBy:CU.name,memoAt:`${kstLabel()} ${kstNow()}`,memoText:mo,manual:true,history:histMA};
+if(finalIn)newAd.inTime=finalIn;
+if(finalOut)newAd.outTime=finalOut;
+// 기존 notes 보존
+if(adPreMA.notes)newAd.notes=adPreMA.notes;
+// 기존 adjustedStart/End 보존 (수정 이력)
+if(adPreMA.adjustedStart)newAd.adjustedStart=adPreMA.adjustedStart;
+if(adPreMA.adjustedEnd)newAd.adjustedEnd=adPreMA.adjustedEnd;
+await set(arMA,newAd);
 SL(false);ST('수동기록 완료');CM('modal-workman-edit');loadWorkmanData();}
 window.saveMA=saveMA;
 async function loadAcct(){const fr=document.getElementById('acct-from').value;const to=document.getElementById('acct-to').value;if(!fr||!to){ST('기간을 선택해주세요');return;}SL(true);
