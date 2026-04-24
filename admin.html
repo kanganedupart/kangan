@@ -898,9 +898,14 @@ const isAutoDetected=e.status==='absent-unc'&&e.ar?.inTime;
 const absentStyle=e.status==='absent-pln'?'border:2px dashed #fca5a5;background:transparent;':(e.status==='absent-unc'&&!isAutoDetected)?'border-color:#fca5a5;background:#fff5f5;':e.status==='absent-con'?'border-color:#fca5a5;background:#fff8f8;':'';
 const scm={done:'s-done',late:'s-late','absent-unc':isAutoDetected?'':'s-absent-unc','absent-con':'s-absent-con','absent-pln':'s-absent-pln',pending:'',changed:''};
 return`<div class="tl-item ${scm[e.status]||''}" style="${absentStyle}" onclick="openStaffModal('${e.id}')"><div class="tl-colorbar" style="background:${col}"></div><div class="tl-info"><div class="tl-name-row"><span class="tl-role" style="color:${col}">${e.role}</span><span class="tl-name">(${e.name})</span>${dot}</div><div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${combinedTag}<span style="font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace">${ts}</span></div></div><div class="tl-bar-area"><div class="tl-bar-bg"></div>${bar}<div class="tl-now-line" style="left:${np}%"></div></div></div>`;}
-function openStaffModal(pid){const p=AP[pid];if(!p)return;const col=cof(p.role);const cat=p.cat;const attData=TB[cat]||TA;const a=attData[pid]||{};const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const ph=a.stdPhrase||'';
+async function openStaffModal(pid){const p=AP[pid];if(!p)return;const col=cof(p.role);const cat=p.cat;
 // 선택된 대시보드 날짜 사용 (오늘이 아닐 수 있음)
 const viewDate=DD[cat]||kstDate();
+// DB에서 최신 데이터 직접 조회 (캐시 우회)
+let a={};
+try{const sn=await get(ref(db,`attendance/${viewDate}/${pid}`));a=sn.val()||{};}
+catch(e){const attData=TB[cat]||TA;a=attData[pid]||{};}
+const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const ph=a.stdPhrase||'';
 const kstToday=kstDate();
 const isViewingToday=viewDate===kstToday;
 const isViewingFuture=viewDate>kstToday;
@@ -1232,7 +1237,7 @@ async function saveNoteOnly(pid,dt,sourceId){
   }else if(isStaffOpen){
     CM('modal-staff');
     await new Promise(r=>setTimeout(r,200));
-    openStaffModal(pid);
+    await openStaffModal(pid);
   }
   // 출결현황 리스트 갱신 (백그라운드)
   if(typeof renderWorkmanList==='function')renderWorkmanList();
