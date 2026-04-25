@@ -1113,7 +1113,7 @@ const abnormalOut=a.outTime&&!a.stdPhrase&&toM(a.outTime)-toM(p.end)>10; // 퇴�
 // 예정 초과 (adjustedStart/End보다 더 벗어남)
 const lateOverReserved=a.stdPhrase==='지각'&&a.adjustedStart&&a.inTime&&toM(a.inTime)>toM(a.adjustedStart)+10;
 const earlyOverReserved=a.stdPhrase==='조기퇴근'&&a.adjustedEnd&&a.outTime&&toM(a.outTime)<toM(a.adjustedEnd)-10;
-return (noPhrase&&((!a.inTime&&isToday&&nowM2>toM(p.start))||(a.inTime&&!a.outTime&&isToday&&nowM2>toM(p.end)+10)||(!a.inTime&&dt<kstDate())||(a.inTime&&!a.outTime&&dt<kstDate())||isReservationOnly))||autoLate||autoEarly||lateOverReserved||earlyOverReserved;});
+return (noPhrase&&((!a.inTime&&isToday&&nowM2>toM(p.start))||(a.inTime&&!a.outTime&&isToday&&nowM2>toM(p.end)+10)||(!a.inTime&&dt<kstDate())||(a.inTime&&!a.outTime&&dt<kstDate())))||autoLate||autoEarly||lateOverReserved||earlyOverReserved;});
 else if(phraseFilter==='미처리')filtered=filtered.filter(({a})=>!a.stdPhrase);
 else if(phraseFilter)filtered=filtered.filter(({a})=>a.stdPhrase===phraseFilter);
 const sorted=[...filtered].sort((x,y)=>{if(x.dt!==y.dt)return x.dt.localeCompare(y.dt);const au=!x.a.stdPhrase&&(!x.a.inTime||(x.a.inTime&&!x.a.outTime));const bu=!y.a.stdPhrase&&(!y.a.inTime||(y.a.inTime&&!y.a.outTime));return(au?0:1)-(bu?0:1)||x.p.start.localeCompare(y.p.start);});
