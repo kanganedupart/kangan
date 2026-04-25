@@ -559,8 +559,9 @@ function calcRealH(p,a){
   return Math.max(0,Math.round((totalM-bm)/60*10)/10);
 }
 function needsCheck(p,a,nowM,date){
-  if(date!==kstDate())return false;
-  if(a.inTime&&!a.outTime&&nowM>toM(p.end)+10&&!a.stdPhrase)return true;
+  if(!a.inTime||a.outTime||a.stdPhrase)return false;
+  if(date<kstDate())return true;
+  if(date===kstDate()&&nowM>toM(p.end)+10)return true;
   return false;
 }
 const IDLE_TIMEOUT={관리자:30*60*1000,총무:10*60*60*1000,일반직원:10*60*60*1000};
