@@ -892,8 +892,8 @@ const autoLateDash=e.ar?.inTime&&!ph&&toM(e.ar.adjustedStart||e.ar.inTime)-sM>10
 const anyLateDash=e.ar?.inTime&&!ph&&toM(e.ar.adjustedStart||e.ar.inTime)>sM;
 const tag=ph==='정상'?'':(autoEarlyDash?tagMap['조기퇴근']:((e.status==='late'||anyLateDash)?tagMap['지각']:e.status==='absent-con'?`<span style="${tagStyle}color:var(--danger);background:var(--danger-light)">결근</span>`:e.status==='absent-pln'?`<span style="${tagStyle}color:#fca5a5;background:#fff0f0">예정결근</span>`:e.status==='changed'?(tagMap[ph]||''):pendingExtTag||(tagMap[ph]||'')));
 const combinedTag=tempTag+tag;
-// 빨간점: 미확인결근 + 10분 초과 자동감지 미처리
-const dot=(e.status==='absent-unc'||autoLateDash||autoEarlyDash)?`<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--danger);margin-left:4px;animation:pulse 1s infinite"></span>`:'';
+// 빨간점: 미확인결근 + 10분 초과 자동감지 미처리 + 퇴근 미확인
+const dot=(e.status==='absent-unc'||autoLateDash||autoEarlyDash||e.nc)?`<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--danger);margin-left:4px;animation:pulse 1s infinite"></span>`:'';
 // 자동 감지 미처리 (출퇴근 찍었는데 지각/조기퇴근) vs 진짜 미확인 결근 구분
 const isAutoDetected=e.status==='absent-unc'&&e.ar?.inTime;
 const absentStyle=e.status==='absent-pln'?'border:2px dashed #fca5a5;background:transparent;':(e.status==='absent-unc'&&!isAutoDetected)?'border-color:#fca5a5;background:#fff5f5;':e.status==='absent-con'?'border-color:#fca5a5;background:#fff8f8;':'';
@@ -1032,7 +1032,17 @@ function openStatsModal(c,sk){
     const col=cof(p.role);
     const uc=p.status==='absent-unc'||p.nc||p.status==='no-schedule';
     let reason='';
-    if(p.status==='absent-unc')reason='미확인 결근';
+    if(p.status==='absent-unc'){
+      if(p.ar?.inTime){
+        // 출근했는데 absent-unc → 자동 감지 (지각/조기퇴근)
+        const autoEarly=p.ar.outTime&&toM(p.end)-toM(p.ar.outTime)>10;
+        const autoLate=toM(p.ar.adjustedStart||p.ar.inTime)-toM(p.start)>10;
+        if(autoEarly&&autoLate)reason='지각+조기퇴근';
+        else if(autoEarly)reason='조기퇴근';
+        else if(autoLate)reason='지각';
+        else reason='예정 초과';
+      }else reason='미확인 결근';
+    }
     else if(p.status==='no-schedule')reason='스케줄없는 출근 '+(p.actual||'');
     else if(p.nc)reason='퇴근 미확인';
     return`<div class="sp-item" onclick="CM('modal-stats');openStaffModal('${p.id}')"><div><div style="font-size:13px;font-weight:600;color:${col}">${p.role} <span style="color:var(--text-primary)">(${p.name})</span>${uc&&sk==='unproc'?'<span class="undot"></span>':''}</div><div style="font-size:12px;color:var(--text-muted)">${sk==='unproc'&&reason?reason:(p.actual?'출근: '+p.actual:p.start+' ~ '+p.end)}</div></div><span style="font-size:11px;color:var(--text-muted)">${uc&&sk!=='unproc'?'미확인 🔴':(p.memos||[]).length?'메모'+(p.memos||[]).length+'건':'-'}</span></div>`;
