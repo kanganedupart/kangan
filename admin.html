@@ -846,7 +846,8 @@ const col=cof(e.role);
 const sM=toM(e.start),eM=toM(e.end);
 const bl=Math.max(0,(sM-am)/as*100);
 const bw=Math.min(100,(eM-am)/as*100)-bl;
-const isAbsent=e.status.startsWith('absent');
+const isAutoDetected=e.status==='absent-unc'&&e.ar?.inTime;
+const isAbsent=e.status.startsWith('absent')&&!isAutoDetected;
 const realIn=e.ar?.adjustedStart||e.ar?.inTime||null;
 const realOut=e.ar?.adjustedEnd||e.ar?.outTime||null;
 const dispIn=realIn||e.start;
@@ -894,8 +895,7 @@ const tag=ph==='정상'?'':(autoEarlyDash?tagMap['조기퇴근']:((e.status==='l
 const combinedTag=tempTag+tag;
 // 빨간점: 미확인결근 + 10분 초과 자동감지 미처리 + 퇴근 미확인
 const dot=(e.status==='absent-unc'||autoLateDash||autoEarlyDash||e.nc)?`<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--danger);margin-left:4px;animation:pulse 1s infinite"></span>`:'';
-// 자동 감지 미처리 (출퇴근 찍었는데 지각/조기퇴근) vs 진짜 미확인 결근 구분
-const isAutoDetected=e.status==='absent-unc'&&e.ar?.inTime;
+// 자동 감지 미처리 vs 진짜 미확인 결근 구분 (isAutoDetected는 위에서 이미 선언됨)
 const absentStyle=e.status==='absent-pln'?'border:2px dashed #fca5a5;background:transparent;':(e.status==='absent-unc'&&!isAutoDetected)?'border-color:#fca5a5;background:#fff5f5;':e.status==='absent-con'?'border-color:#fca5a5;background:#fff8f8;':'';
 const scm={done:'s-done',late:'s-late','absent-unc':isAutoDetected?'':'s-absent-unc','absent-con':'s-absent-con','absent-pln':'s-absent-pln',pending:'',changed:''};
 return`<div class="tl-item ${scm[e.status]||''}" style="${absentStyle}" onclick="openStaffModal('${e.id}')"><div class="tl-colorbar" style="background:${col}"></div><div class="tl-info"><div class="tl-name-row"><span class="tl-role" style="color:${col}">${e.role}</span><span class="tl-name">(${e.name})</span>${dot}</div><div style="display:flex;align-items:center;gap:4px;margin-top:3px;flex-wrap:wrap">${combinedTag}<span style="font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace">${ts}</span></div></div><div class="tl-bar-area"><div class="tl-bar-bg"></div>${bar}<div class="tl-now-line" style="left:${np}%"></div></div></div>`;}
