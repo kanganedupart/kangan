@@ -891,12 +891,16 @@ const tempTag=e.isTemp?`<span style="${tagStyle}color:#7e22ce;background:#fdf4ff
 // 미래 예약 태그 (출근 전 + adjustedEnd 있음)
 const isPendingExt=(e.status==='pending'||!e.ar?.inTime)&&e.ar?.adjustedEnd&&toM(e.ar.adjustedEnd)>eM;
 const pendingExtTag=isPendingExt?`<span style="${tagStyle}color:#047857;background:#d1fae5">연장근무 예약</span>`:'';
+// 지각 예정: 출근 전 + stdPhrase='지각' + adjustedStart 있음
+const pendingLateTag=!e.ar?.inTime&&ph==='지각'&&e.ar?.adjustedStart?`<span style="${tagStyle}color:var(--warning);background:var(--warning-light)">지각 예정</span>`:'';
+// 조기퇴근 예정: 퇴근 전 + stdPhrase='조기퇴근' + adjustedEnd 있음
+const pendingEarlyTag=!e.ar?.outTime&&ph==='조기퇴근'&&e.ar?.adjustedEnd?`<span style="${tagStyle}color:var(--accent);background:var(--accent-light)">조기퇴근 예정</span>`:'';
 // 자동 감지 조기퇴근 (stdPhrase 없고 퇴근이 스케줄보다 10분 이상 빠름)
 const autoEarlyDash=e.ar?.outTime&&!ph&&eM-toM(e.ar.outTime)>10;
 const autoLateDash=e.ar?.inTime&&!ph&&toM(e.ar.adjustedStart||e.ar.inTime)-sM>10;
 // 1분 이상 지각도 태그 표시 (ph없고 출근찍힘 + 스케줄보다 늦음)
 const anyLateDash=e.ar?.inTime&&!ph&&toM(e.ar.adjustedStart||e.ar.inTime)>sM;
-const tag=ph==='정상'?'':(autoEarlyDash?tagMap['조기퇴근']:((e.status==='late'||anyLateDash)?tagMap['지각']:e.status==='absent-con'?`<span style="${tagStyle}color:var(--danger);background:var(--danger-light)">결근</span>`:e.status==='absent-pln'?`<span style="${tagStyle}color:#fca5a5;background:#fff0f0">예정결근</span>`:e.status==='changed'?(tagMap[ph]||''):pendingExtTag||(tagMap[ph]||'')));
+const tag=ph==='정상'?'':(pendingLateTag||pendingEarlyTag||(autoEarlyDash?tagMap['조기퇴근']:((e.status==='late'||anyLateDash)?tagMap['지각']:e.status==='absent-con'?`<span style="${tagStyle}color:var(--danger);background:var(--danger-light)">결근</span>`:e.status==='absent-pln'?`<span style="${tagStyle}color:#fca5a5;background:#fff0f0">예정결근</span>`:e.status==='changed'?(tagMap[ph]||''):pendingExtTag||(tagMap[ph]||''))));
 const combinedTag=tempTag+tag;
 // 빨간점: 미확인결근 + 10분 초과 자동감지 미처리 + 퇴근 미확인
 const dot=(e.status==='absent-unc'||autoLateDash||autoEarlyDash||e.nc)?`<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--danger);margin-left:4px;animation:pulse 1s infinite"></span>`:'';
