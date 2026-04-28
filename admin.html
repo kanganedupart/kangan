@@ -515,7 +515,14 @@ function makeDraggable(overlayId){
 ['modal-staff','modal-stats','modal-part','modal-workman-edit','modal-account'].forEach(makeDraggable);
 
 function brk(p,startT,endT){const s=startT||p.start;const e=endT||p.end;if(p.customBreak!==undefined)return p.customBreak;const h=(toM(e)-toM(s))/60;if(h>=9)return 60;if(h>4)return 30;return 0;}
-function schedH(p,a){const s=(a&&a.adjustedStart)||p.start;const e=(a&&a.adjustedEnd)||p.end;const bm=brk(p,s,e);return Math.round((toM(e)-toM(s)-bm)/60*10)/10;}
+function schedH(p,a){
+  // 스케줄시수 = 스케줄 그대로의 시수 (패드/처리 무관)
+  const s=p.start;
+  const e=p.end;
+  if(!s||!e)return 0;
+  const bm=brk(p,s,e);
+  return Math.round((toM(e)-toM(s)-bm)/60*10)/10;
+}
 function calcRealH(p,a){
   if(!a||(!a.inTime&&!a.adjustedStart))return null; // 출근 기록 전혀 없으면 계산 불가
   const ph=a.stdPhrase||'';
@@ -523,13 +530,25 @@ function calcRealH(p,a){
   // 퇴근 시각: outTime 또는 adjustedEnd 중 하나라도 있어야 계산
   const effOut=a.adjustedEnd||a.outTime;
   if(!effOut)return null;
-  // 수동기록: 관리자가 입력한 실제 시간 그대로 사용
+  // 수동기록: 관리자가 입력한 시간을 패드 기록과 동일하게 처리 (10분 양해, 이득 무시)
   if(a.manual){
-    const sT=a.adjustedStart||a.inTime;
+    const inT=a.adjustedStart||a.inTime;
     const eT=a.adjustedEnd||a.outTime;
-    const totalM=toM(eT)-toM(sT);
+    // 시작: 일찍 출근 → 스케줄 시작, 10분 이내 지각 → 양해, 10분 초과 → 실제 시각
+    let sT;
+    const delayM=toM(inT)-toM(p.start);
+    if(delayM<0)sT=p.start;
+    else if(delayM<=10)sT=p.start;
+    else sT=inT;
+    // 종료: 조기퇴근/추가근무 처리, 그 외는 스케줄 종료 초과는 무시
+    const ph2=a.stdPhrase||'';
+    let endT;
+    if(ph2==='조기퇴근')endT=eT;
+    else if(ph2==='추가근무'&&a.adjustedEnd)endT=toM(eT)>toM(a.adjustedEnd)?a.adjustedEnd:eT;
+    else endT=toM(eT)>toM(p.end)?p.end:eT;
+    const totalM=toM(endT)-toM(sT);
     if(totalM<=0)return 0;
-    const bm=brk(p,sT,eT);
+    const bm=brk(p,sT,endT);
     return Math.max(0,Math.round((totalM-bm)/60*10)/10);
   }
   // 시작 시각 결정
@@ -724,7 +743,7 @@ function getDayTime(p,dayOfWeek,date){
     const applicable=[...p.permChanges].filter(pc=>today>=pc.startDate).sort((a,b)=>b.startDate.localeCompare(a.startDate));
     if(applicable.length>0){
       const latest=applicable[0];
-      if((latest.days||[]).includes(dayOfWeek))return{start:latest.start,end:latest.end,fromPerm:true};
+      if((latest.days||[]).includes(dayOfWeek))return{start:latest.start,end:latest.end,customBreak:latest.customBreak,fromPerm:true};
       return{start:null,end:null,permExcluded:true};
     }
   }
@@ -780,9 +799,9 @@ const scheduled=parts.map(p=>{
   const worksDay=isWorkDay(p,td,date);
   const tempDay=p.tempDates&&p.tempDates.find(dt=>dt.date===date);
   if(!worksDay)return null;
-const ds=tempDay?{start:tempDay.start,end:tempDay.end}:getDayTime(p,td,date);
+const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,td,date);
 if(!ds.start||!ds.end)return null;
-const a=attData[p.id]||{};const ep={...p,start:ds.start,end:ds.end};
+const a=attData[p.id]||{};const ep={...p,start:ds.start,end:ds.end,customBreak:ds._isTemp?ds.customBreak:(ds.fromPerm?ds.customBreak:(ds.customBreak!==undefined?ds.customBreak:p.customBreak))};
 // 결근 예정 체크 (단일+기간)
 if(isPlannedAbsent(p,date)&&!a.inTime)return{...ep,actual:null,status:'absent-pln',ar:a};
 // 추가근무(임시) 처리
@@ -916,7 +935,7 @@ const kstToday=kstDate();
 const isViewingToday=viewDate===kstToday;
 const isViewingFuture=viewDate>kstToday;
 const isViewingPast=viewDate<kstToday;
-const DM=['일','월','화','수','목','금','토'];const dw=DM[new Date(viewDate+'T00:00:00+09:00').getDay()];const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===viewDate);const ds=tempDay?{start:tempDay.start,end:tempDay.end}:getDayTime(p,dw,viewDate);const pEff={...p,start:ds.start||p.start,end:ds.end||p.end};const isPlnAbs=isPlannedAbsent(p,viewDate);let st='pending';
+const DM=['일','월','화','수','목','금','토'];const dw=DM[new Date(viewDate+'T00:00:00+09:00').getDay()];const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===viewDate);const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,viewDate);const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:ds._isTemp?ds.customBreak:(ds.fromPerm?ds.customBreak:(ds.customBreak!==undefined?ds.customBreak:p.customBreak))};const isPlnAbs=isPlannedAbsent(p,viewDate);let st='pending';
 if(isPlnAbs&&!a.inTime)st='absent-pln';
 else if(ph==='결근')st='absent-con';
 else if(a.inTime){const effIn=a.adjustedStart||a.inTime;st=toM(effIn)>toM(pEff.start)?'late':'done';}
@@ -1090,8 +1109,8 @@ while(cur<=end){
   const unscheduled=Object.entries(ad).filter(([pid,a])=>a.inTime&&!scIds.includes(pid)&&!tempIds.includes(pid)).map(([pid,a])=>{const pp=AP[pid];return pp?{...pp,id:pid}:null;}).filter(Boolean);
   sc.forEach(p=>{
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dt);
-    const ds=tempDay?{start:tempDay.start,end:tempDay.end}:getDayTime(p,dw,dt);
-    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end};
+    const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dt);
+    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:ds._isTemp?ds.customBreak:(ds.fromPerm?ds.customBreak:(ds.customBreak!==undefined?ds.customBreak:p.customBreak))};
     WD.push({dt,p:pEff,a:ad[p.id]||{},alertHtml:''});
   });
   // 스케줄 없는 출근 (이름 필터는 렌더 단계에서)
@@ -1437,8 +1456,8 @@ ps.filter(p=>{
 }).forEach(p=>{
   const a=ad[p.id]||{};
   const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dk);
-  const ds=tempDay?{start:tempDay.start,end:tempDay.end}:getDayTime(p,dw,dk);
-  const pEff={...p,start:ds.start||p.start,end:ds.end||p.end};
+  const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dk);
+  const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:ds._isTemp?ds.customBreak:(ds.fromPerm?ds.customBreak:(ds.customBreak!==undefined?ds.customBreak:p.customBreak))};
   const sh=schedH(pEff,a);
   const isAbsent=a.stdPhrase==='결근'||isPlannedAbsent(p,dk);
   const rh=a.inTime?calcRealH(pEff,a):isAbsent?0:null;
@@ -1730,7 +1749,16 @@ function renderPT(){
     const sb=(resigned?`<span class="sbadge s-inactive">퇴사${p.leaveDate?' '+p.leaveDate:''}</span>`:scheduledResign?`<span class="sbadge" style="background:#fef3c7;color:#92400e">퇴사예정 ${p.leaveDate}</span>`:'<span class="sbadge s-active">재직</span>')+(p.isCasual?`<span class="sbadge" style="background:#fdf4ff;color:#7e22ce;border:1px solid #e9d5ff;margin-left:4px">⭐ 단발</span>`:'');
     const hasDaySchedule=p.daySchedule&&Object.keys(p.daySchedule).length>0;
     const extraDate=resigned&&p.leaveDate?`<div style="font-size:10px;color:var(--danger)">퇴사 ${p.leaveDate}</div>`:'';
-return`<tr><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span></td><td>${p.name}</td><td style="font-family:'Noto Sans KR',sans-serif">${p.phone||'-'}</td><td style="font-family:'Noto Sans KR',sans-serif">${sk==='inactive'?`<span style="text-decoration:line-through;color:var(--text-muted);letter-spacing:2px;font-size:12px">${p.pin||'-'}</span><span style="font-size:10px;color:var(--danger);background:var(--danger-light);padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:600">비활성</span>`:`<span style="font-weight:700;letter-spacing:3px">${p.pin||'-'}</span>`}</td><td>${(p.days||[]).join('·')}${hasDaySchedule?'<span style="color:var(--warning);font-size:10px;margin-left:4px">요일별</span>':''}</td><td style="font-family:'DM Mono',monospace">${p.start||'-'}~${p.end||'-'}${p.customBreak!==undefined?`<span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span>`:''}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${p.joinDate||'-'}${extraDate}</td><td>${sb}</td><td>${CU.role==='관리자'?`<button class="icon-btn" onclick="openEP('${p.id}')">수정</button>`:''}<button class="icon-btn" onclick="openSchedHist('${p.id}')" style="color:var(--accent)">${CU.role==='관리자'?'히스토리':'보기'}</button></td></tr>`;}).join('');document.getElementById('parts-table-wrap').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>카테고리</th><th>직무</th><th>이름</th><th>휴대폰</th><th>PIN</th><th>요일</th><th>기본시간</th><th>입사일</th><th>상태</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
+    // 오늘 기준 적용 시간 (영구변경 반영)
+    const DM=['일','월','화','수','목','금','토'];
+    const todayDow=DM[new Date(today+'T00:00:00+09:00').getDay()];
+    const dsToday=getDayTime(p,todayDow,today);
+    const curStart=dsToday.start||p.start;
+    const curEnd=dsToday.end||p.end;
+    const isPermActive=dsToday.fromPerm;
+    // 미래에 예약된 영구변경 있는지
+    const futurePerm=(p.permChanges||[]).find(pc=>pc.startDate>today);
+return`<tr><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span></td><td>${p.name}</td><td style="font-family:'Noto Sans KR',sans-serif">${p.phone||'-'}</td><td style="font-family:'Noto Sans KR',sans-serif">${sk==='inactive'?`<span style="text-decoration:line-through;color:var(--text-muted);letter-spacing:2px;font-size:12px">${p.pin||'-'}</span><span style="font-size:10px;color:var(--danger);background:var(--danger-light);padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:600">비활성</span>`:`<span style="font-weight:700;letter-spacing:3px">${p.pin||'-'}</span>`}</td><td>${(p.days||[]).join('·')}${hasDaySchedule?'<span style="color:var(--warning);font-size:10px;margin-left:4px">요일별</span>':''}</td><td style="font-family:'DM Mono',monospace">${curStart||'-'}~${curEnd||'-'}${(isPermActive?dsToday.customBreak!==undefined:p.customBreak!==undefined)?`<span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span>`:''}${isPermActive?`<span style="font-size:9px;color:#1d4ed8;background:#eff6ff;padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #bfdbfe">🔄 영구변경</span>`:''}${futurePerm?`<div style="font-size:10px;color:#1d4ed8;margin-top:2px">📅 ${futurePerm.startDate}부터: ${futurePerm.start}~${futurePerm.end}${futurePerm.customBreak!==undefined?` (휴게${futurePerm.customBreak}분)`:''}</div>`:''}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${p.joinDate||'-'}${extraDate}</td><td>${sb}</td><td>${CU.role==='관리자'?`<button class="icon-btn" onclick="openEP('${p.id}')">수정</button>`:''}<button class="icon-btn" onclick="openSchedHist('${p.id}')" style="color:var(--accent)">${CU.role==='관리자'?'히스토리':'보기'}</button></td></tr>`;}).join('');document.getElementById('parts-table-wrap').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>카테고리</th><th>직무</th><th>이름</th><th>휴대폰</th><th>PIN</th><th>요일</th><th>기본시간</th><th>입사일</th><th>상태</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 window.renderPartsTable=renderPT;window.renderPT=renderPT;
 function exportPartsCSV(){let ps=Object.entries(AP).map(([id,p])=>({...p,id}));const sf=document.getElementById('filter-status')?.value??'active';const today=kstDate();const isResigned=p=>p.status==='inactive'||(p.leaveDate&&p.leaveDate<=today);const isScheduledResign=p=>p.leaveDate&&p.leaveDate>today&&p.status!=='inactive';if(sf==='active')ps=ps.filter(p=>!isResigned(p));else if(sf==='inactive')ps=ps.filter(p=>isResigned(p)||isScheduledResign(p));const h='카테고리,직무,이름,휴대폰,PIN,요일,출근,퇴근,입사일,퇴사일,상태';const statusLbl=p=>{if(p.status==='inactive')return '퇴사';if(p.leaveDate&&p.leaveDate<=today)return '퇴사';if(p.leaveDate&&p.leaveDate>today)return '퇴사예정';return '재직';};const rows=ps.map(p=>[CATL[p.cat]||p.cat,p.role,p.name,p.phone||'',p.pin||'',(p.days||[]).join('·'),p.start||'',p.end||'',p.joinDate||'',p.leaveDate||'',statusLbl(p)].map(v=>`"${v}"`).join(',')).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_직원목록.csv';a.click();URL.revokeObjectURL(u);}
 window.exportPartsCSV=exportPartsCSV;
@@ -1776,7 +1804,7 @@ ${Object.entries(cats).map(([k,v])=>`<option value="${k}"${p&&p.cat===k?' select
 <div class="form-group" style="flex:1"><label class="form-label">입사일</label><input type="date" class="form-input" id="pf-jd" value="${p&&p.joinDate?p.joinDate:kstDate()}"></div>
 <div class="form-group" style="flex:1"><label class="form-label">퇴사일</label><div style="display:flex;gap:6px;align-items:center"><input type="date" class="form-input" id="pf-leave" value="${p&&p.leaveDate?p.leaveDate:''}" style="flex:1"><button type="button" class="btn-secondary" style="padding:6px 10px;font-size:12px;white-space:nowrap" onclick="document.getElementById('pf-leave').value=''">❌ 지우기</button></div></div>
 </div>
-<div class="form-group"><label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:10px 12px;background:#fdf4ff;border:1px solid #e9d5ff;border-radius:6px"><input type="checkbox" id="pf-casual" ${p&&p.isCasual?'checked':''} style="width:16px;height:16px;cursor:pointer"><span><span style="font-weight:600;color:#7e22ce">⭐ 단발근무자</span> <span style="font-size:11px;color:var(--text-muted)">- 퇴사 후에도 간헐적으로 근무 오는 경우 (출결현황에 항상 노출, 수동기록 가능)</span></span></label></div>
+<div class="form-group"><label style="display:flex;align-items:center;gap:8px;font-size:13px;${p&&p.leaveDate?'cursor:pointer;':'cursor:not-allowed;opacity:0.55;'}padding:10px 12px;background:#fdf4ff;border:1px solid #e9d5ff;border-radius:6px"><input type="checkbox" id="pf-casual" ${p&&p.isCasual?'checked':''} ${p&&p.leaveDate?'':'disabled'} style="width:16px;height:16px;${p&&p.leaveDate?'cursor:pointer':'cursor:not-allowed'}"><span><span style="font-weight:600;color:#7e22ce">⭐ 단발근무자</span> <span style="font-size:11px;color:var(--text-muted)">- 퇴사 후에도 간헐적으로 근무 오는 경우 (출결현황에 항상 노출, 수동기록 가능)</span>${p&&!p.leaveDate?'<div style="font-size:10px;color:#b91c1c;margin-top:4px">⚠ 퇴사일 입력 후에만 지정 가능합니다</div>':''}</span></label></div>
 ${pid?`<div class="divider-section"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">상태 변경</div><div id="state-btns"></div></div>`:''}
 `;
 el.appendChild(basicDiv);
@@ -1791,30 +1819,50 @@ if(pid){
 
 // 스케줄 탭
 const schedDiv=document.createElement('div');schedDiv.id='ptab-schedule-content';schedDiv.style.display='none';
+// 현재 적용 중 값 (오늘 기준 - 영구변경 반영)
+const todayK=kstDate();
+const DM_RPF=['일','월','화','수','목','금','토'];
+const todayDowRPF=DM_RPF[new Date(todayK+'T00:00:00+09:00').getDay()];
+const dsCurRPF=p?getDayTime(p,todayDowRPF,todayK):{};
+const applicablePermRPF=p&&p.permChanges?[...p.permChanges].filter(pc=>pc.startDate<=todayK).sort((a,b)=>b.startDate.localeCompare(a.startDate))[0]:null;
+const curDaysRPF=applicablePermRPF?(applicablePermRPF.days||[]):(p&&p.days?p.days:[]);
+const curStartRPF=applicablePermRPF?applicablePermRPF.start:(p?p.start:'-');
+const curEndRPF=applicablePermRPF?applicablePermRPF.end:(p?p.end:'-');
+const curBrkRPFnum=applicablePermRPF&&applicablePermRPF.customBreak!==undefined?applicablePermRPF.customBreak:(p&&p.customBreak!==undefined?p.customBreak:null);
+const curBrkRPFlabel=curBrkRPFnum!==null?`${curBrkRPFnum}분 (수동)`:(p?(()=>{const s=curStartRPF,e=curEndRPF;if(!s||!e||s==='-'||e==='-')return'자동';const h=(toM(e)-toM(s))/60;return h>=9?'60분 (자동)':h>4?'30분 (자동)':'0분';})():'자동');
+const futurePermRPF=p&&p.permChanges?[...p.permChanges].filter(pc=>pc.startDate>todayK).sort((a,b)=>a.startDate.localeCompare(b.startDate))[0]:null;
 const dayBtns=days.map(d=>{
   const ds=p&&p.daySchedule?p.daySchedule[d]:null;
   const isDiff=ds&&p&&(ds.start!==p.start||ds.end!==p.end);
-  return`<button type="button" class="day-btn${sd.includes(d)?' selected':''}${isDiff?' has-custom':''}" onclick="tDay('${d}')" ondblclick="toggleDayTime('${d}')">${d}</button>`;
+  return`<button type="button" class="day-btn${sd.includes(d)?' selected':''}${isDiff?' has-custom':''}" ${pid?'disabled style="opacity:0.6;cursor:not-allowed"':`onclick="tDay('${d}')" ondblclick="toggleDayTime('${d}')"`}>${d}</button>`;
 }).join('');
 const dayTimes=sd.map(d=>{
   const ds=p&&p.daySchedule?p.daySchedule[d]:null;
   if(!ds||!p||(ds.start===p.start&&ds.end===p.end))return'';
-  return`<div class="day-time-row" data-day="${d}"><span style="font-weight:600;width:20px;color:var(--warning)">${d}</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="ds-s-${d}" value="${ds.start}"><span style="color:var(--text-muted)">~</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="ds-e-${d}" value="${ds.end}"><button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="this.parentElement.remove()">✕</button></div>`;
+  return`<div class="day-time-row" data-day="${d}"><span style="font-weight:600;width:20px;color:var(--warning)">${d}</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="ds-s-${d}" value="${ds.start}" ${pid?'disabled':''}><span style="color:var(--text-muted)">~</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="ds-e-${d}" value="${ds.end}" ${pid?'disabled':''}>${pid?'':`<button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="this.parentElement.remove()">✕</button>`}</div>`;
 }).join('');
 const periods=p&&p.schedulePeriods?[...p.schedulePeriods].sort((a,b)=>a.startDate.localeCompare(b.startDate)):[];
 const periodsHtml=periods.length?periods.map((pd,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg);border-radius:var(--rs);margin-bottom:4px;flex-wrap:wrap"><span style="font-size:11px;color:var(--accent)">${pd.startDate} ~ ${pd.endDate}</span><span style="font-size:12px">${(pd.days||[]).join('·')} ${pd.start}~${pd.end}</span><button type="button" class="icon-btn del" style="padding:2px 6px;font-size:10px" onclick="removePeriod('${pid}',${i})">삭제</button></div>`).join(''):'<div style="font-size:12px;color:var(--text-muted)">등록된 변경 기간 없음</div>';
 const tempDatesArr=p&&p.tempDates?[...p.tempDates].sort((a,b)=>a.date.localeCompare(b.date)):[];
 const tempDatesHtml=tempDatesArr.length?tempDatesArr.map(d=>`<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;padding:4px 8px;background:var(--orange-light);border-radius:var(--rs)"><span style="font-family:'DM Mono',monospace;font-size:12px;color:var(--orange)">${d.date}</span><span style="font-size:12px;color:var(--text-secondary)">${d.start}~${d.end}</span><button type="button" class="icon-btn del" style="padding:2px 6px;font-size:10px;margin-left:auto" onclick="removeTempDate('${pid}','${d.date}')">삭제</button></div>`).join(''):'<div style="font-size:12px;color:var(--text-muted);padding:4px 0">등록된 추가근무 없음</div>';
 const periodDayBtns=days.map(d=>`<button type="button" class="day-btn" onclick="tPDay('${d}')" id="pd-${d}">${d}</button>`).join('');
+// 잠금 안내 박스 (기존 직원만)
+const lockNotice=pid?`<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#1e40af">
+<div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px">📅 오늘 적용 중 스케줄</div>
+<div style="font-family:'DM Mono',monospace;font-size:13px;color:#1d4ed8;margin-bottom:6px">${curDaysRPF.join('·')||'-'} · ${curStartRPF}~${curEndRPF} · 휴게 ${curBrkRPFlabel}</div>
+${futurePermRPF?`<div style="font-size:11px;color:#1d4ed8;margin-bottom:6px">📅 ${futurePermRPF.startDate}부터 변경 예약: ${(futurePermRPF.days||[]).join('·')} ${futurePermRPF.start}~${futurePermRPF.end}${futurePermRPF.customBreak!==undefined?` (휴게 ${futurePermRPF.customBreak}분)`:''}</div>`:''}
+<div style="font-size:11px;color:var(--text-muted);padding-top:6px;border-top:1px dashed #bfdbfe">⚠ 아래 시간/요일/휴게는 <b>이력 보호를 위해 잠금</b>되어 있습니다.<br>스케줄 변경은 아래 <b>[🔄 영구 변경]</b> 버튼을 사용하세요.</div>
+</div>`:'';
 schedDiv.innerHTML=`
-<div class="form-group"><label class="form-label">근무 요일 (더블클릭: 해당 요일 시간 개별 수정)</label>
+${lockNotice}
+<div class="form-group"><label class="form-label">근무 요일${pid?' <span style="font-size:10px;color:var(--text-muted)">(잠금)</span>':' (더블클릭: 해당 요일 시간 개별 수정)'}</label>
 <div class="day-btns" id="pf-days">${dayBtns}</div>
 <div id="day-times">${dayTimes}</div></div>
 <div style="display:flex;gap:10px">
-<div class="form-group" style="flex:1"><label class="form-label">기본 출근</label>${mkTimeSelect5('pf-start',p?p.start:'09:00')}</div>
-<div class="form-group" style="flex:1"><label class="form-label">기본 퇴근</label>${mkTimeSelect5('pf-end',p?p.end:'18:00')}</div>
+<div class="form-group" style="flex:1"><label class="form-label">기본 출근${pid?' <span style="font-size:10px;color:var(--text-muted)">(잠금)</span>':''}</label>${pid?`<input class="form-input" id="pf-start" value="${p?p.start:''}" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed">`:mkTimeSelect5('pf-start',p?p.start:'09:00')}</div>
+<div class="form-group" style="flex:1"><label class="form-label">기본 퇴근${pid?' <span style="font-size:10px;color:var(--text-muted)">(잠금)</span>':''}</label>${pid?`<input class="form-input" id="pf-end" value="${p?p.end:''}" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed">`:mkTimeSelect5('pf-end',p?p.end:'18:00')}</div>
 </div>
-<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">휴게시간(분) — 비워두면 자동<span id="brk-badge" style="${p&&p.customBreak!==undefined?'':'display:none;'}font-size:10px;font-weight:600;background:var(--warning-light);color:var(--warning);padding:1px 7px;border-radius:10px;border:1px solid #fcd34d">⚠ 수동설정</span></label><input class="form-input" id="pf-brk" type="number" placeholder="자동" value="${p&&p.customBreak!==undefined?p.customBreak:''}" oninput="const b=document.getElementById('brk-badge');if(b)b.style.display=this.value?'inline':'none'"></div>
+<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">휴게시간(분)${pid?' <span style="font-size:10px;color:var(--text-muted)">(잠금)</span>':' — 비워두면 자동'}<span id="brk-badge" style="${p&&p.customBreak!==undefined?'':'display:none;'}font-size:10px;font-weight:600;background:var(--warning-light);color:var(--warning);padding:1px 7px;border-radius:10px;border:1px solid #fcd34d">⚠ 수동설정</span></label><input class="form-input" id="pf-brk" type="number" placeholder="자동" value="${p&&p.customBreak!==undefined?p.customBreak:''}" ${pid?'disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed"':'oninput="const b=document.getElementById(\'brk-badge\');if(b)b.style.display=this.value?\'inline\':\'none\'"'}></div>
 ${pid?`<div class="divider-section" id="wa-section"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px"><div style="font-size:13px;font-weight:700;color:var(--text-primary)">🗓️ 근무 조정</div><div style="display:flex;gap:4px;align-items:center"><button type="button" class="icon-btn" id="wa-tab-cal" onclick="waSwitchTab('cal')" style="background:var(--accent-light);color:var(--accent);border-color:var(--accent)">📅 달력</button><button type="button" class="icon-btn" id="wa-tab-list" onclick="waSwitchTab('list')">📋 목록</button><button type="button" class="icon-btn" onclick="waExportMonth('${pid}')" style="border-color:#86efac;color:#15803d;background:#f0fdf4">📥 출력</button></div></div><div id="wa-cal-panel"></div><div id="wa-list-panel" style="display:none"></div>${CU.role==='관리자'?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"><button type="button" class="icon-btn" style="border-color:#93c5fd;color:#1d4ed8;background:#eff6ff;font-weight:600" onclick="waOpenModal('${pid}','perm')">🔄 영구 변경</button><button type="button" class="icon-btn" style="border-color:#86efac;color:#15803d;background:#f0fdf4;font-weight:600" onclick="waOpenModal('${pid}','replace')">🔁 기간 교체</button><button type="button" class="icon-btn" style="border-color:#fca5a5;color:#b91c1c;background:#fef2f2;font-weight:600" onclick="waOpenModal('${pid}','absent')">❌ 결근 예정</button><button type="button" class="icon-btn" style="border-color:#e9d5ff;color:#7e22ce;background:#fdf4ff;font-weight:600" onclick="waOpenModal('${pid}','oneday')">⭐ 추가근무</button></div>`:''}</div>`:''}
 `;
 el.appendChild(schedDiv);
@@ -1921,7 +1969,7 @@ const WA_COLORS={perm:{bg:'#eff6ff',border:'#93c5fd',text:'#1d4ed8'},replace:{bg
 
 async function waGetAllEvents(p){
   const list=[];
-  (p.permChanges||[]).forEach((e,i)=>list.push({type:'perm',idx:i,startDate:e.startDate,endDate:null,days:e.days||[],start:e.start,end:e.end,by:e.by,at:e.at}));
+  (p.permChanges||[]).forEach((e,i)=>list.push({type:'perm',idx:i,startDate:e.startDate,endDate:null,days:e.days||[],start:e.start,end:e.end,customBreak:e.customBreak,by:e.by,at:e.at}));
   (p.scheduleReplaces||[]).forEach((e,i)=>list.push({type:'replace',idx:i,startDate:e.startDate,endDate:e.endDate,days:e.days||[],start:e.start,end:e.end,by:e.by,at:e.at}));
   (p.schedulePeriods||[]).forEach((e,i)=>list.push({type:'period',idx:i,startDate:e.startDate,endDate:e.endDate,days:e.days||[],start:e.start,end:e.end,legacy:true}));
   (p.plannedAbsent||[]).forEach((e,i)=>{
@@ -2400,10 +2448,21 @@ function waOpenModal(pid,type){
   const DAYS=['월','화','수','목','금','토','일'];
   let body='';
   if(type==='perm'){
-    body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 이 날짜부터 요일/시간이 완전히 교체됩니다. 이전 날짜는 기존 스케줄 유지.</div>
+    // 현재 적용 중 값 자동 채움 (오늘 기준, 영구변경 활성이면 그것)
+    const p=AP[pid];
+    const DM_K=['일','월','화','수','목','금','토'];
+    const todayDow=DM_K[new Date(today+'T00:00:00+09:00').getDay()];
+    const dsCur=p?getDayTime(p,todayDow,today):{};
+    const applicablePerm=p&&p.permChanges?[...p.permChanges].filter(pc=>pc.startDate<=today).sort((a,b)=>b.startDate.localeCompare(a.startDate))[0]:null;
+    const curDays=applicablePerm?(applicablePerm.days||[]):(p&&p.days?p.days:[]);
+    const curStart=applicablePerm?applicablePerm.start:(dsCur.start||(p&&p.start)||'09:00');
+    const curEnd=applicablePerm?applicablePerm.end:(dsCur.end||(p&&p.end)||'18:00');
+    const curBrk=applicablePerm&&applicablePerm.customBreak!==undefined?applicablePerm.customBreak:'';
+    body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 이 날짜부터 요일/시간이 완전히 교체됩니다. 이전 날짜는 기존 스케줄 유지.<br>💡 <b>현재 적용 중 값이 자동으로 채워져 있습니다</b> — 바꿀 항목만 수정하세요.</div>
 <div class="form-group"><label class="form-label">변경 시작일</label><input type="date" class="form-input" id="wa-start" value="${today}"></div>
-<div class="form-group"><label class="form-label">근무 요일</label><div class="day-btns" id="wa-days">${DAYS.map(d=>`<button type="button" class="day-btn" onclick="this.classList.toggle('selected')">${d}</button>`).join('')}</div></div>
-<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time','09:00','width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time','18:00','width:100%')}</div></div>`;
+<div class="form-group"><label class="form-label">근무 요일</label><div class="day-btns" id="wa-days">${DAYS.map(d=>`<button type="button" class="day-btn${curDays.includes(d)?' selected':''}" onclick="this.classList.toggle('selected')">${d}</button>`).join('')}</div></div>
+<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time',curStart,'width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time',curEnd,'width:100%')}</div></div>
+<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">휴게시간(분) <span id="wa-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">자동: ${(()=>{const d=(toM(curEnd)-toM(curStart))/60;return d>=9?60:d>4?30:0;})()}분</span> <span style="font-size:10px;color:var(--text-muted)">— 비워두면 자동값 적용</span></label><input class="form-input" id="wa-brk" type="number" placeholder="${(()=>{const d=(toM(curEnd)-toM(curStart))/60;return d>=9?60:d>4?30:0;})()}분 (자동) — 비워두면 적용" value="${curBrk}"></div>`;
   }else if(type==='replace'){
     body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 기간 내에는 기존 스케줄을 무시하고 여기 설정된 요일/시간만 적용. 기간 종료 후 자동 복귀.</div>
 <div style="display:flex;gap:6px;margin-bottom:10px"><div class="form-group" style="flex:1"><label class="form-label">시작일</label><input type="date" class="form-input" id="wa-start" value="${today}" onchange="waAutoDays()"></div><div class="form-group" style="flex:1"><label class="form-label">종료일</label><input type="date" class="form-input" id="wa-end" value="${today}" onchange="waAutoDays()"></div></div>
@@ -2416,7 +2475,8 @@ function waOpenModal(pid,type){
   }else if(type==='oneday'){
     body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 근무일이 아닌 날 하루만 근무를 추가합니다.</div>
 <div class="form-group"><label class="form-label">날짜</label><input type="date" class="form-input" id="wa-start" value="${today}"></div>
-<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time','09:00','width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time','18:00','width:100%')}</div></div>`;
+<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time','09:00','width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time','18:00','width:100%')}</div></div>
+<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">휴게시간(분) <span id="wa-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">자동: 60분</span> <span style="font-size:10px;color:var(--text-muted)">— 비워두면 자동값 적용</span></label><input class="form-input" id="wa-brk" type="number" placeholder="60분 (자동) — 비워두면 적용"></div>`;
   }
   body+=`<div class="btn-row"><button type="button" class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button type="button" class="btn-primary" onclick="waSave('${pid}','${type}')">저장</button></div>`;
   document.getElementById('modal-workman-body').innerHTML=body;
@@ -2447,6 +2507,8 @@ async function waSave(pid,type){
     newEvent.days=days;
     newEvent.start=document.getElementById('wa-s-time').value;
     newEvent.end=document.getElementById('wa-e-time').value;
+    const brkV=document.getElementById('wa-brk')?.value;
+    if(brkV!==''&&brkV!==undefined&&brkV!==null)newEvent.customBreak=parseInt(brkV);
     newEvent.by=CU.name;newEvent.at=kstLabel();
   }else if(type==='replace'){
     const end=document.getElementById('wa-end')?.value;
@@ -2469,6 +2531,8 @@ async function waSave(pid,type){
     newEvent.date=start;
     newEvent.start=document.getElementById('wa-s-time').value;
     newEvent.end=document.getElementById('wa-e-time').value;
+    const brkV2=document.getElementById('wa-brk')?.value;
+    if(brkV2!==''&&brkV2!==undefined&&brkV2!==null)newEvent.customBreak=parseInt(brkV2);
     newEvent.by=CU.name;newEvent.at=kstLabel();
   }
   // 겹침 체크
@@ -2482,11 +2546,11 @@ async function waSave(pid,type){
   if(type==='perm'){const arr=[...(p.permChanges||[]),newEvent];updates.permChanges=arr;}
   else if(type==='replace'){const arr=[...(p.scheduleReplaces||[]),newEvent];updates.scheduleReplaces=arr;}
   else if(type==='absent'){const arr=[...(p.plannedAbsent||[]),newEvent];updates.plannedAbsent=arr;}
-  else if(type==='oneday'){const arr=[...(p.tempDates||[]),{date:newEvent.date,start:newEvent.start,end:newEvent.end,by:newEvent.by,at:newEvent.at}];arr.sort((a,b)=>a.date.localeCompare(b.date));updates.tempDates=arr;}
+  else if(type==='oneday'){const tempEntry={date:newEvent.date,start:newEvent.start,end:newEvent.end,by:newEvent.by,at:newEvent.at};if(newEvent.customBreak!==undefined)tempEntry.customBreak=newEvent.customBreak;const arr=[...(p.tempDates||[]),tempEntry];arr.sort((a,b)=>a.date.localeCompare(b.date));updates.tempDates=arr;}
   await update(ref(db,`parts/${pid}`),updates);
-  SL(false);ST('등록 완료');
+  SL(false);ST('등록 완료 — 목록에서 확인하세요');
   CM('modal-workman-edit');
-  setTimeout(()=>{if(AP[pid]){waRenderList(pid);waRenderCal();}},200);
+  setTimeout(()=>{if(AP[pid]){waRenderList(pid);waRenderCal();waSwitchTab('list');}},200);
 }
 window.waSave=waSave;
 
@@ -2534,7 +2598,8 @@ if(pid&&changeDate){
     if(newHistory.length>10)newHistory.splice(0,newHistory.length-10);
   }
 }
-const data={cat:ca,role:ro,name:nm,phone:ph,pin,start:st,end:en,days:dy,joinDate:jd||kstDate(),leaveDate:document.getElementById('pf-leave')?.value||null,isCasual:!!document.getElementById('pf-casual')?.checked,status:pid?(AP[pid]?.status||'active'):'active',pinActive:pid?(AP[pid]?.pinActive!==false):true,memos:pid?(AP[pid].memos||[]):[],scheduleHistory:newHistory};
+const leaveDateVal=document.getElementById('pf-leave')?.value||null;
+const data={cat:ca,role:ro,name:nm,phone:ph,pin,start:st,end:en,days:dy,joinDate:jd||kstDate(),leaveDate:leaveDateVal,isCasual:leaveDateVal?(!!document.getElementById('pf-casual')?.checked):false,status:pid?(AP[pid]?.status||'active'):'active',pinActive:pid?(AP[pid]?.pinActive!==false):true,memos:pid?(AP[pid].memos||[]):[],scheduleHistory:newHistory};
 if(changeDate)data.scheduleChangeDate=changeDate;
 if(Object.keys(daySchedule).length>0)data.daySchedule=daySchedule;
 if(bv!=='')data.customBreak=parseInt(bv);SL(true);if(pid)await update(ref(db,`parts/${pid}`),data);else await push(ref(db,'parts'),data);SL(false);ST(pid?'수정 완료':'등록 완료');CM('modal-part');}
@@ -2578,9 +2643,22 @@ async function reinP(pid){if(!await CC('재입사 처리하시겠습니까?',{ti
 async function delP(pid,name){if(!await CC(`"${name}" 직원을 완전히 삭제하시겠습니까?`,{title:"직원 삭제",danger:true}))return;SL(true);await remove(ref(db,`parts/${pid}`));SL(false);ST('삭제 완료');}
 window.changePartStatus=chgSt;window.resignPart=resignP;window.reinstatePart=reinP;window.deletePart=delP;
 function mkTimeSelect(id,val,extraStyle){const opts=[];const vals=new Set();for(let h=0;h<24;h++){for(let m=0;m<60;m+=30){const t=`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;vals.add(t);opts.push(`<option value="${t}"${val===t?' selected':''}>${t}</option>`);}}if(val&&!vals.has(val)){opts.push(`<option value="${val}" selected>${val}</option>`);}
-const onch=(id==='pf-start'||id==='pf-end')?` onchange="const b=document.getElementById('pf-brk');const bd=document.getElementById('brk-badge');if(b){b.value='';if(bd)bd.style.display='none';}"`:'' ;
+const onch=(id==='pf-start'||id==='pf-end')?` onchange="const b=document.getElementById('pf-brk');const bd=document.getElementById('brk-badge');if(b){b.value='';if(bd)bd.style.display='none';}"`:(id==='wa-s-time'||id==='wa-e-time')?` onchange="updateWaAutoBrk()"`:'' ;
 return`<select class="form-select" id="${id}" style="${extraStyle||'width:100%'}"${onch}>${opts.join('')}</select>`;}
 window.mkTimeSelect=mkTimeSelect;
+window.updateWaAutoBrk=function(){
+  const s=document.getElementById('wa-s-time')?.value;
+  const e=document.getElementById('wa-e-time')?.value;
+  if(!s||!e)return;
+  const diff=(toM(e)-toM(s))/60;
+  let auto=0;
+  if(diff>=9)auto=60;
+  else if(diff>4)auto=30;
+  const lab=document.getElementById('wa-brk-auto');
+  if(lab)lab.textContent=`자동: ${auto}분`;
+  const inp=document.getElementById('wa-brk');
+  if(inp)inp.placeholder=`${auto}분 (자동) — 비워두면 적용`;
+};
 function mkTimeSelect5(id,val){
   let h12='',min='00',ampm='오전';
   if(val){const[hh,mm]=val.split(':').map(Number);ampm=hh<12?'오전':'오후';const h=hh%12||12;h12=String(h);min=String(mm).padStart(2,'0');}
