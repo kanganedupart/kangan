@@ -2071,15 +2071,21 @@ async function waRenderList(pid){
     const opacity=isPast?'opacity:0.55;':'';
     // attendance 기반 이벤트는 별도 삭제 버튼
     const isAttEvent=['ext_end','ext_start','early','late','att_absent'].includes(e.type);
+    // 과거 시작일 보호: 시작일이 오늘 이전이면 삭제 비활성
+    const isStarted=e.startDate&&e.startDate<today;
     let delBtn='';
     if(CU.role==='관리자'){
       if(isAttEvent){
         delBtn=`<button type="button" class="icon-btn del" style="padding:2px 7px;font-size:10px" onclick="waDeleteAttEvent('${pid}','${e.startDate}','${e.type}')">삭제</button>`;
+      }else if(isStarted){
+        delBtn=`<button type="button" class="icon-btn" disabled style="padding:2px 7px;font-size:10px;opacity:0.4;cursor:not-allowed" title="이미 시작된 일정은 삭제 불가 (시수 보호). 새 영구변경으로 덮어쓰세요.">🔒 삭제</button>`;
       }else{
         delBtn=`<button type="button" class="icon-btn del" style="padding:2px 7px;font-size:10px" onclick="waDelete('${pid}','${e.type}','${e.idx}')">삭제</button>`;
       }
     }
-    return `<div style="border:1px solid ${c.border};background:${c.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;${opacity}"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px"><span style="font-size:10px;font-weight:700;color:${c.text};background:#fff;padding:2px 7px;border-radius:10px;border:1px solid ${c.border}">${lb}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);flex:1">${dateStr}${e.type==='perm'?' ~ 계속':''}${isPast?' (종료)':''}</span>${delBtn}</div><div style="font-size:12px;color:${c.text}">${daysStr}${timeStr}${memoStr}${legacy}</div></div>`;
+    // 작성자/등록일시 표시
+    const byStr=e.by?`<span style="font-size:10px;color:var(--text-muted)">✍️ ${e.by}${e.at?` · ${e.at}`:''}</span>`:'';
+    return `<div style="border:1px solid ${c.border};background:${c.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;${opacity}"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px"><span style="font-size:10px;font-weight:700;color:${c.text};background:#fff;padding:2px 7px;border-radius:10px;border:1px solid ${c.border}">${lb}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);flex:1">${dateStr}${e.type==='perm'?' ~ 계속':''}${isPast?' (종료)':''}</span>${delBtn}</div><div style="font-size:12px;color:${c.text}">${daysStr}${timeStr}${memoStr}${legacy}</div>${byStr?`<div style="margin-top:3px">${byStr}</div>`:''}</div>`;
   }).join('');
 }
 window.waRenderList=waRenderList;
