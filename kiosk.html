@@ -203,7 +203,8 @@ async function checkPin(){
   const DM=['일','월','화','수','목','금','토'];
   const k=new Date(Date.now()+9*3600000);
   const dw=DM[k.getUTCDay()];
-  const found=Object.entries(parts).find(([id,p])=>{
+  // 모든 유효 후보 수집 (한 사람이 두 파트일 수 있음 - 조교 부담임/질의응답)
+  const candidates=Object.entries(parts).filter(([id,p])=>{
     if(p.pin!==pin)return false;
     // 일반 퇴사자(비단발)는 차단, 단발근무자는 추가근무 예약 있는 날만 허용
     const hasTempToday=p.tempDates&&p.tempDates.find(td=>td.date===today);
@@ -217,13 +218,43 @@ async function checkPin(){
     if(!isWorkDay(p,dw,today))return false;
     return true;
   });
-  if(!found){
+  if(candidates.length===0){
     const anyFound=Object.entries(parts).find(([id,p])=>p.pin===pin&&(p.status!=='inactive'||p.isCasual));
     if(anyFound){showErrorScreen('오늘은 근무일이 아닙니다');}
     else{showErrorScreen('등록되지 않은 PIN입니다');}
     return;
   }
-  const[pid,p]=found;
+  let pickedEntry;
+  if(candidates.length===1){
+    pickedEntry=candidates[0];
+  }else{
+    // 같은 PIN 다중 파트 → 시간대 자동 인식
+    // 1순위: 출근만 찍고 퇴근 안 한 파트 (이번 누름은 퇴근일 가능성 높음)
+    // 2순위: 출근 안 한 파트 중 현재 시각에 가장 가까운 시간대
+    const toMin=(t)=>{const[h,m]=t.split(':').map(Number);return h*60+m;};
+    const nowM=toMin(kstTime());
+    const withAtt=await Promise.all(candidates.map(async([id,p])=>{
+      const sn=await get(ref(db,`attendance/${today}/${id}`));
+      return[id,p,sn.val()||{}];
+    }));
+    const pending=withAtt.find(([,,a])=>a.inTime&&!a.outTime);
+    if(pending){
+      pickedEntry=[pending[0],pending[1]];
+    }else{
+      const notIn=withAtt.filter(([,,a])=>!a.inTime);
+      const pool=notIn.length?notIn:withAtt;
+      const dist=([,p,])=>{
+        const ds=getDayTime(p,dw,today);
+        if(!ds.start||!ds.end)return 99999;
+        const s=toMin(ds.start),e=toMin(ds.end);
+        if(nowM>=s&&nowM<=e)return 0;
+        return Math.min(Math.abs(nowM-s),Math.abs(nowM-e));
+      };
+      pool.sort((a,b)=>dist(a)-dist(b));
+      pickedEntry=[pool[0][0],pool[0][1]];
+    }
+  }
+  const[pid,p]=pickedEntry;
   currentPart=p;currentPartId=pid;
   wasAbsent=isPlannedAbsent(p,today);
   showConfirm(pid,p);
@@ -238,7 +269,7 @@ async function showConfirm(pid,p){
   const snap=await get(ref(db,`attendance/${today}/${pid}`));
   const att=snap.val()||{};
   document.getElementById('cf-name').textContent=p.name;
-  document.getElementById('cf-role').textContent=p.role;
+  document.getElementById('cf-role').textContent=p.role+(p.tutorKind?' · '+p.tutorKind:'');
   document.getElementById('cf-schedule').textContent=`${ds.start} ~ ${ds.end}`;
   const notice=document.getElementById('cf-notice');
   if(wasAbsent){notice.style.display='';notice.textContent='⚠ 결근 예정이었으나 출근 처리됩니다';}
