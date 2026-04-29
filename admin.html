@@ -2600,6 +2600,29 @@ async function waSave(pid,type){
     newEvent.end=document.getElementById('wa-e-time').value;
     const brkV=document.getElementById('wa-brk')?.value;
     if(brkV!==''&&brkV!==undefined&&brkV!==null)newEvent.customBreak=parseInt(brkV);
+    // 시간대 겹침 검증: 같은 이름+PIN의 다른 활성 파트가 영구변경 시작일 이후 시간 겹치면 차단
+    const sameP=Object.entries(AP).filter(([id,o])=>id!==pid&&o.pin===p.pin&&o.name===p.name&&o.status!=='inactive');
+    if(sameP.length){
+      const myDays=new Set(days);
+      const myS=toM(newEvent.start),myE=toM(newEvent.end);
+      for(const[oid,o]of sameP){
+        // 상대방의 영구변경 시작일 이후 적용 시간대 체크
+        const oDsStart=(()=>{
+          const wPerms=(o.permChanges||[]).filter(pc=>pc.startDate<=start).sort((a,b)=>b.startDate.localeCompare(a.startDate));
+          if(wPerms.length)return{start:wPerms[0].start,end:wPerms[0].end,days:wPerms[0].days||[]};
+          return{start:o.start,end:o.end,days:o.days||[]};
+        })();
+        const oDays=new Set(oDsStart.days);
+        const overlap=[...myDays].filter(d=>oDays.has(d));
+        if(!overlap.length)continue;
+        const oS=toM(oDsStart.start),oE=toM(oDsStart.end);
+        if(myS<oE&&oS<myE){
+          const lbl=o.tutorKind||o.role;
+          ST(`시간 겹침: ${lbl} (${oDsStart.start}~${oDsStart.end}) — ${overlap.join('·')}요일 겹침`);
+          return;
+        }
+      }
+    }
     newEvent.by=CU.name;newEvent.at=kstLabel();
   }else if(type==='replace'){
     const end=document.getElementById('wa-end')?.value;
@@ -2776,7 +2799,25 @@ const leaveDateVal=document.getElementById('pf-leave')?.value||null;
 const data={cat:ca,role:ro,name:nm,phone:ph,pin,start:st,end:en,days:dy,joinDate:jd||kstDate(),leaveDate:leaveDateVal,isCasual:leaveDateVal?(!!document.getElementById('pf-casual')?.checked):false,status:pid?(AP[pid]?.status||'active'):'active',pinActive:pid?(AP[pid]?.pinActive!==false):true,memos:pid?(AP[pid].memos||[]):[],scheduleHistory:newHistory,tutorKind:ca==='tutor'?tk:null};
 if(changeDate)data.scheduleChangeDate=changeDate;
 if(Object.keys(daySchedule).length>0)data.daySchedule=daySchedule;
-if(bv!=='')data.customBreak=parseInt(bv);SL(true);if(pid)await update(ref(db,`parts/${pid}`),data);else await push(ref(db,'parts'),data);SL(false);ST(pid?'수정 완료':'등록 완료');CM('modal-part');}
+if(bv!=='')data.customBreak=parseInt(bv);
+// 시간대 겹침 검증: 같은 이름+PIN의 다른 활성 파트와 같은 요일·같은 시간 겹치면 차단
+const sameP=Object.entries(AP).filter(([id,o])=>id!==pid&&o.pin===pin&&o.name===nm&&o.status!=='inactive');
+if(sameP.length){
+  const myDays=new Set(dy);
+  const myS=toM(st),myE=toM(en);
+  for(const[oid,o]of sameP){
+    const oDays=new Set(o.days||[]);
+    const overlap=[...myDays].filter(d=>oDays.has(d));
+    if(!overlap.length)continue;
+    const oS=toM(o.start),oE=toM(o.end);
+    if(myS<oE&&oS<myE){
+      const lbl=o.tutorKind||o.role;
+      ST(`시간 겹침: ${lbl} (${o.start}~${o.end}) — ${overlap.join('·')}요일 겹침`);
+      return;
+    }
+  }
+}
+SL(true);if(pid)await update(ref(db,`parts/${pid}`),data);else await push(ref(db,'parts'),data);SL(false);ST(pid?'수정 완료':'등록 완료');CM('modal-part');}
 window.savePartForm=savePF;
 async function addTempDate(pid){
   const date=document.getElementById('temp-date')?.value;
