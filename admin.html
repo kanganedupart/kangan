@@ -356,6 +356,42 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
         <div style="overflow-x:auto"><div id="acct-body"><div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">기간을 선택하고 조회하세요</div></div></div>
       </div>
     </div>
+    <div class="tab-content" id="tab-payroll">
+      <div class="section-card" style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);color:#fff;border:none;padding:20px 24px;margin-bottom:14px;border-radius:var(--r)">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
+          <div>
+            <div style="font-size:13px;opacity:.85;font-weight:500;letter-spacing:0.5px;margin-bottom:4px">PAYROLL · 급여 정산</div>
+            <div style="font-size:22px;font-weight:700;letter-spacing:-0.5px">월별 급여 + 주휴수당 자동 계산</div>
+            <div style="font-size:12px;opacity:.85;margin-top:6px">달력 기준 일~토 단위, 주 15h 이상 자격, 월 60h 이상 지급 룰 적용</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;opacity:.85;margin-bottom:4px">정산 월</div>
+            <input type="month" id="pay-month" class="form-input" style="width:160px;background:rgba(255,255,255,0.95);border:none;color:#1e293b;font-weight:600;font-size:14px" onchange="loadPayroll()">
+          </div>
+        </div>
+      </div>
+      <div class="section-card" style="padding:14px 16px;margin-bottom:12px">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+          <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:11px;color:var(--text-secondary);font-weight:500">카테고리</label><select class="form-select" id="pay-cat" onchange="renderPayroll()" style="min-width:120px"><option value="">전체</option><option value="mgmt">관리</option><option value="tutor">조교</option><option value="etc">기타</option></select></div>
+          <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:11px;color:var(--text-secondary);font-weight:500">이름 검색</label><input class="form-input" id="pay-name" placeholder="이름..." oninput="renderPayroll()" style="min-width:140px"></div>
+          <div style="display:flex;flex-direction:column;gap:4px"><label style="font-size:11px;color:var(--text-secondary);font-weight:500">필터</label>
+            <select class="form-select" id="pay-filter" onchange="renderPayroll()" style="min-width:160px">
+              <option value="">전체</option>
+              <option value="elig">주휴수당 지급자만</option>
+              <option value="under60">월 60h 미달</option>
+              <option value="zero">실시수 0</option>
+            </select>
+          </div>
+          <div style="margin-left:auto;display:flex;gap:6px;align-items:end">
+            <button class="btn-primary" onclick="loadPayroll()" style="padding:9px 18px">🔄 재계산</button>
+            <button class="btn-secondary" onclick="exportPayrollCSV()" style="padding:9px 14px">📤 엑셀 다운로드</button>
+            <button class="btn-secondary" onclick="window.print()" style="padding:9px 14px">🖨️ 인쇄</button>
+          </div>
+        </div>
+      </div>
+      <div id="payroll-summary"></div>
+      <div id="payroll-body"></div>
+    </div>
     <div class="tab-content" id="tab-settings">
       <div class="section-card">
         <div class="settings-title">직무 관리</div>
@@ -446,7 +482,7 @@ window.canSeeWage=canSeeWage;
 const COLORS={순찰:'#0ea5e9','1층':'#8b5cf6',식관:'#f59e0b',응대:'#10b981',등원:'#f97316',국어:'#e11d48',수학:'#3b82f6',영어:'#ec4899',지리:'#f59e0b',물리:'#f97316',화학:'#14b8a6',생명:'#16a34a',지학:'#8b5cf6',사문:'#0ea5e9',생윤:'#6366f1',스타터:'#6366f1',디자인:'#e11d48'};
 const CAT={mgmt:{label:'관리',icon:'📊'},tutor:{label:'조교',icon:'🎓'},etc:{label:'기타',icon:'🏢'}};
 const CATL={mgmt:'관리',tutor:'조교',etc:'기타'};
-const TABS=[{key:'mgmt',label:'관리',icon:'📊',roles:['관리자','총무','일반직원']},{key:'tutor',label:'조교',icon:'🎓',roles:['관리자','총무','일반직원']},{key:'etc',label:'기타',icon:'🏢',roles:['관리자','총무','일반직원']},{key:'workman',label:'출근 현황',icon:'📋',roles:['관리자','총무','일반직원']},{key:'parts',label:'파트 관리',icon:'👥',roles:['관리자','총무','일반직원']},{key:'acct',label:'시수 확인',icon:'📊',roles:['관리자','총무','일반직원']},{key:'settings',label:'설정',icon:'⚙️',roles:['관리자']}];
+const TABS=[{key:'mgmt',label:'관리',icon:'📊',roles:['관리자','총무','일반직원']},{key:'tutor',label:'조교',icon:'🎓',roles:['관리자','총무','일반직원']},{key:'etc',label:'기타',icon:'🏢',roles:['관리자','총무','일반직원']},{key:'workman',label:'출근 현황',icon:'📋',roles:['관리자','총무','일반직원']},{key:'parts',label:'파트 관리',icon:'👥',roles:['관리자','총무','일반직원']},{key:'acct',label:'시수 확인',icon:'📊',roles:['관리자','총무','일반직원']},{key:'payroll',label:'급여 정산',icon:'💰',roles:['관리자','총무']},{key:'settings',label:'설정',icon:'⚙️',roles:['관리자']}];
 let CU=null,AT='mgmt',AP={},TA={},AA=[],SP={},AD=[];
 let DD={mgmt:null,tutor:null,etc:null};
 let TB={mgmt:{},tutor:{},etc:{}};
@@ -757,7 +793,7 @@ async function deleteRoleInline(){
 }
 window.deleteRoleInline=deleteRoleInline;
 function buildTabs(){const nav=document.getElementById('tabnav');nav.innerHTML='';TABS.filter(t=>t.roles.includes(CU.role)).forEach(t=>{const b=document.createElement('button');b.className='tab-btn'+(t.key===AT?' active':'');b.innerHTML=`${t.icon} ${t.label}`;b.onclick=()=>swTab(t.key);nav.appendChild(b);});}
-function swTab(k){AT=k;document.querySelectorAll('.tab-content').forEach(e=>e.classList.remove('active'));document.getElementById('tab-'+k)?.classList.add('active');const ts=TABS.filter(t=>t.roles.includes(CU.role));document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',ts[i]?.key===k));if(k==='parts'){renderPT();const addBtn=document.getElementById('btn-add-part');if(addBtn)addBtn.style.display=CU.role==='관리자'?'':'none';}if(k==='settings'){loadRoles();renderAccList();}}
+function swTab(k){AT=k;document.querySelectorAll('.tab-content').forEach(e=>e.classList.remove('active'));document.getElementById('tab-'+k)?.classList.add('active');const ts=TABS.filter(t=>t.roles.includes(CU.role));document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',ts[i]?.key===k));if(k==='parts'){renderPT();const addBtn=document.getElementById('btn-add-part');if(addBtn)addBtn.style.display=CU.role==='관리자'?'':'none';}if(k==='settings'){loadRoles();renderAccList();}if(k==='payroll'){initPayroll();}}
 window.switchTab=swTab;
 function pfc(cat){return Object.entries(AP).filter(([,p])=>p.cat===cat&&(p.status!=='inactive'||p.isCasual)).map(([id,p])=>({...p,id}));}
 function renderCat(cat){const ps=enrich(pfc(cat),cat);rStats(cat,ps);rTL(cat,ps);chkAlert(cat,ps);}
@@ -3045,6 +3081,301 @@ window.deleteAccount=delAcc;window.delAcc=delAcc;
 window.openAP=openAP;window.openEP=openEP;window.savePF=savePF;window.tDay=tDay;
 window.chgSt=chgSt;window.resignP=resignP;window.reinP=reinP;window.delP=delP;
 window.saveAcc=saveAcc;
+
+// ============================================================
+// 💰 급여 정산 (주휴수당 자동계산)
+// ============================================================
+let PAY_DATA=null; // 캐시: 현재 로드된 정산 데이터
+function initPayroll(){
+  const inp=document.getElementById('pay-month');
+  if(!inp.value){
+    const k=new Date(Date.now()+9*3600000);
+    const yy=k.getUTCFullYear(),mm=String(k.getUTCMonth()+1).padStart(2,'0');
+    inp.value=`${yy}-${mm}`;
+  }
+  loadPayroll();
+}
+window.initPayroll=initPayroll;
+
+async function loadPayroll(){
+  const ym=document.getElementById('pay-month').value;
+  if(!ym){ST('정산 월을 선택해주세요');return;}
+  const[y,m]=ym.split('-').map(Number);
+  const monthStart=`${y}-${String(m).padStart(2,'0')}-01`;
+  const lastDay=new Date(y,m,0).getDate();
+  const monthEnd=`${y}-${String(m).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+  document.getElementById('payroll-summary').innerHTML='<div style="text-align:center;padding:30px;color:var(--text-muted)">⏳ 정산 데이터 계산 중...</div>';
+  document.getElementById('payroll-body').innerHTML='';
+  SL(true);
+  // 활성/3월 중 재직 파트 수집
+  const today=kstDate();
+  const parts=Object.entries(AP).filter(([id,p])=>{
+    if(p.joinDate&&p.joinDate>monthEnd)return false;
+    if(p.leaveDate&&p.leaveDate<monthStart)return false;
+    return true;
+  });
+  // 출결 데이터 일괄 수집
+  const attByDate={};
+  for(let d=1;d<=lastDay;d++){
+    const dt=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if(dt>today)continue;
+    const sn=await get(ref(db,`attendance/${dt}`));
+    attByDate[dt]=sn.val()||{};
+  }
+  // 사람별 정산 계산
+  const result=parts.map(([pid,p])=>calcPersonPayroll(pid,p,y,m,lastDay,attByDate)).filter(Boolean);
+  PAY_DATA={ym,year:y,month:m,lastDay,rows:result,monthStart,monthEnd};
+  SL(false);
+  renderPayroll();
+}
+window.loadPayroll=loadPayroll;
+
+// 한 사람의 한 달치 급여 계산
+function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
+  const isTutor=p.cat==='tutor';
+  // 일자별 실시수 (시간 단위, 단 조교는 T 단위로 별도 보관)
+  const days=[];
+  const today=kstDate();
+  for(let d=1;d<=lastDay;d++){
+    const dt=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if(dt>today){days.push({dt,h:0,future:true,attended:false});continue;}
+    // 해당 일자 적용 파트 정보 (영구변경 등 반영)
+    const DM=['일','월','화','수','목','금','토'];
+    const dw=DM[new Date(dt+'T00:00:00+09:00').getDay()];
+    const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dt);
+    const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dt);
+    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:ds._isTemp?ds.customBreak:(ds.fromPerm?ds.customBreak:(ds.customBreak!==undefined?ds.customBreak:p.customBreak))};
+    if(p.joinDate&&dt<p.joinDate){days.push({dt,h:0,attended:false,offDay:true});continue;}
+    if(p.leaveDate&&dt>p.leaveDate){days.push({dt,h:0,attended:false,offDay:true});continue;}
+    const a=attByDate[dt]?.[pid]||{};
+    const isPlnAbs=isPlannedAbsent(p,dt);
+    const a_in=a.adjustedStart||a.inTime;
+    const a_out=a.adjustedEnd||a.outTime;
+    let h=0,attended=false;
+    if(a_in&&a_out){
+      const r=calcRealH(pEff,a);
+      if(r!==null){h=r;attended=true;}
+    }else if(a.stdPhrase==='연차'||a.stdPhrase==='반차'){
+      // 연차/반차는 스케줄시수 인정
+      h=schedH(pEff,null);
+      if(a.stdPhrase==='반차')h=h/2;
+      attended=true;
+    }
+    days.push({dt,h:Math.round(h*100)/100,attended,plnAbs:isPlnAbs,phrase:a.stdPhrase,wage:wageAt(p,dt)});
+  }
+  // 주별 그룹 (일~토)
+  const weeks=[];
+  let curWeek=null;
+  days.forEach(d=>{
+    const dow=new Date(d.dt+'T00:00:00+09:00').getDay(); // 0=일
+    if(dow===0||!curWeek){
+      if(curWeek)weeks.push(curWeek);
+      curWeek={start:d.dt,days:[],totalH:0,eligible:false,bonusH:0};
+    }
+    curWeek.days.push(d);
+    curWeek.totalH+=d.h;
+  });
+  if(curWeek)weeks.push(curWeek);
+  // 주별 자격 판정 (15h 이상 + 결근 0)
+  weeks.forEach(w=>{
+    w.totalH=Math.round(w.totalH*100)/100;
+    const hasUnplannedAbsent=w.days.some(d=>{
+      // 무단결근만 카운트 (예정결근/연차/반차 제외)
+      if(d.future||d.offDay)return false;
+      if(d.plnAbs)return false;
+      if(d.phrase==='연차'||d.phrase==='반차')return false;
+      if(d.phrase==='결근')return true;
+      return false;
+    });
+    w.absent=hasUnplannedAbsent;
+    if(w.totalH>=15&&!hasUnplannedAbsent){
+      w.eligible=true;
+      w.bonusH=Math.round((w.totalH/3)*100)/100;
+    }
+  });
+  // 월 총 시수
+  const monthH=Math.round(weeks.reduce((s,w)=>s+w.totalH,0)*100)/100;
+  // 월 60h 이상 조건 체크
+  const meetMonthly=monthH>=60;
+  // 실제 지급 주휴수당 시수
+  const totalBonusH=meetMonthly?Math.round(weeks.reduce((s,w)=>s+w.bonusH,0)*100)/100:0;
+  // 급여 계산: 일별 실시수 × 적용 시급
+  const isT=p.cat==='tutor';
+  const unitDivisor=isT?(70/60):1; // T = 70분 → 시간으로 환산 시 (h×60)/70 = T
+  // 시급 단위: 조교=T당, 그 외=시간당. 이미 wageAt이 그 단위라서 곱셈만 하면 됨
+  // → 시간당 시급(원/h)이라면 h × wage
+  // → T당 시급(원/T)이라면 T × wage = (h × 60 / 70) × wage
+  const dailyPay=days.map(d=>{
+    if(!d.h||!d.wage)return 0;
+    if(isT)return Math.round((d.h*60/70)*d.wage);
+    return Math.round(d.h*d.wage);
+  });
+  const basePay=dailyPay.reduce((a,b)=>a+b,0);
+  // 주휴수당 금액: 자격 주의 bonusH × 평균 시급
+  // (간소화) 마지막 적용 시급 사용. 추후 정확도 필요 시 주별 평균으로 변경
+  const lastWage=wageAt(p,`${year}-${String(month).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`)||p.wage||0;
+  const bonusPay=meetMonthly?(isT?Math.round((totalBonusH*60/70)*lastWage):Math.round(totalBonusH*lastWage)):0;
+  return{
+    pid,name:p.name,role:p.role,cat:p.cat,tutorKind:p.tutorKind,
+    isT,wage:lastWage,
+    weeks,monthH,meetMonthly,totalBonusH,
+    basePay,bonusPay,totalPay:basePay+bonusPay,
+    days,joinDate:p.joinDate,leaveDate:p.leaveDate,
+    status:p.status
+  };
+}
+
+function renderPayroll(){
+  if(!PAY_DATA){document.getElementById('payroll-summary').innerHTML='';return;}
+  const {ym,year,month,rows}=PAY_DATA;
+  // 필터 적용
+  const catF=document.getElementById('pay-cat').value;
+  const nameF=(document.getElementById('pay-name').value||'').trim().toLowerCase();
+  const f=document.getElementById('pay-filter').value;
+  let filtered=rows.slice();
+  if(catF)filtered=filtered.filter(r=>r.cat===catF);
+  if(nameF)filtered=filtered.filter(r=>r.name.toLowerCase().includes(nameF));
+  if(f==='elig')filtered=filtered.filter(r=>r.totalBonusH>0);
+  else if(f==='under60')filtered=filtered.filter(r=>r.monthH<60&&r.monthH>0);
+  else if(f==='zero')filtered=filtered.filter(r=>r.monthH===0);
+  // 카테고리 정렬
+  const catOrder={mgmt:0,tutor:1,etc:2};
+  filtered.sort((a,b)=>{
+    const c=(catOrder[a.cat]??99)-(catOrder[b.cat]??99);
+    if(c!==0)return c;
+    return a.name.localeCompare(b.name,'ko');
+  });
+  // 요약
+  const sumBase=filtered.reduce((s,r)=>s+r.basePay,0);
+  const sumBonus=filtered.reduce((s,r)=>s+r.bonusPay,0);
+  const eligCnt=filtered.filter(r=>r.totalBonusH>0).length;
+  const fmt=n=>(n||0).toLocaleString();
+  document.getElementById('payroll-summary').innerHTML=`
+<div class="section-card" style="padding:0;margin-bottom:14px;overflow:hidden">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0">
+    <div style="padding:18px 20px;border-right:1px solid var(--border-light)">
+      <div style="font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:0.3px;margin-bottom:6px">정산 대상</div>
+      <div style="font-size:22px;font-weight:700;color:var(--text-primary)">${filtered.length}<span style="font-size:13px;color:var(--text-muted);margin-left:4px">명</span></div>
+    </div>
+    <div style="padding:18px 20px;border-right:1px solid var(--border-light)">
+      <div style="font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:0.3px;margin-bottom:6px">기본급 합계</div>
+      <div style="font-size:22px;font-weight:700;color:#0f172a">${fmt(sumBase)}<span style="font-size:13px;color:var(--text-muted);margin-left:4px">원</span></div>
+    </div>
+    <div style="padding:18px 20px;border-right:1px solid var(--border-light);background:#f0f9ff">
+      <div style="font-size:11px;color:#0c4a6e;font-weight:600;letter-spacing:0.3px;margin-bottom:6px">주휴수당 합계 <span style="background:#fff;border:1px solid #bae6fd;color:#0369a1;padding:1px 6px;border-radius:6px;font-size:9px">${eligCnt}명</span></div>
+      <div style="font-size:22px;font-weight:700;color:#0369a1">${fmt(sumBonus)}<span style="font-size:13px;color:#0c4a6e;margin-left:4px">원</span></div>
+    </div>
+    <div style="padding:18px 20px;background:linear-gradient(135deg,#1e3a8a,#3b82f6);color:#fff">
+      <div style="font-size:11px;opacity:.85;font-weight:600;letter-spacing:0.3px;margin-bottom:6px">총 지급액</div>
+      <div style="font-size:22px;font-weight:700">${fmt(sumBase+sumBonus)}<span style="font-size:13px;opacity:.85;margin-left:4px">원</span></div>
+    </div>
+  </div>
+</div>`;
+  // 본문 테이블
+  if(!filtered.length){
+    document.getElementById('payroll-body').innerHTML='<div class="section-card" style="padding:40px;text-align:center;color:var(--text-muted)">조건에 맞는 인원이 없습니다</div>';
+    return;
+  }
+  // 카테고리 그룹별 렌더링
+  const grouped={};
+  filtered.forEach(r=>{if(!grouped[r.cat])grouped[r.cat]=[];grouped[r.cat].push(r);});
+  const catLabel={mgmt:'관리',tutor:'조교',etc:'기타'};
+  let html='';
+  Object.entries(grouped).forEach(([cat,grp])=>{
+    const catSumBase=grp.reduce((s,r)=>s+r.basePay,0);
+    const catSumBonus=grp.reduce((s,r)=>s+r.bonusPay,0);
+    html+=`<div class="section-card" style="padding:0;margin-bottom:12px;overflow:hidden">
+<div style="background:var(--surface);padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+  <div style="display:flex;align-items:center;gap:10px"><span class="cat-badge cat-${cat}" style="font-size:12px">${catLabel[cat]||cat}</span><span style="font-size:13px;font-weight:600;color:var(--text-primary)">${grp.length}명</span></div>
+  <div style="display:flex;gap:14px;font-size:12px;color:var(--text-secondary)">
+    <span>기본급 <b style="color:var(--text-primary);font-family:'DM Mono',monospace">${fmt(catSumBase)}</b>원</span>
+    <span>주휴수당 <b style="color:#0369a1;font-family:'DM Mono',monospace">${fmt(catSumBonus)}</b>원</span>
+    <span>합계 <b style="color:var(--text-primary);font-family:'DM Mono',monospace">${fmt(catSumBase+catSumBonus)}</b>원</span>
+  </div>
+</div>
+<div style="overflow-x:auto"><table class="parts-table" style="margin:0">
+<thead><tr style="background:#f8fafc">
+<th style="width:24px"></th><th>이름</th><th>직무</th><th style="text-align:right">시급</th>
+<th style="text-align:right">월 시수</th><th style="text-align:right">주휴수당 시수</th>
+<th style="text-align:right">기본급</th><th style="text-align:right">주휴수당</th><th style="text-align:right">총 지급</th><th style="width:100px;text-align:center">상세</th>
+</tr></thead>
+<tbody>${grp.map(r=>{
+  const monthOk=r.meetMonthly;
+  const bonusCol=r.totalBonusH>0?'#0369a1':'var(--text-muted)';
+  const monthLbl=monthOk?'':`<span style="font-size:9px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;padding:1px 5px;border-radius:6px;margin-left:4px;font-weight:700">월&lt;60h</span>`;
+  return`<tr id="pay-row-${r.pid}" style="cursor:pointer" onclick="togglePayDetail('${r.pid}')">
+<td style="text-align:center;color:var(--text-muted);font-size:10px">▶</td>
+<td style="font-weight:600">${r.name}${tkBadge(r)}</td>
+<td><span style="color:${cof(r.role)};font-weight:600;font-size:12px">${r.role}</span></td>
+<td style="font-family:'DM Mono',monospace;text-align:right">${fmt(r.wage)}<span style="font-size:10px;color:var(--text-muted)">/${r.isT?'T':'h'}</span></td>
+<td style="font-family:'DM Mono',monospace;text-align:right;font-weight:500">${r.monthH}h${monthLbl}</td>
+<td style="font-family:'DM Mono',monospace;text-align:right;color:${bonusCol};font-weight:600">${r.totalBonusH||'-'}${r.totalBonusH?'h':''}</td>
+<td style="font-family:'DM Mono',monospace;text-align:right">${fmt(r.basePay)}</td>
+<td style="font-family:'DM Mono',monospace;text-align:right;color:${bonusCol};font-weight:600">${r.bonusPay?fmt(r.bonusPay):'-'}</td>
+<td style="font-family:'DM Mono',monospace;text-align:right;font-weight:700;color:#1e3a8a">${fmt(r.totalPay)}</td>
+<td style="text-align:center"><button class="icon-btn" onclick="event.stopPropagation();openHistoryModal('${r.pid}')" style="font-size:10px;padding:2px 6px">📋</button></td>
+</tr>
+<tr id="pay-detail-${r.pid}" style="display:none;background:#fafbfc"><td colspan="10" style="padding:14px 20px">${renderPayDetail(r)}</td></tr>`;
+}).join('')}</tbody>
+</table></div></div>`;
+  });
+  document.getElementById('payroll-body').innerHTML=html;
+}
+window.renderPayroll=renderPayroll;
+
+function renderPayDetail(r){
+  const fmt=n=>(n||0).toLocaleString();
+  const wkRows=r.weeks.map((w,i)=>{
+    const lbl=`${w.start} ~ ${w.days[w.days.length-1].dt} (${i+1}주차)`;
+    let badge='';
+    if(w.absent)badge='<span style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:4px">결근</span>';
+    else if(w.eligible)badge='<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:4px">자격</span>';
+    else if(w.totalH<15)badge=`<span style="background:#f3f4f6;color:#6b7280;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600;margin-left:4px">15h미달</span>`;
+    return`<tr><td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text-secondary)">${lbl}</td><td style="padding:6px 10px;font-family:'DM Mono',monospace;text-align:right">${w.totalH}h${badge}</td><td style="padding:6px 10px;font-family:'DM Mono',monospace;text-align:right;color:${w.bonusH?'#0369a1':'var(--text-muted)'};font-weight:600">${w.bonusH||'-'}${w.bonusH?'h':''}</td></tr>`;
+  }).join('');
+  const monthlyNote=r.meetMonthly?'':`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:11px;color:#991b1b;margin-bottom:10px"><b>⚠ 월 60시간 미달</b> (현재 ${r.monthH}h) — 주휴수당 미지급</div>`;
+  return`${monthlyNote}
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+  <div>
+    <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;letter-spacing:0.3px">📅 주별 근무 시수</div>
+    <div style="background:#fff;border:1px solid var(--border-light);border-radius:6px;overflow:hidden">
+      <table style="width:100%;border-collapse:collapse"><thead><tr style="background:#f8fafc"><th style="padding:6px 10px;text-align:left;font-size:11px;color:var(--text-secondary);font-weight:600">주차</th><th style="padding:6px 10px;text-align:right;font-size:11px;color:var(--text-secondary);font-weight:600">시수</th><th style="padding:6px 10px;text-align:right;font-size:11px;color:var(--text-secondary);font-weight:600">주휴수당</th></tr></thead><tbody>${wkRows}</tbody></table>
+    </div>
+  </div>
+  <div>
+    <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;letter-spacing:0.3px">💵 급여 계산</div>
+    <div style="background:#fff;border:1px solid var(--border-light);border-radius:6px;padding:10px 14px">
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px"><span>월 총 시수</span><b style="font-family:'DM Mono',monospace">${r.monthH}h</b></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px"><span>적용 시급</span><b style="font-family:'DM Mono',monospace">${fmt(r.wage)}원/${r.isT?'T':'h'}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;border-top:1px dashed var(--border-light)"><span>기본급</span><b style="font-family:'DM Mono',monospace">${fmt(r.basePay)}원</b></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px"><span>주휴수당 (${r.totalBonusH||0}h)</span><b style="font-family:'DM Mono',monospace;color:#0369a1">${fmt(r.bonusPay)}원</b></div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0 0;font-size:13px;font-weight:700;border-top:2px solid var(--border)"><span>총 지급액</span><span style="font-family:'DM Mono',monospace;color:#1e3a8a;font-size:15px">${fmt(r.totalPay)}원</span></div>
+    </div>
+  </div>
+</div>`;
+}
+window.renderPayDetail=renderPayDetail;
+
+function togglePayDetail(pid){
+  const row=document.getElementById('pay-detail-'+pid);
+  const main=document.getElementById('pay-row-'+pid);
+  if(!row)return;
+  const arrow=main?.querySelector('td:first-child');
+  if(row.style.display==='none'){row.style.display='';if(arrow)arrow.textContent='▼';}
+  else{row.style.display='none';if(arrow)arrow.textContent='▶';}
+}
+window.togglePayDetail=togglePayDetail;
+
+function exportPayrollCSV(){
+  if(!PAY_DATA||!PAY_DATA.rows.length){ST('먼저 조회해주세요');return;}
+  const{ym,rows}=PAY_DATA;
+  const h='카테고리,직무,종류,이름,시급,단위,월시수,월60h충족,주휴수당시수,기본급,주휴수당,총지급';
+  const catLbl={mgmt:'관리',tutor:'조교',etc:'기타'};
+  const data=rows.map(r=>[catLbl[r.cat]||r.cat,r.role,r.tutorKind||'',r.name,r.wage,r.isT?'T':'시간',r.monthH,r.meetMonthly?'O':'X',r.totalBonusH,r.basePay,r.bonusPay,r.totalPay].map(v=>`"${v}"`).join(',')).join('\n');
+  const b=new Blob(['\uFEFF'+h+'\n'+data],{type:'text/csv;charset=utf-8;'});
+  const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`강안교육_급여정산_${ym}.csv`;a.click();URL.revokeObjectURL(u);
+}
+window.exportPayrollCSV=exportPayrollCSV;
 </script>
 </body>
 </html>
