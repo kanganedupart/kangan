@@ -3103,8 +3103,10 @@ window.waDelete=waDelete;
 
 async function savePF(pid){const ro=document.getElementById('pf-role').value.trim();const nm=document.getElementById('pf-name').value.trim();const ph=document.getElementById('pf-phone').value.trim();const st=document.getElementById('pf-start').value||syncGetTime('pf-start');const en=document.getElementById('pf-end').value||syncGetTime('pf-end');const ca=document.getElementById('pf-cat').value;const jd=document.getElementById('pf-jd').value;const dy=[...document.querySelectorAll('#pf-days .day-btn.selected')].map(b=>b.textContent.trim());const bv=document.getElementById('pf-brk').value;const tk=ca==='tutor'?(document.getElementById('pf-tutorkind')?.value||''):'';if(!ro||!nm){ST('직무와 이름은 필수입니다');return;}if(ca==='tutor'&&!tk){ST('조교 종류(부담임/질의응답)를 선택해주세요');return;}if(!st||!en){ST('기본 출퇴근 시각을 입력해주세요');return;}if(!dy.length){ST('근무 요일을 선택해주세요');return;}let pin=document.getElementById('pf-pin').value.trim();if(!pin&&pid)pin=AP[pid]?.pin||'';if(!pin&&ph.length>=4)pin=ph.replace(/-/g,'').slice(-4);if(!/^\d{4}$/.test(pin)){ST('PIN은 4자리 숫자여야 합니다');return;}const dup=Object.entries(AP).find(([id,p])=>{
   if(p.pin!==pin||id===pid)return false;
-  // 같은 사람(이름+PIN)이 조교 부담임/질의응답 두 파트면 PIN 공유 허용
-  if(ca==='tutor'&&p.cat==='tutor'&&p.name===nm&&tk&&p.tutorKind&&tk!==p.tutorKind)return false;
+  // 같은 사람(이름 동일) = PIN 공유 허용 (직무 여러 개 등록 시)
+  // 조교 부담임/질의응답, 관리 식관(오전)/행정, 식관+질의응답 등 자유 조합 가능
+  // 단, 시간 겹침은 별도 검증으로 차단
+  if(p.name===nm)return false;
   // 재직자는 PIN 점유
   if(p.status!=='inactive')return true;
   // 퇴사자라도 단발근무자는 PIN 점유 (재방문 시 충돌 방지)
