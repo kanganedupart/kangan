@@ -2202,6 +2202,22 @@ const curEndRPF=applicablePermRPF?applicablePermRPF.end:(p?p.end:'-');
 const curBrkRPFnum=applicablePermRPF&&applicablePermRPF.customBreak!==undefined?applicablePermRPF.customBreak:(p&&p.customBreak!==undefined?p.customBreak:null);
 const curBrkRPFlabel=curBrkRPFnum!==null?`${curBrkRPFnum}분 (수동)`:(p?(()=>{const s=curStartRPF,e=curEndRPF;if(!s||!e||s==='-'||e==='-')return'자동';const h=(toM(e)-toM(s))/60;return h>=9?'60분 (자동)':h>4?'30분 (자동)':'0분';})():'자동');
 const futurePermRPF=p&&p.permChanges?[...p.permChanges].filter(pc=>pc.startDate>todayK).sort((a,b)=>a.startDate.localeCompare(b.startDate))[0]:null;
+// ⭐ v8: 박스에 표시할 요일별 실제 적용 시간 계산
+// 영구변경의 daySchedule 우선, 없으면 직원 원래 daySchedule, 없으면 기본
+const _effDaySchedRPF=(applicablePermRPF&&applicablePermRPF.daySchedule)||(p&&p.daySchedule)||{};
+const _hasDayDiffRPF=curDaysRPF.some(d=>{
+  const ds=_effDaySchedRPF[d];
+  return ds&&ds.start&&ds.end&&(ds.start!==curStartRPF||ds.end!==curEndRPF);
+});
+// 일관된 시간이면 한 줄 표시, 요일별로 다르면 줄별로 표시
+const curScheduleDisplay=_hasDayDiffRPF
+  ? curDaysRPF.map(d=>{
+      const ds=_effDaySchedRPF[d];
+      const useStart=(ds&&ds.start)||curStartRPF;
+      const useEnd=(ds&&ds.end)||curEndRPF;
+      return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:2px"><span style="font-weight:700;min-width:24px;color:var(--warning)">${d}</span><span style="font-family:'DM Mono',monospace;color:#1d4ed8">${useStart}~${useEnd}</span></div>`;
+    }).join('')
+  : `<div style="font-family:'DM Mono',monospace;font-size:13px;color:#1d4ed8">${curDaysRPF.join('·')||'-'} · ${curStartRPF}~${curEndRPF}</div>`;
 const dayBtns=days.map(d=>{
   const ds=p&&p.daySchedule?p.daySchedule[d]:null;
   const isDiff=ds&&p&&(ds.start!==p.start||ds.end!==p.end);
@@ -2225,7 +2241,8 @@ const periodDayBtns=days.map(d=>`<button type="button" class="day-btn" onclick="
 // 잠금 안내 박스 (기존 직원만)
 const lockNotice=pid?`<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#1e40af">
 <div style="font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px">📅 오늘 적용 중 스케줄</div>
-<div style="font-family:'DM Mono',monospace;font-size:13px;color:#1d4ed8;margin-bottom:6px">${curDaysRPF.join('·')||'-'} · ${curStartRPF}~${curEndRPF} · 휴게 ${curBrkRPFlabel}</div>
+<div style="margin-bottom:6px">${curScheduleDisplay}</div>
+<div style="font-family:'DM Mono',monospace;font-size:12px;color:#1d4ed8;margin-bottom:6px">휴게 ${curBrkRPFlabel}</div>
 ${futurePermRPF?`<div style="font-size:11px;color:#1d4ed8;margin-bottom:6px">📅 ${futurePermRPF.startDate}부터 변경 예약: ${(futurePermRPF.days||[]).join('·')} ${futurePermRPF.start}~${futurePermRPF.end}${futurePermRPF.customBreak!==undefined?` (휴게 ${futurePermRPF.customBreak}분)`:''}</div>`:''}
 <div style="font-size:11px;color:var(--text-muted);padding-top:6px;border-top:1px dashed #bfdbfe">⚠ 아래 시간/요일/휴게는 <b>이력 보호를 위해 잠금</b>되어 있습니다.<br>스케줄 변경은 아래 <b>[🔄 영구 변경]</b> 버튼을 사용하세요.</div>
 </div>`:'';
