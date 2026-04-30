@@ -1061,7 +1061,7 @@ async function openHistoryModal(pid){
     <div style="flex:1;min-width:120px"><label style="font-size:11px;color:var(--text-secondary);display:block">시작일</label><input type="date" class="form-input" id="hist-from" value="${def90}"></div>
     <div style="flex:1;min-width:120px"><label style="font-size:11px;color:var(--text-secondary);display:block">종료일</label><input type="date" class="form-input" id="hist-to" value="${today}"></div>
     <div style="min-width:130px"><label style="font-size:11px;color:var(--text-secondary);display:block">종류</label>
-      <select class="form-select" id="hist-kind"><option value="">전체</option><option value="memo">처리메모</option><option value="note">일반메모</option><option value="history">처리이력</option></select>
+      <select class="form-select" id="hist-kind"><option value="">전체</option><option value="change">스케줄변경</option><option value="memo">처리메모</option><option value="note">일반메모</option><option value="history">처리이력</option></select>
     </div>
     <button class="btn-primary" style="padding:8px 16px" onclick="loadHistoryList('${pid}')">조회</button>
   </div>
@@ -1080,13 +1080,64 @@ async function loadHistoryList(pid){
   const list=document.getElementById('hist-list');
   list.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">조회 중...</div>';
   const items=[];
+  // 파트 자체 이력 (영구변경/기간교체/결근예정/추가근무/직원메모)
+  const p=AP[pid];
+  if(p){
+    if(!kind||kind==='change'){
+      (p.permChanges||[]).forEach(pc=>{
+        if(pc.startDate>=from&&pc.startDate<=to||(pc.at&&pc.at.slice(0,10)>=from&&pc.at.slice(0,10)<=to)){
+          let txt=`영구변경 시작일=${pc.startDate}`;
+          if(pc.start&&pc.end)txt+=` · 시간 ${pc.start}~${pc.end}`;
+          if(pc.days)txt+=` · 요일 ${(pc.days||[]).join('·')}`;
+          if(pc.customBreak!==undefined)txt+=` · 휴게 ${pc.customBreak}분`;
+          if(pc.wage!==undefined&&pc.wage!==null&&canSeeWage())txt+=` · 시급 ${pc.wage.toLocaleString()}원`;
+          if(pc.memo)txt+=`\n메모: ${pc.memo}`;
+          items.push({date:pc.at?pc.at.slice(0,10):pc.startDate,type:'change',subType:'영구변경',text:txt,by:pc.by||'-',at:pc.at||''});
+        }
+      });
+      (p.scheduleReplaces||[]).forEach(r=>{
+        if((r.at&&r.at.slice(0,10)>=from&&r.at.slice(0,10)<=to)||(r.startDate>=from&&r.startDate<=to)){
+          let txt=`기간교체 ${r.startDate}~${r.endDate}`;
+          if(r.start&&r.end)txt+=` · 시간 ${r.start}~${r.end}`;
+          if(r.days)txt+=` · 요일 ${(r.days||[]).join('·')}`;
+          items.push({date:r.at?r.at.slice(0,10):r.startDate,type:'change',subType:'기간교체',text:txt,by:r.by||'-',at:r.at||''});
+        }
+      });
+      (p.plannedAbsent||[]).forEach(ab=>{
+        if((ab.at&&ab.at.slice(0,10)>=from&&ab.at.slice(0,10)<=to)||(ab.startDate>=from&&ab.startDate<=to)){
+          let txt=`결근예정 ${ab.startDate}${ab.endDate&&ab.endDate!==ab.startDate?'~'+ab.endDate:''}`;
+          if(ab.memo)txt+=` · ${ab.memo}`;
+          items.push({date:ab.at?ab.at.slice(0,10):ab.startDate,type:'change',subType:'결근예정',text:txt,by:ab.by||'-',at:ab.at||''});
+        }
+      });
+      (p.tempDates||[]).forEach(td=>{
+        if(td.date>=from&&td.date<=to){
+          let txt=`추가근무 ${td.date}`;
+          if(td.start&&td.end)txt+=` · ${td.start}~${td.end}`;
+          items.push({date:td.date,type:'change',subType:'추가근무',text:txt,by:td.by||'-',at:td.at||''});
+        }
+      });
+    }
+    if(!kind||kind==='memo'){
+      (p.memos||[]).forEach(m=>{
+        const d=m.date?(m.date.slice(0,10).replace(/\./g,'-')):'';
+        if(d&&d>=from&&d<=to){
+          items.push({date:d,type:'memo',phrase:m.phrase,text:m.text||'',by:m.who||'-',at:m.date+' '+(m.time||'')});
+        }
+      });
+    }
+  }
+  // 출결 일별 (메모/이력/notes) - 병렬 처리
   const sd=new Date(from+'T00:00:00+09:00');
   const ed=new Date(to+'T00:00:00+09:00');
+  const dates=[];
   for(let d=new Date(sd);d<=ed;d.setDate(d.getDate()+1)){
     const yy=d.getFullYear(),mm=String(d.getMonth()+1).padStart(2,'0'),dd=String(d.getDate()).padStart(2,'0');
-    const dt=`${yy}-${mm}-${dd}`;
-    const sn=await get(ref(db,`attendance/${dt}/${pid}`));
-    const a=sn.val();if(!a)continue;
+    dates.push(`${yy}-${mm}-${dd}`);
+  }
+  const results=await Promise.all(dates.map(dt=>get(ref(db,`attendance/${dt}/${pid}`)).then(sn=>({dt,a:sn.val()}))));
+  results.forEach(({dt,a})=>{
+    if(!a)return;
     if((!kind||kind==='memo')&&a.stdPhrase&&a.memoText){
       items.push({date:dt,type:'memo',phrase:a.stdPhrase,text:a.memoText,by:a.memoBy||'-',at:a.memoAt||''});
     }
@@ -1096,21 +1147,23 @@ async function loadHistoryList(pid){
     if((!kind||kind==='history')&&a.history&&a.history.length){
       a.history.forEach(h=>{items.push({date:dt,type:'history',phrase:h.phrase||'',text:h.memo||'',by:h.by||'-',at:h.at||'',adjStart:h.adjStart,adjEnd:h.adjEnd});});
     }
-  }
+  });
   items.sort((a,b)=>{const c=b.date.localeCompare(a.date);if(c!==0)return c;return(b.at||'').localeCompare(a.at||'');});
-  if(!items.length){list.innerHTML='<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:13px">해당 기간에 메모/이력이 없습니다</div>';return;}
-  const typeLabel={memo:'<span style="background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">처리메모</span>',note:'<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">일반메모</span>',history:'<span style="background:#e9d5ff;color:#7e22ce;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">처리이력</span>'};
+  if(!items.length){list.innerHTML='<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:13px">해당 기간에 이력이 없습니다</div>';return;}
+  const typeLabel={memo:'<span style="background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">처리메모</span>',note:'<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">일반메모</span>',history:'<span style="background:#e9d5ff;color:#7e22ce;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">처리이력</span>',change:'<span style="background:#dcfce7;color:#15803d;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">스케줄변경</span>'};
   list.innerHTML=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">총 ${items.length}건 (최근순)</div>`+items.map(it=>{
     const adjInfo=it.adjStart||it.adjEnd?`<div style="font-size:11px;color:#0891b2;margin-top:2px">조정: ${it.adjStart||'-'} ~ ${it.adjEnd||'-'}</div>`:'';
     const phraseInfo=it.phrase?`<span style="font-size:10px;background:#f3f4f6;padding:1px 6px;border-radius:8px;margin-left:4px">${phraseLabel(it.phrase)}</span>`:'';
+    const subInfo=it.subType?`<span style="font-size:10px;background:#f3f4f6;padding:1px 6px;border-radius:8px;margin-left:4px">${it.subType}</span>`:'';
     return`<div style="background:#fff;border:1px solid var(--border-light);border-radius:8px;padding:10px 12px;margin-bottom:6px">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
         <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--text-primary)">${it.date}</span>
         ${typeLabel[it.type]||''}
+        ${subInfo}
         ${phraseInfo}
         <span style="font-size:11px;color:var(--text-muted);margin-left:auto">${it.by} · ${it.at}</span>
       </div>
-      <div style="font-size:13px;color:var(--text-primary);line-height:1.4">${(it.text||'').replace(/</g,'&lt;')}</div>
+      <div style="font-size:13px;color:var(--text-primary);line-height:1.4;white-space:pre-line">${(it.text||'').replace(/</g,'&lt;')}</div>
       ${adjInfo}
     </div>`;
   }).join('');
@@ -2650,7 +2703,8 @@ function waOpenModal(pid,type){
 <div class="form-group"><label class="form-label">근무 요일</label><div class="day-btns" id="wa-days">${DAYS.map(d=>`<button type="button" class="day-btn${curDays.includes(d)?' selected':''}" onclick="this.classList.toggle('selected')">${d}</button>`).join('')}</div></div>
 <div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time',curStart,'width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time',curEnd,'width:100%')}</div></div>
 <div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">휴게시간(분) <span id="wa-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">자동: ${(()=>{const d=(toM(curEnd)-toM(curStart))/60;return d>=9?60:d>4?30:0;})()}분</span> <span style="font-size:10px;color:var(--text-muted)">— 비워두면 자동값 적용</span></label><input class="form-input" id="wa-brk" type="number" placeholder="${(()=>{const d=(toM(curEnd)-toM(curStart))/60;return d>=9?60:d>4?30:0;})()}분 (자동) — 비워두면 적용" value="${curBrk}"></div>
-${canSeeWage()?`<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">시급 (원) <span style="font-size:10px;color:var(--text-muted)">— ${wageUnitLbl}. 비워두면 기존 시급 유지</span></label><input class="form-input" id="wa-wage" type="number" min="0" step="10" placeholder="${curWage!==''?'현재 '+curWage+'원':'예: 12000'}" value="" oninput="if(this.value&&parseInt(this.value)<0)this.value=0"></div>`:''}`;
+${canSeeWage()?`<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">시급 (원) <span style="font-size:10px;color:var(--text-muted)">— ${wageUnitLbl}. 비워두면 기존 시급 유지</span></label><input class="form-input" id="wa-wage" type="number" min="0" step="10" placeholder="${curWage!==''?'현재 '+curWage+'원':'예: 12000'}" value="" oninput="if(this.value&&parseInt(this.value)<0)this.value=0"></div>`:''}
+<div class="form-group"><label class="form-label">변경 사유 / 메모 <span style="font-size:10px;color:var(--text-muted)">(선택)</span></label><input class="form-input" id="wa-memo-perm" placeholder="예: 시급 인상, 근무시간 조정 사유 등"></div>`;
   }else if(type==='replace'){
     body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 기간 내에는 기존 스케줄을 무시하고 여기 설정된 요일/시간만 적용. 기간 종료 후 자동 복귀.</div>
 <div style="display:flex;gap:6px;margin-bottom:10px"><div class="form-group" style="flex:1"><label class="form-label">시작일</label><input type="date" class="form-input" id="wa-start" value="${today}" onchange="waAutoDays()"></div><div class="form-group" style="flex:1"><label class="form-label">종료일</label><input type="date" class="form-input" id="wa-end" value="${today}" onchange="waAutoDays()"></div></div>
@@ -2721,6 +2775,8 @@ async function waSave(pid,type){
     // 시급 변경
     const wEl=document.getElementById('wa-wage');
     if(wEl){const wv=wEl.value;if(wv!==''&&wv!==undefined&&wv!==null){const wN=parseInt(wv);if(isNaN(wN)||wN<0){ST('시급은 0 이상이어야 합니다');return;}newEvent.wage=wN;}}
+    const memoEl=document.getElementById('wa-memo-perm');
+    if(memoEl&&memoEl.value.trim())newEvent.memo=memoEl.value.trim();
     // 시간대 겹침 검증: 같은 이름+PIN의 다른 활성 파트가 영구변경 시작일 이후 시간 겹치면 차단
     const sameP=Object.entries(AP).filter(([id,o])=>id!==pid&&o.pin===p.pin&&o.name===p.name&&o.status!=='inactive');
     if(sameP.length){
@@ -3114,14 +3170,15 @@ async function loadPayroll(){
     if(p.leaveDate&&p.leaveDate<monthStart)return false;
     return true;
   });
-  // 출결 데이터 일괄 수집
+  // 출결 데이터 일괄 수집 (병렬 처리로 속도 향상)
   const attByDate={};
+  const fetchPromises=[];
   for(let d=1;d<=lastDay;d++){
     const dt=`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
     if(dt>today)continue;
-    const sn=await get(ref(db,`attendance/${dt}`));
-    attByDate[dt]=sn.val()||{};
+    fetchPromises.push(get(ref(db,`attendance/${dt}`)).then(sn=>{attByDate[dt]=sn.val()||{};}));
   }
+  await Promise.all(fetchPromises);
   // 사람별 정산 계산
   const result=parts.map(([pid,p])=>calcPersonPayroll(pid,p,y,m,lastDay,attByDate)).filter(Boolean);
   PAY_DATA={ym,year:y,month:m,lastDay,rows:result,monthStart,monthEnd};
