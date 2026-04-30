@@ -447,7 +447,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <div class="section-card" style="margin-top:18px">
         <div class="settings-title">공휴일 관리</div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-          ⚠ 공휴일·일요일에 근무한 일반직원은 시수 1.5배 자동 가산됩니다 (조교 제외).<br>
+          ⚠ 공휴일에 근무한 일반직원은 시수 1.5배 자동 가산됩니다 (조교 제외, 일요일은 평일 처리).<br>
           기본 한국 공휴일은 코드에 등록되어 있습니다 (2025-2026). 임시휴일·대체휴일·추가 휴일만 여기에 등록.
         </div>
         <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:10px 14px;margin-bottom:12px">
@@ -500,8 +500,7 @@ const KR_HOLIDAYS={
 let EXTRA_HOLIDAYS=[];
 function isHoliday(date){
   if(!date)return false;
-  const d=new Date(date+'T00:00:00+09:00');
-  if(d.getDay()===0)return true; // 일요일
+  // 일요일은 평일 처리 (회사 룰: 일요일 가산 없음)
   const y=date.slice(0,4);
   const list=KR_HOLIDAYS[y]||[];
   if(list.includes(date))return true;
