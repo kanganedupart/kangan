@@ -5,7 +5,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="version" content="20260416-final">
+<meta name="version" content="20260430-v8-soyoung-fix">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="강안교육">
@@ -3056,6 +3056,14 @@ window.waAutoDays=waAutoDays;
 
 async function waSave(pid,type){
   const p=AP[pid];if(!p)return;
+  // ⭐ v8 안전장치: 모달 안의 모든 시간선택기를 강제로 hidden input과 동기화
+  // (사용자가 dropdown을 건드리지 않으면 onchange가 안 불려서 hidden input이 갱신되지 않을 수 있음)
+  try{
+    document.querySelectorAll('#modal-workman-body select[id$="-ap"]').forEach(sel=>{
+      const baseId=sel.id.slice(0,-3);
+      if(window.syncTimeVal)window.syncTimeVal(baseId);
+    });
+  }catch(e){console.warn('time sync warn',e);}
   // oneday + 기간 반복 모드는 wa-start 대신 wa-rstart 사용
   const isOnedayRange=type==='oneday'&&document.querySelector('input[name="oneday-mode"]:checked')?.value==='range';
   const start=isOnedayRange?document.getElementById('wa-rstart')?.value:document.getElementById('wa-start')?.value;
@@ -3064,14 +3072,22 @@ async function waSave(pid,type){
   if(type==='perm'){
     // 파트등록과 동일한 방식: 선택된 요일 버튼 + 기본시간 + daySchedule 오버라이드
     const checkedDays=[...document.querySelectorAll('#wa-days .day-btn.selected')].map(b=>b.textContent.trim());
-    const defStart=document.getElementById('wa-s-time')?.value||'09:00';
-    const defEnd=document.getElementById('wa-e-time')?.value||'18:00';
+    // ⭐ v8: 기본 시간을 hidden input 우선, select 폴백으로 안전하게 읽기
+    const _readTime=(id,fallback)=>{
+      const v=document.getElementById(id)?.value;
+      if(v)return v;
+      if(window.syncGetTime){const v2=window.syncGetTime(id);if(v2)return v2;}
+      return fallback;
+    };
+    const defStart=_readTime('wa-s-time','09:00');
+    const defEnd=_readTime('wa-e-time','18:00');
     // 요일별 시간 오버라이드 수집 (#wa-day-times 안의 행들)
     const daySchedule={};
     document.querySelectorAll('#wa-day-times [data-day]').forEach(row=>{
       const d=row.dataset.day;
-      const ds=document.getElementById('wa-ds-s-'+d)?.value;
-      const de=document.getElementById('wa-ds-e-'+d)?.value;
+      // ⭐ v8: hidden input + select 폴백
+      const ds=_readTime('wa-ds-s-'+d,'');
+      const de=_readTime('wa-ds-e-'+d,'');
       if(ds&&de)daySchedule[d]={start:ds,end:de};
     });
     // daySchedule이 있는 요일은 반드시 days에도 포함 (일관성 보장)
@@ -3197,6 +3213,16 @@ async function waSave(pid,type){
       :`⚠ 시작일이 과거(${start})입니다.\n\n영구변경은 시작일부터 모든 미래 날짜에 적용됩니다.\n과거 날짜의 출결 기록은 변경되지 않지만, ${start} 이후의 스케줄이 새 시간으로 바뀝니다.\n\n계속하시겠습니까?`;
     if(!await CC(msg,{title:'영구 변경 확인',danger:isToday}))return;
   }
+  // ⭐ v8: 영구변경 저장 직전 — 정확히 무엇이 저장되는지 사용자에게 보여줌
+  if(type==='perm'){
+    const dsLines=newEvent.daySchedule&&Object.keys(newEvent.daySchedule).length>0
+      ?Object.entries(newEvent.daySchedule).map(([d,t])=>`   ${d}요일: ${t.start} ~ ${t.end}`).join('\n')
+      :`   (요일별 다른 시간 없음 — 모든 요일 ${newEvent.start}~${newEvent.end} 적용)`;
+    const wageLine=newEvent.wage!==undefined?`\n💰 시급: ${newEvent.wage.toLocaleString()}원`:`\n💰 시급: 변경 없음 (기존 유지)`;
+    const brkLine=newEvent.customBreak!==undefined?`\n☕ 휴게: ${newEvent.customBreak}분`:'';
+    const confirmMsg=`📅 ${p.name} (${p.role}) — 영구변경 저장 확인\n\n적용 시작일: ${newEvent.startDate}\n근무 요일: ${newEvent.days.join('·')}\n기본 시간: ${newEvent.start} ~ ${newEvent.end}\n\n📋 요일별 적용 시간:\n${dsLines}${brkLine}${wageLine}\n\n✅ 위 내용으로 저장하시겠습니까?\n(잘못된 부분이 있으면 [취소] 후 수정하세요)`;
+    if(!await CC(confirmMsg,{title:'영구 변경 저장 — 최종 확인',okText:'저장',cancelText:'취소'}))return;
+  }
   SL(true);
   const updates={};
   if(type==='perm'){const arr=[...(p.permChanges||[]),newEvent];updates.permChanges=arr;}
@@ -3266,7 +3292,15 @@ async function waDelete(pid,type,idx){
 }
 window.waDelete=waDelete;
 
-async function savePF(pid){const ro=document.getElementById('pf-role').value.trim();const nm=document.getElementById('pf-name').value.trim();const ph=document.getElementById('pf-phone').value.trim();const st=document.getElementById('pf-start').value||syncGetTime('pf-start');const en=document.getElementById('pf-end').value||syncGetTime('pf-end');const ca=document.getElementById('pf-cat').value;const jd=document.getElementById('pf-jd').value;const dy=[...document.querySelectorAll('#pf-days .day-btn.selected')].map(b=>b.textContent.trim());const bv=document.getElementById('pf-brk').value;const tk=ca==='tutor'?(document.getElementById('pf-tutorkind')?.value||''):'';if(!ro||!nm){ST('직무와 이름은 필수입니다');return;}if(ca==='tutor'&&!tk){ST('조교 종류(부담임/질의응답)를 선택해주세요');return;}if(!st||!en){ST('기본 출퇴근 시각을 입력해주세요');return;}if(!dy.length){ST('근무 요일을 선택해주세요');return;}let pin=document.getElementById('pf-pin').value.trim();if(!pin&&pid)pin=AP[pid]?.pin||'';if(!pin&&ph.length>=4)pin=ph.replace(/-/g,'').slice(-4);if(!/^\d{4}$/.test(pin)){ST('PIN은 4자리 숫자여야 합니다');return;}const dup=Object.entries(AP).find(([id,p])=>{
+async function savePF(pid){
+  // ⭐ v8 안전장치: 모달 안의 모든 시간선택기를 hidden input과 강제 동기화
+  try{
+    document.querySelectorAll('#modal-part select[id$="-ap"]').forEach(sel=>{
+      const baseId=sel.id.slice(0,-3);
+      if(window.syncTimeVal)window.syncTimeVal(baseId);
+    });
+  }catch(e){console.warn('time sync warn',e);}
+  const ro=document.getElementById('pf-role').value.trim();const nm=document.getElementById('pf-name').value.trim();const ph=document.getElementById('pf-phone').value.trim();const st=document.getElementById('pf-start').value||syncGetTime('pf-start');const en=document.getElementById('pf-end').value||syncGetTime('pf-end');const ca=document.getElementById('pf-cat').value;const jd=document.getElementById('pf-jd').value;const dy=[...document.querySelectorAll('#pf-days .day-btn.selected')].map(b=>b.textContent.trim());const bv=document.getElementById('pf-brk').value;const tk=ca==='tutor'?(document.getElementById('pf-tutorkind')?.value||''):'';if(!ro||!nm){ST('직무와 이름은 필수입니다');return;}if(ca==='tutor'&&!tk){ST('조교 종류(부담임/질의응답)를 선택해주세요');return;}if(!st||!en){ST('기본 출퇴근 시각을 입력해주세요');return;}if(!dy.length){ST('근무 요일을 선택해주세요');return;}let pin=document.getElementById('pf-pin').value.trim();if(!pin&&pid)pin=AP[pid]?.pin||'';if(!pin&&ph.length>=4)pin=ph.replace(/-/g,'').slice(-4);if(!/^\d{4}$/.test(pin)){ST('PIN은 4자리 숫자여야 합니다');return;}const dup=Object.entries(AP).find(([id,p])=>{
   if(p.pin!==pin||id===pid)return false;
   // 같은 사람(이름 동일) = PIN 공유 허용 (직무 여러 개 등록 시)
   // 조교 부담임/질의응답, 관리 식관(오전)/행정, 식관+질의응답 등 자유 조합 가능
@@ -3284,8 +3318,9 @@ if(dup){
   ST(`PIN ${pin}은 ${isDupCasual?'단발근무자 ':''}${dupP.name}이(가) 사용 중입니다`);
   return;
 }
-// 요일별 시간 수집
-const daySchedule={};document.querySelectorAll('#day-times [data-day]').forEach(row=>{const d=row.dataset.day;const ds=document.getElementById('ds-s-'+d)?.value;const de=document.getElementById('ds-e-'+d)?.value;if(ds&&de)daySchedule[d]={start:ds,end:de};});
+// 요일별 시간 수집 — ⭐ v8: hidden input + select 폴백
+const _readPF=(id)=>{const v=document.getElementById(id)?.value;if(v)return v;if(window.syncGetTime){const v2=window.syncGetTime(id);if(v2)return v2;}return '';};
+const daySchedule={};document.querySelectorAll('#day-times [data-day]').forEach(row=>{const d=row.dataset.day;const ds=_readPF('ds-s-'+d);const de=_readPF('ds-e-'+d);if(ds&&de)daySchedule[d]={start:ds,end:de};});
 // daySchedule이 있는 요일은 반드시 days 에도 포함 (일관성 보장)
 Object.keys(daySchedule).forEach(d=>{if(!dy.includes(d))dy.push(d);});
 const changeDate=document.getElementById('pf-change-date')?.value||'';
