@@ -912,7 +912,14 @@ function getDayTime(p,dayOfWeek,date){
     const applicable=[...p.permChanges].filter(pc=>today>=pc.startDate).sort((a,b)=>{const c=b.startDate.localeCompare(a.startDate);if(c!==0)return c;return (b.at||'').localeCompare(a.at||'');});
     if(applicable.length>0){
       const latest=applicable[0];
-      if((latest.days||[]).includes(dayOfWeek))return{start:latest.start,end:latest.end,customBreak:latest.customBreak,fromPerm:true};
+      if((latest.days||[]).includes(dayOfWeek)){
+        // 영구변경에 daySchedule 있으면 해당 요일 우선 적용
+        if(latest.daySchedule&&latest.daySchedule[dayOfWeek]){
+          const ds=latest.daySchedule[dayOfWeek];
+          return{start:ds.start,end:ds.end,customBreak:latest.customBreak,fromPerm:true};
+        }
+        return{start:latest.start,end:latest.end,customBreak:latest.customBreak,fromPerm:true};
+      }
       return{start:null,end:null,permExcluded:true};
     }
   }
@@ -2318,6 +2325,18 @@ window.removePeriod=removePeriod;
 
 function tDay(d){document.querySelectorAll('#pf-days .day-btn').forEach(b=>{if(b.textContent.trim()===d)b.classList.toggle('selected');});}
 window.toggleDay=tDay;
+function toggleWaDayTime(d){
+  const container=document.getElementById('wa-day-times');
+  if(!container)return;
+  const existing=container.querySelector(`[data-day="${d}"]`);
+  if(existing){existing.remove();return;}
+  const start=document.getElementById('wa-s-time')?.value||'09:00';
+  const end=document.getElementById('wa-e-time')?.value||'18:00';
+  const row=document.createElement('div');row.className='day-time-row';row.dataset.day=d;
+  row.innerHTML=`<span style="font-weight:600;width:20px;color:var(--warning)">${d}</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="wa-ds-s-${d}" value="${start}"><span style="color:var(--text-muted)">~</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="wa-ds-e-${d}" value="${end}"><button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="this.parentElement.remove()">✕</button>`;
+  container.appendChild(row);
+}
+window.toggleWaDayTime=toggleWaDayTime;
 function toggleDayTime(d){
   // 더블클릭 시 click이 먼저 실행되어 selected 토글됨 → 반드시 선택 상태로 (시간 편집하는 요일은 당연히 근무일)
   const btn=[...document.querySelectorAll('#pf-days .day-btn')].find(b=>b.textContent.trim()===d);
@@ -2841,10 +2860,14 @@ function waOpenModal(pid,type){
     const curBrk=applicablePerm&&applicablePerm.customBreak!==undefined?applicablePerm.customBreak:'';
     const curWage=(()=>{if(!p)return'';const wPerms=(p.permChanges||[]).filter(pc=>pc.startDate<=today&&pc.wage!==undefined&&pc.wage!==null).sort((a,b)=>b.startDate.localeCompare(a.startDate));if(wPerms.length)return wPerms[0].wage;return p.wage!==undefined?p.wage:'';})();
     const wageUnitLbl=p&&p.cat==='tutor'?'T당':'시간당';
+    // 기존 daySchedule (요일별 다른 시간) 가져오기
+    const curDaySchedule=applicablePerm&&applicablePerm.daySchedule?applicablePerm.daySchedule:(p&&p.daySchedule?p.daySchedule:{});
     body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 이 날짜부터 요일/시간이 완전히 교체됩니다. 이전 날짜는 기존 값 유지.<br>💡 <b>현재 적용 중 값이 자동으로 채워져 있습니다</b> — 바꿀 항목만 수정하세요.</div>
 <div class="form-group"><label class="form-label">변경 시작일</label><input type="date" class="form-input" id="wa-start" value="${today}"></div>
-<div class="form-group"><label class="form-label">근무 요일</label><div class="day-btns" id="wa-days">${DAYS.map(d=>`<button type="button" class="day-btn${curDays.includes(d)?' selected':''}" onclick="this.classList.toggle('selected')">${d}</button>`).join('')}</div></div>
-<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time',curStart,'width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time',curEnd,'width:100%')}</div></div>
+<div class="form-group"><label class="form-label">근무 요일 <span style="font-size:10px;color:var(--text-muted)">(더블클릭: 해당 요일 시간 개별 수정)</span></label><div class="day-btns" id="wa-days">${DAYS.map(d=>{const ds=curDaySchedule[d];const isDiff=ds&&(ds.start!==curStart||ds.end!==curEnd);return`<button type="button" class="day-btn${curDays.includes(d)?' selected':''}${isDiff?' has-custom':''}" onclick="this.classList.toggle('selected')" ondblclick="toggleWaDayTime('${d}')">${d}</button>`;}).join('')}</div>
+<div id="wa-day-times">${Object.entries(curDaySchedule).map(([d,ds])=>{if(ds.start===curStart&&ds.end===curEnd)return'';return`<div class="day-time-row" data-day="${d}"><span style="font-weight:600;width:20px;color:var(--warning)">${d}</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="wa-ds-s-${d}" value="${ds.start}"><span style="color:var(--text-muted)">~</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" id="wa-ds-e-${d}" value="${ds.end}"><button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="this.parentElement.remove()">✕</button></div>`;}).join('')}</div>
+<div style="font-size:10px;color:var(--text-muted);margin-top:4px">💡 요일별 시간이 다르면 → 해당 요일 버튼 <b>더블클릭</b> 후 시간 개별 입력</div></div>
+<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">기본 출근</label>${mkTimeSelect('wa-s-time',curStart,'width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">기본 퇴근</label>${mkTimeSelect('wa-e-time',curEnd,'width:100%')}</div></div>
 <div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">휴게시간(분) <span id="wa-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">자동: ${(()=>{const d=(toM(curEnd)-toM(curStart))/60;return d>=9?60:d>4?30:0;})()}분</span> <span style="font-size:10px;color:var(--text-muted)">— 비워두면 자동값 적용</span></label><input class="form-input" id="wa-brk" type="number" placeholder="${(()=>{const d=(toM(curEnd)-toM(curStart))/60;return d>=9?60:d>4?30:0;})()}분 (자동) — 비워두면 적용" value="${curBrk}"></div>
 ${canSeeWage()?`<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">시급 (원) <span style="font-size:10px;color:var(--text-muted)">— ${wageUnitLbl} (소수점 가능). 비워두면 기존 시급 유지</span></label>
 ${p&&p.cat==='tutor'&&p.tutorKind==='부담임'?`<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:8px 12px;margin-bottom:8px">
@@ -2922,6 +2945,18 @@ async function waSave(pid,type){
     newEvent.days=days;
     newEvent.start=document.getElementById('wa-s-time').value;
     newEvent.end=document.getElementById('wa-e-time').value;
+    // 요일별 다른 시간 (daySchedule) 수집
+    const waDaySchedule={};
+    document.querySelectorAll('#wa-day-times [data-day]').forEach(row=>{
+      const d=row.dataset.day;
+      const dst=document.getElementById('wa-ds-s-'+d)?.value;
+      const det=document.getElementById('wa-ds-e-'+d)?.value;
+      if(dst&&det&&(dst!==newEvent.start||det!==newEvent.end))waDaySchedule[d]={start:dst,end:det};
+    });
+    // daySchedule이 있는 요일은 days에 자동 포함
+    Object.keys(waDaySchedule).forEach(d=>{if(!days.includes(d))days.push(d);});
+    newEvent.days=days;
+    if(Object.keys(waDaySchedule).length>0)newEvent.daySchedule=waDaySchedule;
     const brkV=document.getElementById('wa-brk')?.value;
     if(brkV!==''&&brkV!==undefined&&brkV!==null)newEvent.customBreak=parseInt(brkV);
     // 시급 변경
@@ -3143,18 +3178,34 @@ if(bv!=='')data.customBreak=parseInt(bv);
 if(!pid){const wEl=document.getElementById('pf-wage');if(!wEl||!wEl.value||wEl.value===''){ST('시급을 입력해주세요 (필수)');return;}const wN=parseFloat(wEl.value);if(isNaN(wN)||wN<=0){ST('시급은 1원 이상이어야 합니다');return;}data.wage=Math.round(wN*100)/100;}
 else if(AP[pid]&&AP[pid].wage!==undefined)data.wage=AP[pid].wage;
 // 시간대 겹침 검증: 같은 이름+PIN의 다른 활성 파트와 같은 요일·같은 시간 겹치면 차단
+// 상대방 파트는 영구변경 적용 후 시간으로 검사 (오늘 기준)
 const sameP=Object.entries(AP).filter(([id,o])=>id!==pid&&o.pin===pin&&o.name===nm&&o.status!=='inactive');
 if(sameP.length){
   const myDays=new Set(dy);
   const myS=toM(st),myE=toM(en);
+  const tdK=kstDate();
   for(const[oid,o]of sameP){
-    const oDays=new Set(o.days||[]);
+    // 상대방의 영구변경 적용 후 시간/요일 계산
+    const oApplied=(()=>{
+      if(o.permChanges&&o.permChanges.length){
+        const wPerms=[...o.permChanges].filter(pc=>pc.startDate<=tdK).sort((a,b)=>{const c=b.startDate.localeCompare(a.startDate);if(c!==0)return c;return(b.at||'').localeCompare(a.at||'');});
+        if(wPerms.length){const p=wPerms[0];return{start:p.start,end:p.end,days:p.days||[],daySchedule:p.daySchedule};}
+      }
+      return{start:o.start,end:o.end,days:o.days||[],daySchedule:o.daySchedule};
+    })();
+    const oDays=new Set(oApplied.days);
     const overlap=[...myDays].filter(d=>oDays.has(d));
     if(!overlap.length)continue;
-    const oS=toM(o.start),oE=toM(o.end);
-    if(myS<oE&&oS<myE){
+    // 요일별 시간이 다르면 요일별로 검사
+    let isOverlap=false;let conflictDay='';let conflictTime='';
+    for(const d of overlap){
+      const ods=oApplied.daySchedule&&oApplied.daySchedule[d]?oApplied.daySchedule[d]:{start:oApplied.start,end:oApplied.end};
+      const oS=toM(ods.start),oE=toM(ods.end);
+      if(myS<oE&&oS<myE){isOverlap=true;conflictDay=d;conflictTime=`${ods.start}~${ods.end}`;break;}
+    }
+    if(isOverlap){
       const lbl=o.tutorKind||o.role;
-      ST(`시간 겹침: ${lbl} (${o.start}~${o.end}) — ${overlap.join('·')}요일 겹침`);
+      ST(`시간 겹침: ${lbl} (${conflictTime}) — ${conflictDay}요일`);
       return;
     }
   }
