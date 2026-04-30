@@ -2208,7 +2208,7 @@ const dayTimes=sd.map(d=>{
     return`<div class="day-time-row" data-day="${d}" style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-weight:600;width:20px;color:var(--warning)">${d}</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:#f3f4f6;color:#6b7280" id="ds-s-${d}" value="${ds.start}" disabled><span style="color:var(--text-muted)">~</span><input type="time" style="flex:1;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;background:#f3f4f6;color:#6b7280" id="ds-e-${d}" value="${ds.end}" disabled></div>`;
   }
   // 신규 등록 - 10분 단위 시간 선택
-  return`<div class="day-time-row" data-day="${d}" style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap"><span style="font-weight:600;min-width:24px;color:var(--warning)">${d}</span>${mkTimeSelect5('ds-s-'+d,ds.start)}<span style="color:var(--text-muted)">~</span>${mkTimeSelect5('ds-e-'+d,ds.end)}<button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="this.parentElement.remove()">✕</button></div>`;
+  return`<div class="day-time-row" data-day="${d}" style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap"><span style="font-weight:600;min-width:24px;color:var(--warning)">${d}</span>${mkTimeSelect5('ds-s-'+d,ds.start)}<span style="color:var(--text-muted)">~</span>${mkTimeSelect5('ds-e-'+d,ds.end)}<button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="removeDayTimeRow(this,'${d}')">✕</button></div>`;
 }).join('');
 const periods=p&&p.schedulePeriods?[...p.schedulePeriods].sort((a,b)=>a.startDate.localeCompare(b.startDate)):[];
 const periodsHtml=periods.length?periods.map((pd,i)=>`<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:var(--bg);border-radius:var(--rs);margin-bottom:4px;flex-wrap:wrap"><span style="font-size:11px;color:var(--accent)">${pd.startDate} ~ ${pd.endDate}</span><span style="font-size:12px">${(pd.days||[]).join('·')} ${pd.start}~${pd.end}</span><button type="button" class="icon-btn del" style="padding:2px 6px;font-size:10px" onclick="removePeriod('${pid}',${i})">삭제</button></div>`).join(''):'<div style="font-size:12px;color:var(--text-muted)">등록된 변경 기간 없음</div>';
@@ -2332,6 +2332,17 @@ async function removePeriod(pid,idx){
 }
 window.removePeriod=removePeriod;
 
+// 요일별 시간 행 제거 헬퍼 (✕ 버튼 + 더블클릭 공용) — 행 제거 + 요일 버튼 주황색(has-custom) 함께 해제
+function removeDayTimeRow(btnEl,d){
+  const row=btnEl.closest('.day-time-row');if(!row)return;
+  const container=row.parentElement;
+  row.remove();
+  const daysSel=container&&container.id==='wa-day-times'?'#wa-days .day-btn':'#pf-days .day-btn';
+  const dayBtn=[...document.querySelectorAll(daysSel)].find(b=>b.textContent.trim()===d);
+  if(dayBtn)dayBtn.classList.remove('has-custom');
+}
+window.removeDayTimeRow=removeDayTimeRow;
+
 function tDay(d){document.querySelectorAll('#pf-days .day-btn').forEach(b=>{if(b.textContent.trim()===d)b.classList.toggle('selected');});}
 window.toggleDay=tDay;
 function tWaDay(d){document.querySelectorAll('#wa-days .day-btn').forEach(b=>{if(b.textContent.trim()===d)b.classList.toggle('selected');});}
@@ -2343,12 +2354,13 @@ function toggleWaDayTime(d){
   const container=document.getElementById('wa-day-times');
   if(!container)return;
   const existing=container.querySelector(`[data-day="${d}"]`);
-  if(existing){existing.remove();return;}
+  if(existing){existing.remove();if(btn)btn.classList.remove('has-custom');return;}
   const start=document.getElementById('wa-s-time')?.value||'09:00';
   const end=document.getElementById('wa-e-time')?.value||'18:00';
   const row=document.createElement('div');row.className='day-time-row';row.dataset.day=d;row.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap';
-  row.innerHTML=`<span style="font-weight:600;min-width:24px;color:var(--warning)">${d}</span>${mkTimeSelect5('wa-ds-s-'+d,start)}<span style="color:var(--text-muted)">~</span>${mkTimeSelect5('wa-ds-e-'+d,end)}<button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="this.parentElement.remove()">✕</button>`;
+  row.innerHTML=`<span style="font-weight:600;min-width:24px;color:var(--warning)">${d}</span>${mkTimeSelect5('wa-ds-s-'+d,start)}<span style="color:var(--text-muted)">~</span>${mkTimeSelect5('wa-ds-e-'+d,end)}<button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="removeDayTimeRow(this,'${d}')">✕</button>`;
   container.appendChild(row);
+  if(btn)btn.classList.add('has-custom');
 }
 window.toggleWaDayTime=toggleWaDayTime;
 function toggleDayTime(d){
@@ -2357,12 +2369,13 @@ function toggleDayTime(d){
   if(btn&&!btn.classList.contains('selected'))btn.classList.add('selected');
   const container=document.getElementById('day-times');
   const existing=container.querySelector(`[data-day="${d}"]`);
-  if(existing){existing.remove();return;}
+  if(existing){existing.remove();if(btn)btn.classList.remove('has-custom');return;}
   const start=document.getElementById('pf-start')?.value||'09:00';
   const end=document.getElementById('pf-end')?.value||'18:00';
   const row=document.createElement('div');row.className='day-time-row';row.dataset.day=d;row.style.cssText='display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap';
-  row.innerHTML=`<span style="font-weight:600;min-width:24px;color:var(--warning)">${d}</span>${mkTimeSelect5('ds-s-'+d,start)}<span style="color:var(--text-muted)">~</span>${mkTimeSelect5('ds-e-'+d,end)}<button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="this.parentElement.remove()">✕</button>`;
+  row.innerHTML=`<span style="font-weight:600;min-width:24px;color:var(--warning)">${d}</span>${mkTimeSelect5('ds-s-'+d,start)}<span style="color:var(--text-muted)">~</span>${mkTimeSelect5('ds-e-'+d,end)}<button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="removeDayTimeRow(this,'${d}')">✕</button>`;
   container.appendChild(row);
+  if(btn)btn.classList.add('has-custom');
 }
 window.toggleDayTime=toggleDayTime;
 
@@ -2372,7 +2385,7 @@ const WA_COLORS={perm:{bg:'#eff6ff',border:'#93c5fd',text:'#1d4ed8'},replace:{bg
 
 async function waGetAllEvents(p){
   const list=[];
-  (p.permChanges||[]).forEach((e,i)=>list.push({type:'perm',idx:i,startDate:e.startDate,endDate:null,days:e.days||[],start:e.start,end:e.end,customBreak:e.customBreak,by:e.by,at:e.at}));
+  (p.permChanges||[]).forEach((e,i)=>list.push({type:'perm',idx:i,startDate:e.startDate,endDate:null,days:e.days||[],start:e.start,end:e.end,customBreak:e.customBreak,daySchedule:e.daySchedule,wage:e.wage,by:e.by,at:e.at,memo:e.memo}));
   (p.scheduleReplaces||[]).forEach((e,i)=>list.push({type:'replace',idx:i,startDate:e.startDate,endDate:e.endDate,days:e.days||[],start:e.start,end:e.end,by:e.by,at:e.at}));
   (p.schedulePeriods||[]).forEach((e,i)=>list.push({type:'period',idx:i,startDate:e.startDate,endDate:e.endDate,days:e.days||[],start:e.start,end:e.end,legacy:true}));
   (p.plannedAbsent||[]).forEach((e,i)=>{
@@ -2459,6 +2472,12 @@ async function waRenderList(pid){
     if(e.start&&e.end)timeStr=`${e.start}~${e.end}`;
     else if(e.start)timeStr=`${e.start}부터`;
     else if(e.end)timeStr=`${e.end}까지`;
+    // daySchedule이 있으면 '요일별' 뱃지 + 상세 표시
+    let daySchStr='';
+    if(e.daySchedule&&Object.keys(e.daySchedule).length>0){
+      const dsList=Object.entries(e.daySchedule).map(([d,t])=>`${d} ${t.start}~${t.end}`).join(' · ');
+      daySchStr=` <span style="font-size:9px;font-weight:700;color:#b45309;background:#fef3c7;padding:1px 6px;border-radius:8px;border:1px solid #fcd34d">요일별</span><div style="font-size:10px;color:var(--text-muted);margin-top:2px;font-family:'DM Mono',monospace">${dsList}</div>`;
+    }
     const memoStr=e.memo?` <span style="color:var(--text-muted);font-size:11px">${e.memo}</span>`:'';
     const legacy=e.legacy?'<span style="font-size:9px;color:var(--text-muted);background:var(--bg);padding:1px 5px;border-radius:8px;margin-left:3px">기존</span>':'';
     // 종료된 이벤트 흐리게
@@ -2483,7 +2502,7 @@ async function waRenderList(pid){
     // 작성자/등록일시 표시
     const byStr=e.by?`<span style="font-size:10px;color:var(--text-muted)">✍️ ${e.by}${e.at?` · ${e.at}`:''}</span>`:'';
     const futureBadge=isFuture?'<span style="font-size:9px;font-weight:700;color:#1d4ed8;background:#eff6ff;padding:1px 6px;border-radius:8px;border:1px solid #bfdbfe;margin-left:3px">📅 시작 예정</span>':'';
-    return `<div style="border:1px solid ${c.border};background:${c.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;${opacity}"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px"><span style="font-size:10px;font-weight:700;color:${c.text};background:#fff;padding:2px 7px;border-radius:10px;border:1px solid ${c.border}">${lb}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);flex:1">${dateStr}${e.type==='perm'&&!isFuture?' ~ 계속':''}${isPast?' (종료)':''}</span>${futureBadge}${delBtn}</div><div style="font-size:12px;color:${c.text}">${daysStr}${timeStr}${memoStr}${legacy}</div>${byStr?`<div style="margin-top:3px">${byStr}</div>`:''}</div>`;
+    return `<div style="border:1px solid ${c.border};background:${c.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;${opacity}"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px"><span style="font-size:10px;font-weight:700;color:${c.text};background:#fff;padding:2px 7px;border-radius:10px;border:1px solid ${c.border}">${lb}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);flex:1">${dateStr}${e.type==='perm'&&!isFuture?' ~ 계속':''}${isPast?' (종료)':''}</span>${futureBadge}${delBtn}</div><div style="font-size:12px;color:${c.text}">${daysStr}${timeStr}${daySchStr}${memoStr}${legacy}</div>${byStr?`<div style="margin-top:3px">${byStr}</div>`:''}</div>`;
   }).join('');
 }
 window.waRenderList=waRenderList;
@@ -2908,7 +2927,7 @@ function waReRenderPermAutofill(pid){
     dtContainer.innerHTML=curDays.map(d=>{
       const ds=curDaySchedule[d];
       if(!ds||(ds.start===curStart&&ds.end===curEnd))return'';
-      return`<div class="day-time-row" data-day="${d}" style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap"><span style="font-weight:600;min-width:24px;color:var(--warning)">${d}</span>${mkTimeSelect5('wa-ds-s-'+d,ds.start)}<span style="color:var(--text-muted)">~</span>${mkTimeSelect5('wa-ds-e-'+d,ds.end)}<button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="this.parentElement.remove()">✕</button></div>`;
+      return`<div class="day-time-row" data-day="${d}" style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap"><span style="font-weight:600;min-width:24px;color:var(--warning)">${d}</span>${mkTimeSelect5('wa-ds-s-'+d,ds.start)}<span style="color:var(--text-muted)">~</span>${mkTimeSelect5('wa-ds-e-'+d,ds.end)}<button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="removeDayTimeRow(this,'${d}')">✕</button></div>`;
     }).join('');
   }
 }
@@ -2960,7 +2979,7 @@ function waOpenModal(pid,type){
     const dayTimesInit=curDays.map(d=>{
       const ds=curDaySchedule[d];
       if(!ds||(ds.start===curStart&&ds.end===curEnd))return'';
-      return`<div class="day-time-row" data-day="${d}" style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap"><span style="font-weight:600;min-width:24px;color:var(--warning)">${d}</span>${mkTimeSelect5('wa-ds-s-'+d,ds.start)}<span style="color:var(--text-muted)">~</span>${mkTimeSelect5('wa-ds-e-'+d,ds.end)}<button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="this.parentElement.remove()">✕</button></div>`;
+      return`<div class="day-time-row" data-day="${d}" style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap"><span style="font-weight:600;min-width:24px;color:var(--warning)">${d}</span>${mkTimeSelect5('wa-ds-s-'+d,ds.start)}<span style="color:var(--text-muted)">~</span>${mkTimeSelect5('wa-ds-e-'+d,ds.end)}<button type="button" style="padding:2px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--bg)" onclick="removeDayTimeRow(this,'${d}')">✕</button></div>`;
     }).join('');
     body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 이 날짜부터 요일/시간이 완전히 교체됩니다. 이전 날짜는 기존 값 유지.<br>💡 <b>변경 시작일을 바꾸면 그 날짜 기준 스케줄이 자동으로 채워집니다</b> — 바꿀 항목만 수정하세요.</div>
 <div class="form-group"><label class="form-label">변경 시작일</label><input type="date" class="form-input" id="wa-start" value="${today}" onchange="waReRenderPermAutofill('${pid}')"></div>
@@ -3053,7 +3072,7 @@ async function waSave(pid,type){
       const d=row.dataset.day;
       const ds=document.getElementById('wa-ds-s-'+d)?.value;
       const de=document.getElementById('wa-ds-e-'+d)?.value;
-      if(ds&&de&&(ds!==defStart||de!==defEnd))daySchedule[d]={start:ds,end:de};
+      if(ds&&de)daySchedule[d]={start:ds,end:de};
     });
     // daySchedule이 있는 요일은 반드시 days에도 포함 (일관성 보장)
     Object.keys(daySchedule).forEach(d=>{if(!checkedDays.includes(d))checkedDays.push(d);});
@@ -3266,7 +3285,7 @@ if(dup){
   return;
 }
 // 요일별 시간 수집
-const daySchedule={};document.querySelectorAll('#day-times [data-day]').forEach(row=>{const d=row.dataset.day;const ds=document.getElementById('ds-s-'+d)?.value;const de=document.getElementById('ds-e-'+d)?.value;if(ds&&de&&(ds!==st||de!==en))daySchedule[d]={start:ds,end:de};});
+const daySchedule={};document.querySelectorAll('#day-times [data-day]').forEach(row=>{const d=row.dataset.day;const ds=document.getElementById('ds-s-'+d)?.value;const de=document.getElementById('ds-e-'+d)?.value;if(ds&&de)daySchedule[d]={start:ds,end:de};});
 // daySchedule이 있는 요일은 반드시 days 에도 포함 (일관성 보장)
 Object.keys(daySchedule).forEach(d=>{if(!dy.includes(d))dy.push(d);});
 const changeDate=document.getElementById('pf-change-date')?.value||'';
