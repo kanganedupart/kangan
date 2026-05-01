@@ -467,12 +467,12 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
     </div>
   </div>
 </div>
-<div class="modal-overlay" id="modal-staff" onclick="CM('modal-staff')"><div class="modal" onclick="event.stopPropagation()"><div class="modal-header"><div class="modal-title" id="modal-staff-title"></div><button class="modal-close" onclick="CM('modal-staff')">✕</button></div><div id="modal-staff-body"></div></div></div>
-<div class="modal-overlay" id="modal-history" onclick="CM('modal-history')"><div class="modal" onclick="event.stopPropagation()" style="max-width:780px"><div class="modal-header"><div class="modal-title" id="modal-history-title"></div><button class="modal-close" onclick="CM('modal-history')">✕</button></div><div id="modal-history-body" style="max-height:70vh;overflow-y:auto"></div></div></div>
-<div class="modal-overlay" id="modal-stats" onclick="CM('modal-stats')"><div class="modal" onclick="event.stopPropagation()"><div class="modal-header"><div class="modal-title" id="modal-stats-title"></div><button class="modal-close" onclick="CM('modal-stats')">✕</button></div><div id="modal-stats-body"></div></div></div>
-<div class="modal-overlay" id="modal-part" onclick="CM('modal-part')"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px"><div class="modal-header"><div class="modal-title" id="modal-part-title">직원 등록</div><button class="modal-close" onclick="CM('modal-part')">✕</button></div><div id="modal-part-body"></div></div></div>
-<div class="modal-overlay" id="modal-workman-edit" onclick="CM('modal-workman-edit')"><div class="modal" onclick="event.stopPropagation()" style="max-width:480px"><div class="modal-header"><div class="modal-title" id="modal-workman-title">수정</div><button class="modal-close" onclick="CM('modal-workman-edit')">✕</button></div><div id="modal-workman-body"></div></div></div>
-<div class="modal-overlay" id="modal-account" onclick="CM('modal-account')"><div class="modal" onclick="event.stopPropagation()" style="max-width:400px"><div class="modal-header"><div class="modal-title">계정 추가</div><button class="modal-close" onclick="CM('modal-account')">✕</button></div><div id="modal-account-body"></div></div></div>
+<div class="modal-overlay" id="modal-staff"><div class="modal" onclick="event.stopPropagation()"><div class="modal-header"><div class="modal-title" id="modal-staff-title"></div><button class="modal-close" onclick="CM('modal-staff')">✕</button></div><div id="modal-staff-body"></div></div></div>
+<div class="modal-overlay" id="modal-history"><div class="modal" onclick="event.stopPropagation()" style="max-width:780px"><div class="modal-header"><div class="modal-title" id="modal-history-title"></div><button class="modal-close" onclick="CM('modal-history')">✕</button></div><div id="modal-history-body" style="max-height:70vh;overflow-y:auto"></div></div></div>
+<div class="modal-overlay" id="modal-stats"><div class="modal" onclick="event.stopPropagation()"><div class="modal-header"><div class="modal-title" id="modal-stats-title"></div><button class="modal-close" onclick="CM('modal-stats')">✕</button></div><div id="modal-stats-body"></div></div></div>
+<div class="modal-overlay" id="modal-part"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px"><div class="modal-header"><div class="modal-title" id="modal-part-title">직원 등록</div><button class="modal-close" onclick="CM('modal-part')">✕</button></div><div id="modal-part-body"></div></div></div>
+<div class="modal-overlay" id="modal-workman-edit"><div class="modal" onclick="event.stopPropagation()" style="max-width:480px"><div class="modal-header"><div class="modal-title" id="modal-workman-title">수정</div><button class="modal-close" onclick="CM('modal-workman-edit')">✕</button></div><div id="modal-workman-body"></div></div></div>
+<div class="modal-overlay" id="modal-account"><div class="modal" onclick="event.stopPropagation()" style="max-width:400px"><div class="modal-header"><div class="modal-title">계정 추가</div><button class="modal-close" onclick="CM('modal-account')">✕</button></div><div id="modal-account-body"></div></div></div>
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,set,get,update,onValue,push,remove}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
@@ -3389,7 +3389,19 @@ const leaveDateVal=document.getElementById('pf-leave')?.value||null;
 const data={cat:ca,role:ro,name:nm,phone:ph,pin,start:st,end:en,days:dy,joinDate:jd||kstDate(),leaveDate:leaveDateVal,isCasual:leaveDateVal?(!!document.getElementById('pf-casual')?.checked):false,status:pid?(AP[pid]?.status||'active'):'active',pinActive:pid?(AP[pid]?.pinActive!==false):true,memos:pid?(AP[pid].memos||[]):[],scheduleHistory:newHistory,tutorKind:ca==='tutor'?tk:null};
 if(changeDate)data.scheduleChangeDate=changeDate;
 if(Object.keys(daySchedule).length>0)data.daySchedule=daySchedule;
-if(bv!=='')data.customBreak=parseInt(bv);
+// ⭐ 휴게시간 저장 — 강화: 입력란 다시 직접 읽고 trim, NaN 체크
+const bvEl=document.getElementById('pf-brk');
+const bvRaw=bvEl?(bvEl.value||'').toString().trim():'';
+if(bvRaw!==''){
+  const bvN=parseInt(bvRaw,10);
+  if(!isNaN(bvN)&&bvN>=0)data.customBreak=bvN;
+  else console.warn('[customBreak] 입력값이 숫자가 아님:',bvRaw);
+}
+// 수정 모드일 때 기존 customBreak 보존 (입력란이 disabled라 비어있을 수 있음)
+if(pid&&data.customBreak===undefined&&AP[pid]&&AP[pid].customBreak!==undefined){
+  data.customBreak=AP[pid].customBreak;
+}
+console.log('[savePF] customBreak 저장:',data.customBreak,'/ 입력 raw:',bvRaw,'/ pid:',pid);
 // 시급 처리 (신규 등록 시만 입력 가능, 수정은 영구변경에서)
 if(!pid){const wEl=document.getElementById('pf-wage');if(!wEl||!wEl.value||wEl.value===''){ST('시급을 입력해주세요 (필수)');return;}const wN=parseFloat(wEl.value);if(isNaN(wN)||wN<=0){ST('시급은 1원 이상이어야 합니다');return;}data.wage=Math.round(wN*100)/100;}
 else if(AP[pid]&&AP[pid].wage!==undefined)data.wage=AP[pid].wage;
@@ -3577,6 +3589,9 @@ window.initPayroll=initPayroll;
 async function loadPayroll(){
   const ym=document.getElementById('pay-month').value;
   if(!ym){ST('정산 월을 선택해주세요');return;}
+  // ⭐ v10: 새 월/재계산 시 검토 상태 초기화
+  PAY_REVIEWED=new Set();
+  PAY_REVIEW_ISSUES=new Map();
   const[y,m]=ym.split('-').map(Number);
   const monthStart=`${y}-${String(m).padStart(2,'0')}-01`;
   const lastDay=new Date(y,m,0).getDate();
@@ -3713,6 +3728,27 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
       }
     });
   }
+  // ⭐ v10: 검토 플래그 정보 (총무 검토용)
+  const monthPrefix=`${year}-${String(month).padStart(2,'0')}`;
+  // 단발근무 (퇴사자 일시 복귀)
+  const reviewIsCasual=!!p.isCasual;
+  const casualWorkDays=reviewIsCasual?days.filter(d=>d.attended&&!d.future&&!d.offDay).length:0;
+  // 추가근무 (스케줄 없는 날 근무 — tempDates 등록)
+  const monthTempDates=(p.tempDates||[]).filter(td=>(td.date||'').startsWith(monthPrefix));
+  const addedWorkDays=monthTempDates.length;
+  // 연장근무 (스케줄 있는 날 시간 늘림 — att.stdPhrase === '추가근무')
+  const extensionDays=days.filter(d=>{
+    if(!d.h||d.future||d.offDay)return false;
+    if(d.att&&d.att.stdPhrase==='추가근무')return true;
+    return false;
+  }).length;
+  // 시급 변경 (이번 달에 wage가 바뀌었는지)
+  const monthPermsWithWage=(p.permChanges||[]).filter(pc=>(pc.startDate||'').startsWith(monthPrefix)&&pc.wage!==undefined&&pc.wage!==null);
+  const reviewWageChanged=monthPermsWithWage.length>0;
+  // 주휴 자격 변동 (자격 주와 미달/결근 주가 모두 있을 때)
+  const eligibleWeeks=weeks.filter(w=>w.eligible).length;
+  const ineligibleWeeks=weeks.filter(w=>!w.eligible&&w.totalH>0).length;
+  const reviewWeekVariation=eligibleWeeks>0&&ineligibleWeeks>0;
   return{
     pid,name:p.name,role:p.role,cat:p.cat,tutorKind:p.tutorKind,
     isT,wage:lastWage,
@@ -3720,9 +3756,66 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     basePay,bonusPay,totalPay:basePay+bonusPay,
     days,joinDate:p.joinDate,leaveDate:p.leaveDate,
     status:p.status,
-    bonusList,bonusSum,holidayCnt,overtimeCnt
+    bonusList,bonusSum,holidayCnt,overtimeCnt,
+    // 검토 플래그
+    reviewIsCasual,casualWorkDays,
+    addedWorkDays,monthTempDates,
+    extensionDays,
+    reviewWageChanged,monthPermsWithWage,
+    reviewWeekVariation,eligibleWeeks,ineligibleWeeks
   };
 }
+
+// ⭐ v10: 검토 상태 추적 (메모리, 재계산 시 초기화)
+let PAY_REVIEWED=new Set(); // 확인 완료된 pid
+let PAY_REVIEW_ISSUES=new Map(); // pid -> 메모 (문제 있음 처리한 경우)
+
+// 검토 사유 계산
+function calcReviewReasons(r){
+  const reasons=[];
+  // 🔴 높은 위험 (반드시 검토)
+  if((r.bonusSum||0)>0){
+    const parts=[];
+    if(r.holidayCnt>0)parts.push(`공휴일 ${r.holidayCnt}건`);
+    if(r.overtimeCnt>0)parts.push(`8h초과 ${r.overtimeCnt}건`);
+    reasons.push({level:'high',key:'bonus',icon:'⚡',label:'가산',detail:parts.join(' · '),amount:r.bonusSum});
+  }
+  if(r.reviewIsCasual&&r.casualWorkDays>0){
+    reasons.push({level:'high',key:'casual',icon:'⭐',label:'단발근무',detail:`${r.casualWorkDays}일 (퇴사자 일시 복귀)`});
+  }
+  if(r.addedWorkDays>0){
+    reasons.push({level:'high',key:'added',icon:'➕',label:'추가근무',detail:`${r.addedWorkDays}일 (스케줄 외)`});
+  }
+  if(r.extensionDays>0){
+    reasons.push({level:'high',key:'ext',icon:'⏰',label:'연장근무',detail:`${r.extensionDays}일 (시간 늘림)`});
+  }
+  // 🟡 중간 위험
+  if(r.reviewWeekVariation){
+    reasons.push({level:'mid',key:'week',icon:'📅',label:'주휴 자격 변동',detail:`자격주 ${r.eligibleWeeks}주 / 미달주 ${r.ineligibleWeeks}주`});
+  }
+  if(r.reviewWageChanged){
+    const wageDetail=r.monthPermsWithWage.map(pc=>`${pc.startDate.slice(5)} ${pc.wage.toLocaleString()}원`).join(', ');
+    reasons.push({level:'mid',key:'wage',icon:'💰',label:'시급 변경',detail:wageDetail});
+  }
+  return reasons;
+}
+window.calcReviewReasons=calcReviewReasons;
+
+// 검토 액션 (확인 완료 / 문제 있음 / 되돌리기)
+function togglePayReview(pid,action){
+  if(action==='ok'){
+    PAY_REVIEWED.add(pid);
+    PAY_REVIEW_ISSUES.delete(pid);
+  }else if(action==='issue'){
+    PAY_REVIEWED.add(pid); // 처리 완료로는 침
+    PAY_REVIEW_ISSUES.set(pid,'문제 있음');
+  }else if(action==='undo'){
+    PAY_REVIEWED.delete(pid);
+    PAY_REVIEW_ISSUES.delete(pid);
+  }
+  renderPayroll();
+}
+window.togglePayReview=togglePayReview;
 
 function renderPayroll(){
   if(!PAY_DATA){document.getElementById('payroll-summary').innerHTML='';return;}
@@ -3745,14 +3838,32 @@ function renderPayroll(){
     if(c!==0)return c;
     return a.name.localeCompare(b.name,'ko');
   });
-  // 요약
+  // 검토 사유 계산 + 분류
+  const fmt=n=>(n||0).toLocaleString();
+  const reasonsMap=new Map();
+  const reviewNeeded=[];
+  const normalRows=[];
+  filtered.forEach(r=>{
+    const reasons=calcReviewReasons(r);
+    reasonsMap.set(r.pid,reasons);
+    if(reasons.length>0)reviewNeeded.push(r);
+    else normalRows.push(r);
+  });
+  // 검토 필요 중에서 미완료/완료 분리
+  const reviewPending=reviewNeeded.filter(r=>!PAY_REVIEWED.has(r.pid));
+  const reviewDone=reviewNeeded.filter(r=>PAY_REVIEWED.has(r.pid));
+  // 합계 (전체)
   const sumBase=filtered.reduce((s,r)=>s+r.basePay,0);
   const sumBonus=filtered.reduce((s,r)=>s+r.bonusPay,0);
   const sumExtra=filtered.reduce((s,r)=>s+(r.bonusSum||0),0);
   const sumHolidayCnt=filtered.reduce((s,r)=>s+(r.holidayCnt||0),0);
   const sumOverCnt=filtered.reduce((s,r)=>s+(r.overtimeCnt||0),0);
-  const eligCnt=filtered.filter(r=>r.totalBonusH>0).length;
-  const fmt=n=>(n||0).toLocaleString();
+  // 검토 진행률
+  const reviewProgress=reviewNeeded.length>0?Math.round(reviewDone.length/reviewNeeded.length*100):100;
+  const allReviewed=reviewNeeded.length===0||reviewDone.length===reviewNeeded.length;
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 요약 영역 (간결하게 4개 카드)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   document.getElementById('payroll-summary').innerHTML=`
 <div class="section-card" style="padding:0;margin-bottom:14px;overflow:hidden">
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0">
@@ -3760,16 +3871,13 @@ function renderPayroll(){
       <div style="font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:0.3px;margin-bottom:6px">정산 대상</div>
       <div style="font-size:22px;font-weight:700;color:var(--text-primary)">${filtered.length}<span style="font-size:13px;color:var(--text-muted);margin-left:4px">명</span></div>
     </div>
-    <div style="padding:18px 20px;border-right:1px solid var(--border-light)">
-      <div style="font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:0.3px;margin-bottom:6px">기본급 합계</div>
-      <div style="font-size:22px;font-weight:700;color:#0f172a">${fmt(sumBase)}<span style="font-size:13px;color:var(--text-muted);margin-left:4px">원</span></div>
-    </div>
-    <div style="padding:18px 20px;border-right:1px solid var(--border-light);background:#f0f9ff">
-      <div style="font-size:11px;color:#0c4a6e;font-weight:600;letter-spacing:0.3px;margin-bottom:6px">주휴수당 합계 <span style="background:#fff;border:1px solid #bae6fd;color:#0369a1;padding:1px 6px;border-radius:6px;font-size:9px">${eligCnt}명</span></div>
-      <div style="font-size:22px;font-weight:700;color:#0369a1">${fmt(sumBonus)}<span style="font-size:13px;color:#0c4a6e;margin-left:4px">원</span></div>
+    <div style="padding:18px 20px;border-right:1px solid var(--border-light);${reviewNeeded.length>0&&!allReviewed?'background:#fef2f2':allReviewed&&reviewNeeded.length>0?'background:#f0fdf4':''}">
+      <div style="font-size:11px;color:${allReviewed&&reviewNeeded.length>0?'#15803d':reviewNeeded.length>0?'#b91c1c':'var(--text-secondary)'};font-weight:600;letter-spacing:0.3px;margin-bottom:6px">검토 진행</div>
+      <div style="font-size:22px;font-weight:700;color:${allReviewed&&reviewNeeded.length>0?'#15803d':reviewNeeded.length>0?'#b91c1c':'var(--text-primary)'}">${reviewDone.length}/${reviewNeeded.length}<span style="font-size:13px;color:var(--text-muted);margin-left:4px">${allReviewed&&reviewNeeded.length>0?'✓ 완료':reviewNeeded.length>0?'명 검토 필요':'검토 항목 없음'}</span></div>
+      ${reviewNeeded.length>0?`<div style="height:4px;background:#e5e7eb;border-radius:2px;margin-top:6px;overflow:hidden"><div style="height:100%;background:${allReviewed?'#16a34a':'#dc2626'};width:${reviewProgress}%;transition:width 0.3s"></div></div>`:''}
     </div>
     <div style="padding:18px 20px;border-right:1px solid var(--border-light);background:#fffbeb">
-      <div style="font-size:11px;color:#92400e;font-weight:600;letter-spacing:0.3px;margin-bottom:6px">⚡ 가산(0.5/1.5) 합계 <span style="background:#fff;border:1px solid #fcd34d;color:#92400e;padding:1px 6px;border-radius:6px;font-size:9px">공휴일 ${sumHolidayCnt}건 / 연장 ${sumOverCnt}건</span></div>
+      <div style="font-size:11px;color:#92400e;font-weight:600;letter-spacing:0.3px;margin-bottom:6px">⚡ 가산 합계 <span style="background:#fff;border:1px solid #fcd34d;color:#92400e;padding:1px 6px;border-radius:6px;font-size:9px">공휴일 ${sumHolidayCnt} / 평일 ${sumOverCnt}</span></div>
       <div style="font-size:22px;font-weight:700;color:#92400e">${fmt(sumExtra)}<span style="font-size:13px;color:#78350f;margin-left:4px">원</span></div>
     </div>
     <div style="padding:18px 20px;background:linear-gradient(135deg,#1e3a8a,#3b82f6);color:#fff">
@@ -3778,65 +3886,157 @@ function renderPayroll(){
     </div>
   </div>
 </div>`;
-  // 본문 테이블
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 본문: 검토 필요 → 정상
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   if(!filtered.length){
     document.getElementById('payroll-body').innerHTML='<div class="section-card" style="padding:40px;text-align:center;color:var(--text-muted)">조건에 맞는 인원이 없습니다</div>';
     return;
   }
-  // 카테고리 그룹별 렌더링
-  const grouped={};
-  filtered.forEach(r=>{if(!grouped[r.cat])grouped[r.cat]=[];grouped[r.cat].push(r);});
-  const catLabel={mgmt:'관리',tutor:'조교',etc:'기타'};
   let html='';
-  Object.entries(grouped).forEach(([cat,grp])=>{
-    const catSumBase=grp.reduce((s,r)=>s+r.basePay,0);
-    const catSumBonus=grp.reduce((s,r)=>s+r.bonusPay,0);
-    const catSumExtra=grp.reduce((s,r)=>s+(r.bonusSum||0),0);
-    html+=`<div class="section-card" style="padding:0;margin-bottom:12px;overflow:hidden">
-<div style="background:var(--surface);padding:12px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
-  <div style="display:flex;align-items:center;gap:10px"><span class="cat-badge cat-${cat}" style="font-size:12px">${catLabel[cat]||cat}</span><span style="font-size:13px;font-weight:600;color:var(--text-primary)">${grp.length}명</span></div>
-  <div style="display:flex;gap:14px;font-size:12px;color:var(--text-secondary);flex-wrap:wrap">
-    <span>기본급 <b style="color:var(--text-primary);font-family:'DM Mono',monospace">${fmt(catSumBase)}</b>원</span>
-    <span>주휴수당 <b style="color:#0369a1;font-family:'DM Mono',monospace">${fmt(catSumBonus)}</b>원</span>
-    ${catSumExtra>0?`<span>⚡ 가산 <b style="color:#92400e;font-family:'DM Mono',monospace">+${fmt(catSumExtra)}</b>원</span>`:''}
-    <span>합계 <b style="color:var(--text-primary);font-family:'DM Mono',monospace">${fmt(catSumBase+catSumBonus)}</b>원</span>
-  </div>
-</div>
-<div style="overflow-x:auto"><table class="parts-table" style="margin:0">
-<thead><tr style="background:#f8fafc">
-<th style="width:24px"></th><th>이름</th><th>직무</th><th style="text-align:right">시급</th>
-<th style="text-align:right">월 시수</th><th style="text-align:right">주휴수당 시수</th>
-<th style="text-align:right">기본급</th><th style="text-align:right">주휴수당</th><th style="text-align:right;background:#fffbeb;color:#92400e">⚡ 가산<br><span style="font-size:9px;font-weight:500">(0.5/1.5)</span></th><th style="text-align:right">총 지급</th><th style="width:100px;text-align:center">상세</th>
-</tr></thead>
-<tbody>${grp.map(r=>{
-  const monthOk=r.meetMonthly;
-  const bonusCol=r.totalBonusH>0?'#0369a1':'var(--text-muted)';
-  const monthLbl=monthOk?'':`<span style="font-size:9px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;padding:1px 5px;border-radius:6px;margin-left:4px;font-weight:700">월&lt;60h</span>`;
-  return`<tr id="pay-row-${r.pid}" style="cursor:pointer" onclick="togglePayDetail('${r.pid}')">
-<td style="text-align:center;color:var(--text-muted);font-size:10px">▶</td>
-<td style="font-weight:600">${r.name}${tkBadge(r)}</td>
-<td><span style="color:${cof(r.role)};font-weight:600;font-size:12px">${r.role}</span></td>
-<td style="font-family:'DM Mono',monospace;text-align:right">${fmt(r.wage)}<span style="font-size:10px;color:var(--text-muted)">/${r.isT?'T':'h'}</span></td>
-<td style="font-family:'DM Mono',monospace;text-align:right;font-weight:500">${r.monthH}h${monthLbl}</td>
-<td style="font-family:'DM Mono',monospace;text-align:right;color:${bonusCol};font-weight:600">${r.totalBonusH||'-'}${r.totalBonusH?'h':''}</td>
-<td style="font-family:'DM Mono',monospace;text-align:right">${fmt(r.basePay)}</td>
-<td style="font-family:'DM Mono',monospace;text-align:right;color:${bonusCol};font-weight:600">${r.bonusPay?fmt(r.bonusPay):'-'}</td>
-<td style="text-align:right;padding:8px 10px">${(()=>{
-  if(!r.bonusSum||r.isT)return '<span style="color:var(--text-muted);font-size:11px">-</span>';
-  const holBadge=r.holidayCnt>0?`<span style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;padding:1px 5px;border-radius:8px;font-size:9px;font-weight:700">공휴일 ${r.holidayCnt}건</span>`:'';
-  const overBadge=r.overtimeCnt>0?`<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:1px 5px;border-radius:8px;font-size:9px;font-weight:700">+0.5 ${r.overtimeCnt}건</span>`:'';
-  return`<div style="font-family:'DM Mono',monospace;font-weight:700;color:#92400e">+${fmt(r.bonusSum)}</div><div style="display:flex;gap:3px;justify-content:flex-end;margin-top:2px;flex-wrap:wrap">${holBadge}${overBadge}</div>`;
-})()}</td>
-<td style="font-family:'DM Mono',monospace;text-align:right;font-weight:700;color:#1e3a8a">${fmt(r.totalPay)}</td>
-<td style="text-align:center"><button class="icon-btn" onclick="event.stopPropagation();openHistoryModal('${r.pid}')" style="font-size:10px;padding:2px 6px">📋</button></td>
-</tr>
-<tr id="pay-detail-${r.pid}" style="display:none;background:#fafbfc"><td colspan="11" style="padding:14px 20px">${renderPayDetail(r)}</td></tr>`;
-}).join('')}</tbody>
-</table></div></div>`;
-  });
+  // ── 검토 필요 섹션 ──
+  if(reviewNeeded.length>0){
+    html+=`<div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:14px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-size:18px">⚠</span>
+        <span style="font-size:15px;font-weight:700;color:#b91c1c">검토 필요 (${reviewNeeded.length}명)</span>
+        <span style="font-size:11px;color:#7f1d1d">${reviewDone.length}명 검토 완료 / ${reviewPending.length}명 남음</span>
+        <span style="margin-left:auto;font-size:11px;color:#7f1d1d">송금 전 반드시 확인하세요</span>
+      </div>`;
+    // 미완료 카드들
+    reviewPending.forEach(r=>{
+      const reasons=reasonsMap.get(r.pid)||[];
+      html+=renderPayReviewCard(r,reasons,false);
+    });
+    // 완료된 카드들 (접혀서)
+    if(reviewDone.length>0){
+      html+=`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:#15803d;padding:8px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;font-weight:600">✓ 검토 완료 ${reviewDone.length}명 (펼치기)</summary>
+      <div style="margin-top:8px">`;
+      reviewDone.forEach(r=>{
+        const reasons=reasonsMap.get(r.pid)||[];
+        html+=renderPayReviewCard(r,reasons,true);
+      });
+      html+=`</div></details>`;
+    }
+    html+=`</div>`;
+  }
+  // ── 정상 섹션 ──
+  const allNormal=normalRows.concat(reviewDone); // 검토 완료된 사람도 송금 대상이라 같이 보여줌은 옵션
+  // 일단 정상은 검토 안 필요한 사람만 (분리 유지)
+  if(normalRows.length>0){
+    const grouped={};
+    normalRows.forEach(r=>{if(!grouped[r.cat])grouped[r.cat]=[];grouped[r.cat].push(r);});
+    const catLabel={mgmt:'관리',tutor:'조교',etc:'기타'};
+    html+=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:14px;margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span style="font-size:18px">✓</span>
+        <span style="font-size:15px;font-weight:700;color:#15803d">정상 (${normalRows.length}명)</span>
+        <span style="font-size:11px;color:#166534;margin-left:auto">검토할 항목 없음 — 송금 진행 가능</span>
+      </div>`;
+    Object.entries(grouped).forEach(([cat,grp])=>{
+      const catSumBase=grp.reduce((s,r)=>s+r.basePay,0);
+      const catSumBonus=grp.reduce((s,r)=>s+r.bonusPay,0);
+      html+=`<div style="background:#fff;border:1px solid var(--border-light);border-radius:8px;margin-bottom:10px;overflow:hidden">
+        <div style="background:#f8fafc;padding:10px 14px;border-bottom:1px solid var(--border-light);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+          <div style="display:flex;align-items:center;gap:10px"><span class="cat-badge cat-${cat}" style="font-size:11px">${catLabel[cat]||cat}</span><span style="font-size:12px;font-weight:600;color:var(--text-primary)">${grp.length}명</span></div>
+          <div style="display:flex;gap:14px;font-size:11px;color:var(--text-secondary);flex-wrap:wrap">
+            <span>기본급 <b style="color:var(--text-primary);font-family:'DM Mono',monospace">${fmt(catSumBase)}</b>원</span>
+            <span>주휴수당 <b style="color:#0369a1;font-family:'DM Mono',monospace">${fmt(catSumBonus)}</b>원</span>
+            <span>합계 <b style="color:var(--text-primary);font-family:'DM Mono',monospace">${fmt(catSumBase+catSumBonus)}</b>원</span>
+          </div>
+        </div>
+        <div style="overflow-x:auto"><table class="parts-table" style="margin:0">
+          <thead><tr style="background:#fafbfc"><th style="width:24px"></th><th>이름</th><th>직무</th><th style="text-align:right">시급</th><th style="text-align:right">월 시수</th><th style="text-align:right">기본급</th><th style="text-align:right">주휴수당</th><th style="text-align:right">총 지급</th><th style="width:80px;text-align:center">명세서</th></tr></thead>
+          <tbody>${grp.map(r=>{
+            const monthLbl=r.meetMonthly?'':`<span style="font-size:9px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;padding:1px 5px;border-radius:6px;margin-left:4px;font-weight:700">월&lt;60h</span>`;
+            return`<tr id="pay-row-${r.pid}" style="cursor:pointer" onclick="togglePayDetail('${r.pid}')">
+              <td style="text-align:center;color:var(--text-muted);font-size:10px">▶</td>
+              <td style="font-weight:600">${r.name}${tkBadge(r)}</td>
+              <td><span style="color:${cof(r.role)};font-weight:600;font-size:12px">${r.role}</span></td>
+              <td style="font-family:'DM Mono',monospace;text-align:right">${fmt(r.wage)}<span style="font-size:10px;color:var(--text-muted)">/${r.isT?'T':'h'}</span></td>
+              <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:500">${r.monthH}h${monthLbl}</td>
+              <td style="font-family:'DM Mono',monospace;text-align:right">${fmt(r.basePay)}</td>
+              <td style="font-family:'DM Mono',monospace;text-align:right;color:${r.totalBonusH>0?'#0369a1':'var(--text-muted)'};font-weight:600">${r.bonusPay?fmt(r.bonusPay):'-'}</td>
+              <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:700;color:#1e3a8a">${fmt(r.totalPay)}</td>
+              <td style="text-align:center"><button class="icon-btn" onclick="event.stopPropagation();openPayslipModal('${r.pid}')" style="font-size:10px;padding:2px 6px;border-color:#bfdbfe;color:#1d4ed8">📄</button></td>
+            </tr>
+            <tr id="pay-detail-${r.pid}" style="display:none;background:#fafbfc"><td colspan="9" style="padding:14px 20px">${renderPayDetail(r)}</td></tr>`;
+          }).join('')}</tbody>
+        </table></div>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
   document.getElementById('payroll-body').innerHTML=html;
 }
 window.renderPayroll=renderPayroll;
+
+// 검토 카드 한 개 렌더
+function renderPayReviewCard(r,reasons,isDone){
+  const fmt=n=>(n||0).toLocaleString();
+  const hasIssue=PAY_REVIEW_ISSUES.has(r.pid);
+  const cardBg=isDone?(hasIssue?'#fff7ed':'#f8fafc'):'#fff';
+  const cardBorder=isDone?(hasIssue?'#fdba74':'#d1d5db'):'#fca5a5';
+  const opacity=isDone?'0.85':'1';
+  // 사유별 칩
+  const reasonChips=reasons.map(rc=>{
+    const isHigh=rc.level==='high';
+    const bg=isHigh?'#fef2f2':'#fef3c7';
+    const border=isHigh?'#fca5a5':'#fde68a';
+    const color=isHigh?'#b91c1c':'#92400e';
+    return `<span style="display:inline-flex;align-items:center;gap:5px;background:${bg};border:1px solid ${border};color:${color};padding:4px 10px;border-radius:14px;font-size:11px;font-weight:600;margin-right:5px;margin-bottom:4px">
+      <span>${rc.icon}</span><b>${rc.label}</b><span style="opacity:0.85;font-weight:500">${rc.detail}</span>${rc.amount?`<span style="font-family:'DM Mono',monospace;font-weight:700">+${fmt(rc.amount)}원</span>`:''}
+    </span>`;
+  }).join('');
+  return `<div id="pay-review-${r.pid}" style="background:${cardBg};border:1px solid ${cardBorder};border-radius:8px;padding:14px;margin-bottom:8px;opacity:${opacity};transition:all 0.2s">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div style="flex:1;min-width:240px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+          <span class="cat-badge cat-${r.cat}" style="font-size:10px">${({mgmt:'관리',tutor:'조교',etc:'기타'})[r.cat]||r.cat}</span>
+          <span style="color:${cof(r.role)};font-weight:700;font-size:13px">${r.role}</span>
+          <span style="font-size:14px;font-weight:700;color:var(--text-primary)">${r.name}</span>
+          ${tkBadge(r)}
+          ${isDone?(hasIssue?'<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">⚠ 문제 있음</span>':'<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">✓ 검토 완료</span>'):''}
+        </div>
+        <div style="margin-bottom:8px">${reasonChips}</div>
+        <div style="display:flex;gap:14px;font-size:12px;color:var(--text-secondary);flex-wrap:wrap;font-family:'DM Mono',monospace">
+          <span>시급 ${fmt(r.wage)}원/${r.isT?'T':'h'}</span>
+          <span>시수 ${r.monthH}h</span>
+          <span>기본급 ${fmt(r.basePay)}</span>
+          ${r.bonusPay>0?`<span style="color:#0369a1">주휴수당 +${fmt(r.bonusPay)}</span>`:''}
+          <span style="color:#1e3a8a;font-weight:700">총 지급 ${fmt(r.totalPay)}원</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <button class="btn-secondary" style="padding:7px 12px;font-size:12px;border-color:#bfdbfe;color:#1d4ed8;background:#eff6ff" onclick="openPayslipModal('${r.pid}')">📄 명세서</button>
+        ${isDone?
+          `<button class="btn-secondary" style="padding:7px 12px;font-size:12px;border-color:#d1d5db;color:#6b7280" onclick="togglePayReview('${r.pid}','undo')">↩ 되돌리기</button>`
+          :
+          `<button class="btn-primary" style="padding:7px 14px;font-size:12px;background:#16a34a;border-color:#16a34a" onclick="togglePayReview('${r.pid}','ok')">✓ 확인 완료</button>
+           <button class="btn-secondary" style="padding:7px 12px;font-size:12px;border-color:#fdba74;color:#c2410c;background:#fff7ed" onclick="togglePayReview('${r.pid}','issue')">⚠ 문제 있음</button>`
+        }
+      </div>
+    </div>
+  </div>`;
+}
+window.renderPayReviewCard=renderPayReviewCard;
+
+// 명세서 모달 — 2단계에서 본격 구현, 일단 placeholder
+function openPayslipModal(pid){
+  const r=PAY_DATA?PAY_DATA.rows.find(x=>x.pid===pid):null;
+  if(!r){ST('정산 데이터 없음');return;}
+  // 임시: 일단 기존 펼침 detail 보여줌
+  ST('명세서 화면은 다음 단계에서 구현됩니다');
+  // detail 펼치기
+  const row=document.getElementById('pay-detail-'+pid);
+  if(row){
+    row.style.display='';
+    document.getElementById('pay-row-'+pid)?.querySelector('td:first-child')?.replaceChildren(document.createTextNode('▼'));
+    document.getElementById('pay-row-'+pid)?.scrollIntoView({behavior:'smooth',block:'center'});
+  }
+}
+window.openPayslipModal=openPayslipModal;
+
 
 function renderPayDetail(r){
   const fmt=n=>(n||0).toLocaleString();
