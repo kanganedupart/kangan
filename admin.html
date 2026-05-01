@@ -2079,21 +2079,25 @@ function renderPT(){
     const DM=['일','월','화','수','목','금','토'];
     const todayDow=DM[new Date(today+'T00:00:00+09:00').getDay()];
     const dsToday=getDayTime(p,todayDow,today);
-    const curStart=dsToday.start||p.start;
-    const curEnd=dsToday.end||p.end;
-    const isPermActive=dsToday.fromPerm;
     // ⭐ v8: 적용되는 요일별 시간 계산 (영구변경 daySchedule 우선, 없으면 직원 daySchedule)
     const _applPermPT=p.permChanges?[...p.permChanges].filter(pc=>pc.startDate<=today).sort((a,b)=>{const c=b.startDate.localeCompare(a.startDate);if(c!==0)return c;return(b.at||'').localeCompare(a.at||'');})[0]:null;
+    // ⭐ 영구변경이 있으면 그 시간을 우선 표시 (오늘이 그 요일에 해당하지 않더라도, 진짜 적용 스케줄을 보여주기 위함)
+    const curStart=_applPermPT?_applPermPT.start:(dsToday.start||p.start);
+    const curEnd=_applPermPT?_applPermPT.end:(dsToday.end||p.end);
+    const isPermActive=!!_applPermPT;
     const _curDaysPT=_applPermPT?(_applPermPT.days||[]):(p.days||[]);
     const _effDaySchedPT=(_applPermPT&&_applPermPT.daySchedule)||p.daySchedule||{};
     const _hasDayDiffPT=_curDaysPT.some(d=>{
       const ds=_effDaySchedPT[d];
       return ds&&ds.start&&ds.end&&(ds.start!==curStart||ds.end!==curEnd);
     });
-    // 휴게 표시 계산
+    // 휴게 표시 계산 — 스케줄관리 모달과 동일한 로직 사용
+    // 영구변경의 customBreak 우선 → 직원의 customBreak로 폴백
     const _brkDisplay=(()=>{
-      const cb=isPermActive?dsToday.customBreak:p.customBreak;
-      if(cb!==undefined)return ` <span style="font-size:11px;color:var(--text-secondary)">휴게 ${cb}분</span><span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span>`;
+      const cb=_applPermPT&&_applPermPT.customBreak!==undefined&&_applPermPT.customBreak!==null
+        ?_applPermPT.customBreak
+        :(p.customBreak!==undefined&&p.customBreak!==null?p.customBreak:undefined);
+      if(cb!==undefined&&cb!==null)return ` <span style="font-size:11px;color:var(--text-secondary)">휴게 ${cb}분</span><span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span>`;
       const s=curStart,e=curEnd;
       if(!s||!e||s==='-'||e==='-')return '';
       const h=(toM(e)-toM(s))/60;
