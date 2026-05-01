@@ -2093,12 +2093,14 @@ function renderPT(){
     // 휴게 표시 계산
     const _brkDisplay=(()=>{
       const cb=isPermActive?dsToday.customBreak:p.customBreak;
-      if(cb!==undefined)return ` <span style="font-size:11px;color:var(--text-secondary)">휴게 ${cb}분</span><span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span>`;
+      // 디버그: cb가 무엇인지 화면에 직접 표시
+      const _dbgInfo=`[디버그: p.customBreak=${JSON.stringify(p.customBreak)} / dsToday.cb=${JSON.stringify(dsToday.customBreak)} / isPerm=${isPermActive}]`;
+      if(cb!==undefined)return ` <span style="font-size:11px;color:var(--text-secondary)">휴게 ${cb}분</span><span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span><span style="font-size:9px;color:#7e22ce;display:block;margin-top:2px">${_dbgInfo}</span>`;
       const s=curStart,e=curEnd;
       if(!s||!e||s==='-'||e==='-')return '';
       const h=(toM(e)-toM(s))/60;
       const auto=h>=9?60:h>4?30:0;
-      return ` <span style="font-size:11px;color:var(--text-muted)">휴게 ${auto}분</span>`;
+      return ` <span style="font-size:11px;color:var(--text-muted)">휴게 ${auto}분</span><span style="font-size:9px;color:#7e22ce;display:block;margin-top:2px">${_dbgInfo}</span>`;
     })();
     // 요일별 다른 시간이면 풀어서, 같으면 한 줄로
     const timeDisplay=_hasDayDiffPT
