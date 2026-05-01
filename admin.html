@@ -2093,14 +2093,12 @@ function renderPT(){
     // 휴게 표시 계산
     const _brkDisplay=(()=>{
       const cb=isPermActive?dsToday.customBreak:p.customBreak;
-      // 디버그: cb가 무엇인지 화면에 직접 표시
-      const _dbgInfo=`[디버그: p.customBreak=${JSON.stringify(p.customBreak)} / dsToday.cb=${JSON.stringify(dsToday.customBreak)} / isPerm=${isPermActive}]`;
-      if(cb!==undefined)return ` <span style="font-size:11px;color:var(--text-secondary)">휴게 ${cb}분</span><span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span><span style="font-size:9px;color:#7e22ce;display:block;margin-top:2px">${_dbgInfo}</span>`;
+      if(cb!==undefined)return ` <span style="font-size:11px;color:var(--text-secondary)">휴게 ${cb}분</span><span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span>`;
       const s=curStart,e=curEnd;
       if(!s||!e||s==='-'||e==='-')return '';
       const h=(toM(e)-toM(s))/60;
       const auto=h>=9?60:h>4?30:0;
-      return ` <span style="font-size:11px;color:var(--text-muted)">휴게 ${auto}분</span><span style="font-size:9px;color:#7e22ce;display:block;margin-top:2px">${_dbgInfo}</span>`;
+      return ` <span style="font-size:11px;color:var(--text-muted)">휴게 ${auto}분</span>`;
     })();
     // 요일별 다른 시간이면 풀어서, 같으면 한 줄로
     const timeDisplay=_hasDayDiffPT
@@ -3391,19 +3389,30 @@ const leaveDateVal=document.getElementById('pf-leave')?.value||null;
 const data={cat:ca,role:ro,name:nm,phone:ph,pin,start:st,end:en,days:dy,joinDate:jd||kstDate(),leaveDate:leaveDateVal,isCasual:leaveDateVal?(!!document.getElementById('pf-casual')?.checked):false,status:pid?(AP[pid]?.status||'active'):'active',pinActive:pid?(AP[pid]?.pinActive!==false):true,memos:pid?(AP[pid].memos||[]):[],scheduleHistory:newHistory,tutorKind:ca==='tutor'?tk:null};
 if(changeDate)data.scheduleChangeDate=changeDate;
 if(Object.keys(daySchedule).length>0)data.daySchedule=daySchedule;
-// ⭐ 휴게시간 저장 — 강화: 입력란 다시 직접 읽고 trim, NaN 체크
+// ⭐ 휴게시간 저장 — 강력한 안전장치
+// 1) 입력란을 다시 직접 읽음 (변수 캐싱 우회)
+// 2) input 이벤트 강제 발동시켜 마지막 입력값 확실히 동기화
 const bvEl=document.getElementById('pf-brk');
+if(bvEl){
+  // input의 value를 강제로 다시 읽기 (브라우저 어떤 상태든 무관)
+  bvEl.dispatchEvent(new Event('change',{bubbles:true}));
+}
 const bvRaw=bvEl?(bvEl.value||'').toString().trim():'';
+let bvSaved='';
 if(bvRaw!==''){
   const bvN=parseInt(bvRaw,10);
-  if(!isNaN(bvN)&&bvN>=0)data.customBreak=bvN;
+  if(!isNaN(bvN)&&bvN>=0){data.customBreak=bvN;bvSaved=bvN+'분';}
   else console.warn('[customBreak] 입력값이 숫자가 아님:',bvRaw);
 }
 // 수정 모드일 때 기존 customBreak 보존 (입력란이 disabled라 비어있을 수 있음)
 if(pid&&data.customBreak===undefined&&AP[pid]&&AP[pid].customBreak!==undefined){
   data.customBreak=AP[pid].customBreak;
+  bvSaved=data.customBreak+'분 (기존 유지)';
 }
-console.log('[savePF] customBreak 저장:',data.customBreak,'/ 입력 raw:',bvRaw,'/ pid:',pid);
+// 신규 등록 시 휴게 입력 안 했으면 알림 (실수 방지)
+if(!pid&&bvRaw===''){
+  bvSaved='자동 (입력 없음)';
+}
 // 시급 처리 (신규 등록 시만 입력 가능, 수정은 영구변경에서)
 if(!pid){const wEl=document.getElementById('pf-wage');if(!wEl||!wEl.value||wEl.value===''){ST('시급을 입력해주세요 (필수)');return;}const wN=parseFloat(wEl.value);if(isNaN(wN)||wN<=0){ST('시급은 1원 이상이어야 합니다');return;}data.wage=Math.round(wN*100)/100;}
 else if(AP[pid]&&AP[pid].wage!==undefined)data.wage=AP[pid].wage;
@@ -3440,7 +3449,7 @@ if(sameP.length){
     }
   }
 }
-SL(true);if(pid)await update(ref(db,`parts/${pid}`),data);else await push(ref(db,'parts'),data);SL(false);ST(pid?'수정 완료':'등록 완료');CM('modal-part');}
+SL(true);if(pid)await update(ref(db,`parts/${pid}`),data);else await push(ref(db,'parts'),data);SL(false);ST((pid?'수정 완료':'등록 완료')+(bvSaved?' · 휴게 '+bvSaved:''));CM('modal-part');}
 window.savePartForm=savePF;
 async function addTempDate(pid){
   const date=document.getElementById('temp-date')?.value;
