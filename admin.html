@@ -3552,11 +3552,9 @@ function syncTimeVal(id){
   const v=`${String(hh).padStart(2,'0')}:${m}`;
   const inp=document.getElementById(id);
   if(inp)inp.value=v;
-  // 파트 수정의 기본 출퇴근 시각 변경 시 휴게시간 초기화 + 자동 라벨 갱신
+  // 파트 수정의 기본 출퇴근 시각 변경 시 자동 라벨만 갱신
+  // ⭐ 사용자가 휴게시간을 직접 입력했으면 절대 초기화하지 않음 (저장 손실 방지)
   if(id==='pf-start'||id==='pf-end'){
-    const b=document.getElementById('pf-brk');
-    const bd=document.getElementById('brk-badge');
-    if(b){b.value='';if(bd)bd.style.display='none';}
     if(window.updatePfAutoBrk)window.updatePfAutoBrk();
   }
   // 영구변경/추가근무 시각 변경 시 자동 휴게 라벨 갱신
