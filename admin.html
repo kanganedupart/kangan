@@ -135,10 +135,15 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .day-btn.has-custom{background:var(--warning-light);border-color:var(--warning);color:var(--warning);}
 .day-time-row{display:flex;gap:8px;align-items:center;padding:6px 10px;background:var(--bg);border-radius:var(--rs);margin-top:4px;}
 .parts-filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;}
-.parts-table{width:100%;border-collapse:collapse;}
-.parts-table th{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;padding:8px 12px;border-bottom:2px solid var(--border);text-align:left;white-space:nowrap;}
-.parts-table td{padding:10px 12px;border-bottom:1px solid var(--border-light);font-size:13px;vertical-align:middle;white-space:nowrap;}
+.parts-table{width:100%;border-collapse:collapse;table-layout:auto;}
+.parts-table th{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;padding:8px 8px;border-bottom:2px solid var(--border);text-align:left;white-space:nowrap;}
+.parts-table td{padding:8px 8px;border-bottom:1px solid var(--border-light);font-size:13px;vertical-align:middle;}
 .parts-table tr:hover td{background:var(--bg);}
+/* 첫 컬럼들은 한 줄 유지, 시간/시급/상태는 줄바꿈 허용 */
+.parts-table td:nth-child(1),.parts-table td:nth-child(2),.parts-table td:nth-child(4),.parts-table td:nth-child(5){white-space:nowrap;}
+/* 관리 컬럼 (마지막) — 한 줄 유지 + 작게 */
+.parts-table td:last-child{white-space:nowrap;text-align:right;}
+.parts-table td:last-child .icon-btn{padding:3px 7px;font-size:11px;margin-left:2px;}
 .sbadge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
 .s-active{background:var(--success-light);color:var(--success);}
 .s-inactive{background:#f3f4f6;color:var(--text-muted);}
@@ -906,7 +911,7 @@ function getDayTime(p,dayOfWeek,date){
   if(p.scheduleReplaces&&p.scheduleReplaces.length){
     const matched=p.scheduleReplaces.find(r=>today>=r.startDate&&today<=r.endDate);
     if(matched){
-      if((matched.days||[]).includes(dayOfWeek))return{start:matched.start,end:matched.end,fromReplace:true};
+      if((matched.days||[]).includes(dayOfWeek))return{start:matched.start,end:matched.end,customBreak:matched.customBreak,fromReplace:true};
       return{start:null,end:null,replaced:true};
     }
   }
@@ -2242,7 +2247,7 @@ ${Object.entries(cats).map(([k,v])=>`<option value="${k}"${p&&p.cat===k?' select
 <div class="form-group" style="flex:1"><label class="form-label">입사일</label><input type="date" class="form-input" id="pf-jd" value="${p&&p.joinDate?p.joinDate:kstDate()}"></div>
 <div class="form-group" style="flex:1"><label class="form-label">퇴사일</label><div style="display:flex;gap:6px;align-items:center"><input type="date" class="form-input" id="pf-leave" value="${p&&p.leaveDate?p.leaveDate:''}" style="flex:1" oninput="updateCasualCheckState()"><button type="button" class="btn-secondary" style="padding:6px 10px;font-size:12px;white-space:nowrap" onclick="document.getElementById('pf-leave').value='';updateCasualCheckState();">❌ 지우기</button></div></div>
 </div>
-<div class="form-group"><label id="pf-casual-label" style="display:flex;align-items:center;gap:8px;font-size:13px;${p&&p.leaveDate&&p.leaveDate<kstDate()?'cursor:pointer;':'cursor:not-allowed;opacity:0.55;'}padding:10px 12px;background:#fdf4ff;border:1px solid #e9d5ff;border-radius:6px"><input type="checkbox" id="pf-casual" ${p&&p.isCasual?'checked':''} ${p&&p.leaveDate&&p.leaveDate<kstDate()?'':'disabled'} style="width:16px;height:16px;${p&&p.leaveDate&&p.leaveDate<kstDate()?'cursor:pointer':'cursor:not-allowed'}"><span><span style="font-weight:600;color:#7e22ce">⭐ 단발근무자</span> <span style="font-size:11px;color:var(--text-muted)">- 퇴사 후에도 간헐적으로 근무 오는 경우 (출결현황에 항상 노출, 수동기록 가능)</span><div id="pf-casual-warn" style="font-size:10px;color:#b91c1c;margin-top:4px">${p&&!p.leaveDate?'⚠ 퇴사일 입력 후에만 지정 가능합니다':(p&&p.leaveDate&&p.leaveDate>=kstDate()?'⚠ 퇴사일이 지난 후에만 단발근무 가능 (오늘 마지막 근무 → 일반 정산)':'')}</div></span></label></div>
+<div class="form-group"><label id="pf-casual-label" style="display:flex;align-items:center;gap:8px;font-size:13px;${p&&p.isCasual?'cursor:pointer;':(p&&p.leaveDate&&p.leaveDate<kstDate()?'cursor:pointer;':'cursor:not-allowed;opacity:0.55;')}padding:10px 12px;background:#fdf4ff;border:1px solid #e9d5ff;border-radius:6px"><input type="checkbox" id="pf-casual" data-was-casual="${p&&p.isCasual?'1':'0'}" ${p&&p.isCasual?'checked':''} ${p&&p.isCasual?'':(p&&p.leaveDate&&p.leaveDate<kstDate()?'':'disabled')} style="width:16px;height:16px;${p&&p.isCasual?'cursor:pointer':(p&&p.leaveDate&&p.leaveDate<kstDate()?'cursor:pointer':'cursor:not-allowed')}"><span><span style="font-weight:600;color:#7e22ce">⭐ 단발근무자</span> <span style="font-size:11px;color:var(--text-muted)">- 퇴사 후에도 간헐적으로 근무 오는 경우 (출결현황에 항상 노출, 수동기록 가능)</span><div id="pf-casual-warn" style="font-size:10px;color:#b91c1c;margin-top:4px">${p&&p.isCasual?'':(p&&!p.leaveDate?'⚠ 퇴사일 입력 후에만 지정 가능합니다':(p&&p.leaveDate&&p.leaveDate>=kstDate()?'⚠ 퇴사일이 지난 후에만 단발근무 가능 (오늘 마지막 근무 → 일반 정산)':''))}</div></span></label></div>
 ${pid?`<div class="divider-section"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">상태 변경</div><div id="state-btns"></div></div>`:''}
 `;
 el.appendChild(basicDiv);
@@ -2477,7 +2482,7 @@ const WA_COLORS={perm:{bg:'#eff6ff',border:'#93c5fd',text:'#1d4ed8'},replace:{bg
 async function waGetAllEvents(p){
   const list=[];
   (p.permChanges||[]).forEach((e,i)=>list.push({type:'perm',idx:i,startDate:e.startDate,endDate:null,days:e.days||[],start:e.start,end:e.end,customBreak:e.customBreak,daySchedule:e.daySchedule,wage:e.wage,by:e.by,at:e.at,memo:e.memo}));
-  (p.scheduleReplaces||[]).forEach((e,i)=>list.push({type:'replace',idx:i,startDate:e.startDate,endDate:e.endDate,days:e.days||[],start:e.start,end:e.end,by:e.by,at:e.at}));
+  (p.scheduleReplaces||[]).forEach((e,i)=>list.push({type:'replace',idx:i,startDate:e.startDate,endDate:e.endDate,days:e.days||[],start:e.start,end:e.end,customBreak:e.customBreak,by:e.by,at:e.at}));
   (p.schedulePeriods||[]).forEach((e,i)=>list.push({type:'period',idx:i,startDate:e.startDate,endDate:e.endDate,days:e.days||[],start:e.start,end:e.end,legacy:true}));
   (p.plannedAbsent||[]).forEach((e,i)=>{
     if(typeof e==='string')list.push({type:'absent',idx:i,startDate:e,endDate:e,memo:'',legacyStr:true});
@@ -2563,11 +2568,12 @@ async function waRenderList(pid){
     if(e.start&&e.end)timeStr=`${e.start}~${e.end}`;
     else if(e.start)timeStr=`${e.start}부터`;
     else if(e.end)timeStr=`${e.end}까지`;
-    // ⭐ v10: 추가근무에 customBreak 명시되어 있으면 표시
+    // ⭐ v10: 추가근무/기간교체에 customBreak 명시되어 있으면 표시 (없으면 자동)
     let breakStr='';
-    if(e.type==='oneday'&&e.customBreak!==undefined&&e.customBreak!==null){
+    const showBreak=(e.type==='oneday'||e.type==='replace');
+    if(showBreak&&e.customBreak!==undefined&&e.customBreak!==null){
       breakStr=` <span style="font-size:10px;color:#7e22ce;background:#fff;border:1px solid #e9d5ff;padding:1px 6px;border-radius:8px;margin-left:4px">휴게 ${e.customBreak}분 (수동)</span>`;
-    }else if(e.type==='oneday'&&e.start&&e.end){
+    }else if(showBreak&&e.start&&e.end){
       const h=(toM(e.end)-toM(e.start))/60;
       const auto=h>=9?60:h>4?30:0;
       breakStr=` <span style="font-size:10px;color:var(--text-muted);background:var(--bg);padding:1px 6px;border-radius:8px;margin-left:4px">휴게 ${auto}분 (자동)</span>`;
@@ -2590,6 +2596,7 @@ async function waRenderList(pid){
     // 과거 시작일 보호: 시작일이 오늘 이전이면 삭제 비활성
     const isStarted=e.startDate&&e.startDate<today;
     let delBtn='';
+    let editBtn='';
     if(CU.role==='관리자'){
       if(isAttEvent){
         delBtn=`<button type="button" class="icon-btn del" style="padding:2px 7px;font-size:10px" onclick="waDeleteAttEvent('${pid}','${e.startDate}','${e.type}')">삭제</button>`;
@@ -2598,11 +2605,15 @@ async function waRenderList(pid){
       }else{
         delBtn=`<button type="button" class="icon-btn del" style="padding:2px 7px;font-size:10px" onclick="waDelete('${pid}','${e.type}','${e.idx}')">삭제</button>`;
       }
+      // ⭐ v10.7: 기간교체/추가근무는 휴게시간만 따로 수정 가능
+      if(e.type==='replace'||e.type==='oneday'){
+        editBtn=`<button type="button" class="icon-btn" style="padding:2px 7px;font-size:10px;border-color:#bfdbfe;color:#1d4ed8;background:#eff6ff" onclick="waEditBreak('${pid}','${e.type}','${e.idx}')" title="휴게시간 수정">✏️ 휴게</button>`;
+      }
     }
     // 작성자/등록일시 표시
     const byStr=e.by?`<span style="font-size:10px;color:var(--text-muted)">✍️ ${e.by}${e.at?` · ${e.at}`:''}</span>`:'';
     const futureBadge=isFuture?'<span style="font-size:9px;font-weight:700;color:#1d4ed8;background:#eff6ff;padding:1px 6px;border-radius:8px;border:1px solid #bfdbfe;margin-left:3px">📅 시작 예정</span>':'';
-    return `<div style="border:1px solid ${c.border};background:${c.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;${opacity}"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px"><span style="font-size:10px;font-weight:700;color:${c.text};background:#fff;padding:2px 7px;border-radius:10px;border:1px solid ${c.border}">${lb}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);flex:1">${dateStr}${e.type==='perm'&&!isFuture?' ~ 계속':''}${isPast?' (종료)':''}</span>${futureBadge}${delBtn}</div><div style="font-size:12px;color:${c.text}">${daysStr}${timeStr}${breakStr}${daySchStr}${memoStr}${legacy}</div>${byStr?`<div style="margin-top:3px">${byStr}</div>`:''}</div>`;
+    return `<div style="border:1px solid ${c.border};background:${c.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;${opacity}"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px"><span style="font-size:10px;font-weight:700;color:${c.text};background:#fff;padding:2px 7px;border-radius:10px;border:1px solid ${c.border}">${lb}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);flex:1">${dateStr}${e.type==='perm'&&!isFuture?' ~ 계속':''}${isPast?' (종료)':''}</span>${futureBadge}${editBtn}${delBtn}</div><div style="font-size:12px;color:${c.text}">${daysStr}${timeStr}${breakStr}${daySchStr}${memoStr}${legacy}</div>${byStr?`<div style="margin-top:3px">${byStr}</div>`:''}</div>`;
   }).join('');
 }
 window.waRenderList=waRenderList;
@@ -3119,7 +3130,8 @@ ${p&&p.cat==='tutor'&&p.tutorKind==='부담임'?`<div style="background:#f0f9ff;
     body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 기간 내에는 기존 스케줄을 무시하고 여기 설정된 요일/시간만 적용. 기간 종료 후 자동 복귀.</div>
 <div style="display:flex;gap:6px;margin-bottom:10px"><div class="form-group" style="flex:1"><label class="form-label">시작일</label><input type="date" class="form-input" id="wa-start" value="${today}" onchange="waAutoDays()"></div><div class="form-group" style="flex:1"><label class="form-label">종료일</label><input type="date" class="form-input" id="wa-end" value="${today}" onchange="waAutoDays()"></div></div>
 <div class="form-group"><label class="form-label">기간 내 근무 요일</label><div class="day-btns" id="wa-days">${DAYS.map(d=>`<button type="button" class="day-btn" onclick="this.classList.toggle('selected')">${d}</button>`).join('')}</div></div>
-<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time','09:00','width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time','18:00','width:100%')}</div></div>`;
+<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time','09:00','width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time','18:00','width:100%')}</div></div>
+<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">휴게시간(분) <span style="font-size:10px;color:var(--text-muted)">— 비워두면 자동 (4h미만 0분 / 4-9h 30분 / 9h+ 60분)</span></label><input class="form-input" id="wa-brk" type="number" min="0" max="240" placeholder="자동"></div>`;
   }else if(type==='absent'){
     body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 하루 또는 연속 날짜 결근을 사전 등록합니다.</div>
 <div style="display:flex;gap:6px;margin-bottom:10px"><div class="form-group" style="flex:1"><label class="form-label">시작일</label><input type="date" class="form-input" id="wa-start" value="${today}"></div><div class="form-group" style="flex:1"><label class="form-label">종료일</label><input type="date" class="form-input" id="wa-end" value="${today}"></div></div>
@@ -3267,6 +3279,12 @@ async function waSave(pid,type){
     newEvent.endDate=end;newEvent.days=days;
     newEvent.start=document.getElementById('wa-s-time').value;
     newEvent.end=document.getElementById('wa-e-time').value;
+    // ⭐ v10.7: 기간교체 휴게시간 저장
+    const repBrk=document.getElementById('wa-brk')?.value?.trim();
+    if(repBrk!==''&&repBrk!==undefined){
+      const bN=parseInt(repBrk,10);
+      if(!isNaN(bN)&&bN>=0)newEvent.customBreak=bN;
+    }
     newEvent.by=CU.name;newEvent.at=kstLabel();
   }else if(type==='absent'){
     const end=document.getElementById('wa-end')?.value;
@@ -3416,6 +3434,57 @@ async function waDelete(pid,type,idx){
 }
 window.waDelete=waDelete;
 
+// ⭐ v10.7: 기간교체/추가근무의 휴게시간만 수정
+async function waEditBreak(pid,type,idx){
+  const p=AP[pid];if(!p)return;
+  const arr=type==='replace'?(p.scheduleReplaces||[]):(p.tempDates||[]);
+  const item=arr[idx];
+  if(!item){ST('항목을 찾을 수 없습니다');return;}
+  // 자동 휴게값 계산
+  const h=item.start&&item.end?(toM(item.end)-toM(item.start))/60:0;
+  const autoBrk=h>=9?60:h>4?30:0;
+  const curBrk=item.customBreak;
+  const curBrkLabel=curBrk!==undefined&&curBrk!==null?`현재: ${curBrk}분 (수동)`:`현재: ${autoBrk}분 (자동)`;
+  // 작은 모달
+  const el=document.getElementById('cmodal');
+  document.getElementById('cmodal-title').textContent='휴게시간 수정';
+  document.getElementById('cmodal-msg').innerHTML=`${item.start}~${item.end} (${h.toFixed(1)}h 근무)<br><span style="font-size:11px;color:var(--text-muted)">${curBrkLabel}</span>`;
+  const wrap=document.getElementById('cmodal-input-wrap');
+  wrap.style.display='block';
+  wrap.innerHTML=`<div style="margin-bottom:4px;font-size:12px;color:#6b7280">휴게시간(분) <span style="color:var(--text-muted);font-size:10px">— 비워두면 자동 (${autoBrk}분)</span></div><input type="number" class="form-input" id="cmodal-edit-break" min="0" max="240" placeholder="자동 ${autoBrk}분" value="${curBrk!==undefined&&curBrk!==null?curBrk:''}" style="font-family:'DM Mono',monospace">`;
+  const btns=document.getElementById('cmodal-btns');
+  btns.innerHTML='';
+  const cancelBtn=document.createElement('button');cancelBtn.className='btn-secondary';cancelBtn.textContent='취소';
+  cancelBtn.onclick=()=>{el.style.display='none';wrap.style.display='none';};
+  const okBtn=document.createElement('button');okBtn.className='btn-primary';okBtn.textContent='저장';
+  okBtn.onclick=async()=>{
+    const v=document.getElementById('cmodal-edit-break').value.trim();
+    const newArr=[...arr];
+    const newItem={...item};
+    if(v===''){
+      // 비우면 자동 모드 (customBreak 제거)
+      delete newItem.customBreak;
+    }else{
+      const n=parseInt(v,10);
+      if(isNaN(n)||n<0){ST('숫자를 입력해주세요');return;}
+      newItem.customBreak=n;
+    }
+    newArr[idx]=newItem;
+    SL(true);
+    const updates={};
+    if(type==='replace')updates.scheduleReplaces=newArr;
+    else updates.tempDates=newArr;
+    await update(ref(db,`parts/${pid}`),updates);
+    SL(false);
+    el.style.display='none';wrap.style.display='none';
+    ST('휴게시간 수정 완료');
+    waRenderList(pid);
+  };
+  btns.appendChild(cancelBtn);btns.appendChild(okBtn);
+  el.style.display='flex';
+}
+window.waEditBreak=waEditBreak;
+
 async function savePF(pid){
   // ⭐ v8 안전장치: 모달 안의 모든 시간선택기를 hidden input과 강제 동기화
   try{
@@ -3462,7 +3531,10 @@ const leaveDateVal=document.getElementById('pf-leave')?.value||null;
 // ⭐ v10: 단발근무는 퇴사일이 과거(어제 이전)여야 가능
 const _today=kstDate();
 const _isCasualReq=!!document.getElementById('pf-casual')?.checked;
-const _isCasualValid=_isCasualReq&&leaveDateVal&&leaveDateVal<_today;
+// ⭐ v10.7: 이미 단발근무자였으면 그대로 유지 (퇴사일 변경 자유)
+// 신규 체크는 퇴사일 과거여야 함
+const _wasAlreadyCasual=pid&&AP[pid]?.isCasual===true;
+const _isCasualValid=_isCasualReq&&(_wasAlreadyCasual||(leaveDateVal&&leaveDateVal<_today));
 const data={cat:ca,role:ro,name:nm,phone:ph,pin,start:st,end:en,days:dy,joinDate:jd||kstDate(),leaveDate:leaveDateVal,isCasual:_isCasualValid,status:pid?(AP[pid]?.status||'active'):'active',pinActive:pid?(AP[pid]?.pinActive!==false):true,memos:pid?(AP[pid].memos||[]):[],scheduleHistory:newHistory,tutorKind:ca==='tutor'?tk:null};
 if(changeDate)data.scheduleChangeDate=changeDate;
 if(Object.keys(daySchedule).length>0)data.daySchedule=daySchedule;
@@ -3583,16 +3655,29 @@ function updateCasualCheckState(){
   if(!leaveEl||!cb||!lbl)return;
   const leaveDate=leaveEl.value;
   const today=kstDate();
-  const canCasual=!!leaveDate&&leaveDate<today; // 어제 이전이어야 함
-  cb.disabled=!canCasual;
-  if(!canCasual)cb.checked=false;
-  lbl.style.cursor=canCasual?'pointer':'not-allowed';
-  lbl.style.opacity=canCasual?'1':'0.55';
-  cb.style.cursor=canCasual?'pointer':'not-allowed';
-  if(warn){
-    if(!leaveDate)warn.textContent='⚠ 퇴사일 입력 후에만 지정 가능합니다';
-    else if(leaveDate>=today)warn.textContent='⚠ 퇴사일이 지난 후에만 단발근무 가능 (오늘 마지막 근무 → 일반 정산)';
-    else warn.textContent='';
+  // ⭐ v10.7: 이미 단발근무자(체크 ON)였으면 그대로 유지 - 퇴사일 변경 자유
+  const wasAlreadyCasual=cb.dataset.wasCasual==='1';
+  const canCasualNew=!!leaveDate&&leaveDate<today; // 신규 체크는 어제 이전이어야 함
+  // 신규 체크는 canCasualNew 조건이 필요, 이미 체크된 건 유지
+  if(wasAlreadyCasual){
+    // 이미 단발근무자 → 체크 유지, 활성 (자유 변경 가능)
+    cb.disabled=false;
+    lbl.style.cursor='pointer';
+    lbl.style.opacity='1';
+    cb.style.cursor='pointer';
+    if(warn)warn.textContent='';
+  }else{
+    // 신규 등록/체크: 퇴사일 과거여야 가능
+    cb.disabled=!canCasualNew;
+    if(!canCasualNew)cb.checked=false;
+    lbl.style.cursor=canCasualNew?'pointer':'not-allowed';
+    lbl.style.opacity=canCasualNew?'1':'0.55';
+    cb.style.cursor=canCasualNew?'pointer':'not-allowed';
+    if(warn){
+      if(!leaveDate)warn.textContent='⚠ 퇴사일 입력 후에만 지정 가능합니다';
+      else if(leaveDate>=today)warn.textContent='⚠ 퇴사일이 지난 후에만 단발근무 가능 (오늘 마지막 근무 → 일반 정산)';
+      else warn.textContent='';
+    }
   }
 }
 window.updateCasualCheckState=updateCasualCheckState;
