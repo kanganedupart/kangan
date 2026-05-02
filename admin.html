@@ -1144,7 +1144,12 @@ const autoEarlyDash=e.ar?.outTime&&!ph&&eM-toM(e.ar.outTime)>10;
 const autoLateDash=e.ar?.inTime&&!ph&&toM(e.ar.adjustedStart||e.ar.inTime)-sM>10;
 // 1분 이상 지각도 태그 표시 (ph없고 출근찍힘 + 스케줄보다 늦음)
 const anyLateDash=e.ar?.inTime&&!ph&&toM(e.ar.adjustedStart||e.ar.inTime)>sM;
-const tag=ph==='정상'?'':(autoEarlyDash?tagMap['조기퇴근']:((e.status==='late'||anyLateDash)?tagMap['지각']:e.status==='absent-con'?`<span style="${tagStyle}color:var(--danger);background:var(--danger-light)">결근</span>`:e.status==='absent-pln'?`<span style="${tagStyle}color:#fca5a5;background:#fff0f0">예정결근</span>`:e.status==='changed'?(tagMap[ph]||''):pendingExtTag||(tagMap[ph]||'')));
+// ⭐ v10.7: 지각/조기퇴근 예약 (출근 전 사전 등록)
+const isPendingLate=ph==='지각'&&e.ar?.adjustedStart&&!e.ar?.inTime;
+const isPendingEarly=ph==='조기퇴근'&&e.ar?.adjustedEnd&&!e.ar?.outTime;
+const pendingLateTag=isPendingLate?`<span style="${tagStyle}color:#92400e;background:#fef3c7">지각 예약</span>`:'';
+const pendingEarlyTag=isPendingEarly?`<span style="${tagStyle}color:#92400e;background:#fef3c7">조기퇴근 예약</span>`:'';
+const tag=ph==='정상'?'':(autoEarlyDash?tagMap['조기퇴근']:((e.status==='late'||anyLateDash)?tagMap['지각']:e.status==='absent-con'?`<span style="${tagStyle}color:var(--danger);background:var(--danger-light)">결근</span>`:e.status==='absent-pln'?`<span style="${tagStyle}color:#fca5a5;background:#fff0f0">예정결근</span>`:e.status==='changed'?(tagMap[ph]||''):(pendingLateTag||pendingEarlyTag||pendingExtTag||(tagMap[ph]||''))));
 const combinedTag=tempTag+tag;
 // 빨간점: 미확인결근 + 10분 초과 자동감지 미처리 + 퇴근 미확인
 const dot=(e.status==='absent-unc'||autoLateDash||autoEarlyDash||e.nc)?`<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--danger);margin-left:4px;animation:pulse 1s infinite"></span>`:'';
@@ -2933,8 +2938,23 @@ async function waRenderCal(){
     let inner=`<div style="font-size:10px;font-weight:600;color:${isToday?'#2563eb':numColor};margin-bottom:1px">${d}</div>`;
     if(absent)inner+=`<div style="font-size:8px;padding:1px 2px;background:#fee2e2;color:#b91c1c;border-radius:2px;font-weight:700">결근</div>`;
     else if(hasSchedule){
-      const timeStr=`${ds.start.slice(0,5)}~${ds.end.slice(3,5)==='00'?ds.end.slice(0,2):ds.end.slice(0,5)}`;
-      inner+=`<div style="font-size:8px;color:#4338ca;font-family:monospace;line-height:1.1">${ds.start}</div><div style="font-size:8px;color:#4338ca;font-family:monospace;line-height:1.1">~${ds.end}</div>`;
+      // ⭐ v10.7: attendance 예약(지각/조기퇴근/연장근무) 반영
+      const reservedStart=att&&att.adjustedStart&&!att.inTime?att.adjustedStart:null;
+      const reservedEnd=att&&att.adjustedEnd&&!att.outTime?att.adjustedEnd:null;
+      const dispStart=reservedStart||ds.start;
+      const dispEnd=reservedEnd||ds.end;
+      const colCl=reservedStart||reservedEnd?'#c2410c':'#4338ca'; // 예약 있으면 주황
+      inner+=`<div style="font-size:8px;color:${colCl};font-family:monospace;line-height:1.1">${dispStart}</div><div style="font-size:8px;color:${colCl};font-family:monospace;line-height:1.1">~${dispEnd}</div>`;
+      // 예약 종류 미니 배지
+      if(att&&!att.inTime&&!att.outTime){
+        if(att.stdPhrase==='지각'&&att.adjustedStart){
+          inner+=`<div style="font-size:7px;padding:0 2px;background:#fef3c7;color:#92400e;border-radius:2px;font-weight:700;margin-top:1px;line-height:1.2">지각예약</div>`;
+        }else if(att.stdPhrase==='조기퇴근'&&att.adjustedEnd){
+          inner+=`<div style="font-size:7px;padding:0 2px;background:#fef3c7;color:#92400e;border-radius:2px;font-weight:700;margin-top:1px;line-height:1.2">조기퇴근</div>`;
+        }else if(att.stdPhrase==='추가근무'&&(att.adjustedStart||att.adjustedEnd)){
+          inner+=`<div style="font-size:7px;padding:0 2px;background:#dcfce7;color:#15803d;border-radius:2px;font-weight:700;margin-top:1px;line-height:1.2">연장예약</div>`;
+        }
+      }
     }
     if(hasExt){
       const extMin=toM(att.adjustedEnd)-toM(ds.end||p.end);
@@ -2976,7 +2996,28 @@ function waShowDayDetail(dk,dow){
   }
   if(att.adjustedEnd&&att.stdPhrase==='추가근무'){
     const extMin=toM(att.adjustedEnd)-toM(ds.end||p.end);
-    content+=`<div style="font-size:12px;color:#c2410c;margin-bottom:4px;padding:4px 8px;background:#fff7ed;border-radius:4px">🕐 연장근무: ${att.adjustedEnd}까지 (+${(extMin/60).toFixed(1)}h)</div>`;
+    content+=`<div style="font-size:12px;color:#c2410c;margin-bottom:4px;padding:4px 8px;background:#fff7ed;border-radius:4px">🕐 연장근무 (퇴근 연장): ${att.adjustedEnd}까지 (+${(extMin/60).toFixed(1)}h)${att.memoBy?` <span style="font-size:10px;color:var(--text-muted)">— ✍️ ${att.memoBy} ${att.memoAt||''}</span>`:''}</div>`;
+  }
+  // ⭐ v10.7: 출근 당김(연장근무 사전예약)
+  if(att.adjustedStart&&att.stdPhrase==='추가근무'&&!att.inTime){
+    const earlyMin=toM(ds.start||p.start)-toM(att.adjustedStart);
+    content+=`<div style="font-size:12px;color:#c2410c;margin-bottom:4px;padding:4px 8px;background:#fff7ed;border-radius:4px">🕐 연장근무 (출근 당김): ${att.adjustedStart}부터 (+${(earlyMin/60).toFixed(1)}h)${att.memoBy?` <span style="font-size:10px;color:var(--text-muted)">— ✍️ ${att.memoBy} ${att.memoAt||''}</span>`:''}</div>`;
+  }
+  // ⭐ v10.7: 지각 예약
+  if(att.adjustedStart&&att.stdPhrase==='지각'&&!att.inTime){
+    content+=`<div style="font-size:12px;color:#92400e;margin-bottom:4px;padding:4px 8px;background:#fef3c7;border-radius:4px;border:1px solid #fde68a">⚠ 지각 예약: ${att.adjustedStart}부터${att.memoBy?` <span style="font-size:10px;color:var(--text-muted)">— ✍️ ${att.memoBy} ${att.memoAt||''}</span>`:''}${att.memoText?`<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">📝 ${att.memoText}</div>`:''}</div>`;
+  }
+  // ⭐ v10.7: 조기퇴근 예약
+  if(att.adjustedEnd&&att.stdPhrase==='조기퇴근'&&!att.outTime){
+    content+=`<div style="font-size:12px;color:#92400e;margin-bottom:4px;padding:4px 8px;background:#fef3c7;border-radius:4px;border:1px solid #fde68a">⚠ 조기퇴근 예약: ${att.adjustedEnd}까지${att.memoBy?` <span style="font-size:10px;color:var(--text-muted)">— ✍️ ${att.memoBy} ${att.memoAt||''}</span>`:''}${att.memoText?`<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">📝 ${att.memoText}</div>`:''}</div>`;
+  }
+  // ⭐ v10.7: 적용 시간 (예약 반영)
+  const reservedStart=att.adjustedStart&&!att.inTime?att.adjustedStart:null;
+  const reservedEnd=att.adjustedEnd&&!att.outTime?att.adjustedEnd:null;
+  if((reservedStart||reservedEnd)&&works&&ds.start&&ds.end){
+    const dispStart=reservedStart||ds.start;
+    const dispEnd=reservedEnd||ds.end;
+    content+=`<div style="font-size:12px;color:#15803d;margin-bottom:4px;padding:4px 8px;background:#f0fdf4;border-radius:4px;border:1px solid #86efac">✅ 적용 시간: <b style="font-family:monospace">${dispStart}~${dispEnd}</b></div>`;
   }
   if(!works&&!absent){
     content+=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">근무 없음</div>`;
