@@ -1400,10 +1400,9 @@ while(cur<=end){
     if(p.joinDate&&dt<p.joinDate)return false;
     // 퇴사일 이후 필터
     if(p.leaveDate&&dt>p.leaveDate){
-      // 추가근무 예약이 있으면 자동 노출 (예약해둔 단발근무)
+      // 단발근무자라도 그 날 tempDates(추가근무 예약)가 있어야 노출 (대시보드 977번과 일관)
       const hasTemp=p.tempDates&&p.tempDates.find(td=>td.date===dt);
-      // 단발근무자이면서 "포함" 체크됐으면 허용
-      if(!hasTemp&&!(p.isCasual&&includeResigned))return false;
+      if(!(p.isCasual&&hasTemp))return false;
     }
     return true;
   });
