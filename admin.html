@@ -997,6 +997,11 @@ if(isPlannedAbsent(p,date)&&!a.inTime)return{...ep,actual:null,status:'absent-pl
 if(tempDay){
   const ta2=attData[p.id]||{};
   const ph2=ta2.stdPhrase||'';
+  // ⭐ v10.7: 미래 날짜는 추가근무 예약이라도 무조건 pending (미확인 결근 X)
+  if(isFuture){
+    if(ph2==='결근')return{...ep,actual:null,status:'absent-con',ar:ta2,isTemp:true};
+    return{...ep,actual:null,status:'pending',ar:ta2,isTemp:true};
+  }
   let tst='pending';
   if(ph2==='결근')tst='absent-con';
   else if(ta2.inTime){
