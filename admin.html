@@ -3208,11 +3208,22 @@ async function waSave(pid,type){
     const memoEl=document.getElementById('wa-memo-perm');
     if(memoEl&&memoEl.value.trim())newEvent.memo=memoEl.value.trim();
     // 시간대 겹침 검증: 같은 이름+PIN의 다른 활성 파트가 영구변경 시작일 이후 시간 겹치면 차단
+    // ⭐ v10.6: 기간교체(scheduleReplaces) 반영 + 퇴사일 고려
     const sameP=Object.entries(AP).filter(([id,o])=>id!==pid&&o.pin===p.pin&&o.name===p.name&&o.status!=='inactive');
-    if(sameP.length){
+    // 내 퇴사일이 영구변경 시작일 이전이면 미래 충돌 없음 → 검사 skip
+    const myLeave=p.leaveDate;
+    const skipMineByLeave=myLeave&&myLeave<start;
+    if(sameP.length&&!skipMineByLeave){
       for(const[oid,o]of sameP){
-        // 상대방의 영구변경 시작일 이후 적용 시간대 체크
+        // 상대방이 이미 퇴사했고 퇴사일이 영구변경 시작일 이전이면 → 검사 skip
+        if(o.leaveDate&&o.leaveDate<start)continue;
+        // 상대방의 영구변경 시작일 이후 적용 시간대 체크 (기간교체도 반영)
         const oDsStart=(()=>{
+          // 기간교체가 영구변경 시작일을 포함하면 우선 적용
+          if(o.scheduleReplaces&&o.scheduleReplaces.length){
+            const sr=o.scheduleReplaces.find(r=>start>=r.startDate&&start<=r.endDate);
+            if(sr)return{start:sr.start,end:sr.end,days:sr.days||[],daySchedule:sr.daySchedule};
+          }
           const wPerms=(o.permChanges||[]).filter(pc=>pc.startDate<=start).sort((a,b)=>b.startDate.localeCompare(a.startDate));
           if(wPerms.length)return{start:wPerms[0].start,end:wPerms[0].end,days:wPerms[0].days||[],daySchedule:wPerms[0].daySchedule};
           return{start:o.start,end:o.end,days:o.days||[],daySchedule:o.daySchedule};
@@ -3473,15 +3484,25 @@ if(!pid&&bvRaw===''){
 if(!pid){const wEl=document.getElementById('pf-wage');if(!wEl||!wEl.value||wEl.value===''){ST('시급을 입력해주세요 (필수)');return;}const wN=parseFloat(wEl.value);if(isNaN(wN)||wN<=0){ST('시급은 1원 이상이어야 합니다');return;}data.wage=Math.round(wN*100)/100;}
 else if(AP[pid]&&AP[pid].wage!==undefined)data.wage=AP[pid].wage;
 // 시간대 겹침 검증: 같은 이름+PIN의 다른 활성 파트와 같은 요일·같은 시간 겹치면 차단
-// 상대방 파트는 영구변경 적용 후 시간으로 검사 (오늘 기준)
+// ⭐ v10.6: 기간교체(scheduleReplaces) 반영 + 퇴사일 고려
 const sameP=Object.entries(AP).filter(([id,o])=>id!==pid&&o.pin===pin&&o.name===nm&&o.status!=='inactive');
-if(sameP.length){
+// 내 퇴사일이 오늘 이전이면 미래 충돌 없음 → 검사 skip
+const myLeavePF=leaveDateVal;
+const tdK=kstDate();
+const skipMineByLeavePF=myLeavePF&&myLeavePF<tdK;
+if(sameP.length&&!skipMineByLeavePF){
   const myDays=new Set(dy);
   const myS=toM(st),myE=toM(en);
-  const tdK=kstDate();
   for(const[oid,o]of sameP){
-    // 상대방의 영구변경 적용 후 시간/요일 계산
+    // 상대방이 이미 퇴사했고 퇴사일이 오늘 이전이면 → 검사 skip
+    if(o.leaveDate&&o.leaveDate<tdK)continue;
+    // 상대방의 적용 시간/요일 계산 (기간교체 우선 → 영구변경 → 기본)
     const oApplied=(()=>{
+      // 기간교체가 오늘 포함하면 우선
+      if(o.scheduleReplaces&&o.scheduleReplaces.length){
+        const sr=o.scheduleReplaces.find(r=>tdK>=r.startDate&&tdK<=r.endDate);
+        if(sr)return{start:sr.start,end:sr.end,days:sr.days||[],daySchedule:sr.daySchedule};
+      }
       if(o.permChanges&&o.permChanges.length){
         const wPerms=[...o.permChanges].filter(pc=>pc.startDate<=tdK).sort((a,b)=>{const c=b.startDate.localeCompare(a.startDate);if(c!==0)return c;return(b.at||'').localeCompare(a.at||'');});
         if(wPerms.length){const p=wPerms[0];return{start:p.start,end:p.end,days:p.days||[],daySchedule:p.daySchedule};}
