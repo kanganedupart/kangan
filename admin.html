@@ -5646,12 +5646,27 @@ function renderPayDetail(r){
   const wkRows=r.weeks.map((w,i)=>{
     const lbl=`${w.start} ~ ${w.days[w.days.length-1].dt} (${i+1}주차)`;
     let badge='';
+    // ⭐ 조교는 미달/자격 배지 X (주휴수당 정책 다름) — 결근 배지만 유지
     if(w.absent)badge='<span style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:4px">결근</span>';
-    else if(w.eligible)badge='<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:4px">자격</span>';
-    else if(w.totalH<15)badge=`<span style="background:#f3f4f6;color:#6b7280;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600;margin-left:4px">15h미달</span>`;
-    return`<tr><td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text-secondary)">${lbl}</td><td style="padding:6px 10px;font-family:'DM Mono',monospace;text-align:right">${w.totalH}h${badge}</td><td style="padding:6px 10px;font-family:'DM Mono',monospace;text-align:right;color:${w.bonusH?'#0369a1':'var(--text-muted)'};font-weight:600">${w.bonusH||'-'}${w.bonusH?'h':''}</td></tr>`;
+    else if(!r.isT&&w.eligible)badge='<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:700;margin-left:4px">자격</span>';
+    else if(!r.isT&&w.totalH<15)badge=`<span style="background:#f3f4f6;color:#6b7280;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600;margin-left:4px">15h미달</span>`;
+    // ⭐ 조교는 T 단위 표시 (안녕님 정책)
+    let timeDisp;
+    if(r.isT){
+      // 분 단위로 0.5T 단위 올림
+      const tutorH=(w.totalH||0)*60/70;
+      const sign=tutorH<0?-1:1;
+      const absH=Math.abs(tutorH);
+      const rounded=Math.ceil(absH*2-0.001)/2*sign;
+      timeDisp=rounded+'T';
+    }else{
+      timeDisp=(w.totalH||0)+'h';
+    }
+    // 조교는 주휴수당 컬럼 비움
+    const bonusCell=r.isT?'<span style="color:var(--text-muted)">-</span>':`${w.bonusH||'-'}${w.bonusH?'h':''}`;
+    return`<tr><td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text-secondary);text-align:left">${lbl}</td><td style="padding:6px 10px;font-family:'DM Mono',monospace;text-align:right;white-space:nowrap"><span>${timeDisp}</span>${badge}</td><td style="padding:6px 10px;font-family:'DM Mono',monospace;text-align:right;color:${w.bonusH&&!r.isT?'#0369a1':'var(--text-muted)'};font-weight:600">${bonusCell}</td></tr>`;
   }).join('');
-  const monthlyNote=r.meetMonthly?'':`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:11px;color:#991b1b;margin-bottom:10px"><b>⚠ 월 60시간 미달</b> (현재 ${(Math.round((r.monthH||0)*10)/10)}h) — 주휴수당 미지급</div>`;
+  const monthlyNote=r.isT||r.meetMonthly?'':`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:11px;color:#991b1b;margin-bottom:10px"><b>⚠ 월 60시간 미달</b> (현재 ${(Math.round((r.monthH||0)*10)/10)}h) — 주휴수당 미지급</div>`;
   // 가산 내역 수집 (조교 제외, 일반 직원만) - bonusList 사용
   const bonusRows=[];
   if(r.bonusList&&r.bonusList.length){
