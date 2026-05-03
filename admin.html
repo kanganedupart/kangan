@@ -356,7 +356,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <div><div class="form-label">재직상태</div><select class="form-select" id="acct-status" style="width:110px" onchange="loadAcct()"><option value="working">근무자</option><option value="active">재직</option><option value="inactive">퇴사자만</option><option value="all">전체</option></select></div>
           <button class="btn-primary" onclick="loadAcct()">조회</button>
           <button class="btn-secondary" onclick="exportCSV()">📤 CSV 다운로드</button>
-          <button class="btn-secondary" onclick="exportMonthlyGrid()">📊 월별 근무표</button>
+          <button class="btn-secondary" onclick="showDailyHoursTable()">📊 일별 시수표</button>
+          <button class="btn-secondary" onclick="exportMonthlyGrid()">📊 월별 근무표 (CSV)</button>
         </div>
         <div style="overflow-x:auto"><div id="acct-body"><div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">기간을 선택하고 조회하세요</div></div></div>
       </div>
@@ -477,6 +478,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 </div>
 <div class="modal-overlay" id="modal-staff"><div class="modal" onclick="event.stopPropagation()"><div class="modal-header"><div class="modal-title" id="modal-staff-title"></div><button class="modal-close" onclick="CM('modal-staff')">✕</button></div><div id="modal-staff-body"></div></div></div>
 <div class="modal-overlay" id="modal-history"><div class="modal" onclick="event.stopPropagation()" style="max-width:780px"><div class="modal-header"><div class="modal-title" id="modal-history-title"></div><button class="modal-close" onclick="CM('modal-history')">✕</button></div><div id="modal-history-body" style="max-height:70vh;overflow-y:auto"></div></div></div>
+<div class="modal-overlay" id="modal-daily-hours"><div class="modal" onclick="event.stopPropagation()" style="max-width:95vw;width:1400px"><div class="modal-header"><div class="modal-title">📊 일별 시수표</div><button class="modal-close" onclick="CM('modal-daily-hours')">✕</button></div><div id="modal-daily-hours-body" style="max-height:80vh;overflow:auto"></div></div></div>
 <div class="modal-overlay" id="modal-stats"><div class="modal" onclick="event.stopPropagation()"><div class="modal-header"><div class="modal-title" id="modal-stats-title"></div><button class="modal-close" onclick="CM('modal-stats')">✕</button></div><div id="modal-stats-body"></div></div></div>
 <div class="modal-overlay" id="modal-part"><div class="modal" onclick="event.stopPropagation()" style="max-width:520px"><div class="modal-header"><div class="modal-title" id="modal-part-title">직원 등록</div><button class="modal-close" onclick="CM('modal-part')">✕</button></div><div id="modal-part-body"></div></div></div>
 <div class="modal-overlay" id="modal-workman-edit"><div class="modal" onclick="event.stopPropagation()" style="max-width:480px"><div class="modal-header"><div class="modal-title" id="modal-workman-title">수정</div><button class="modal-close" onclick="CM('modal-workman-edit')">✕</button></div><div id="modal-workman-body"></div></div></div>
@@ -530,11 +532,19 @@ function calcDayPay(p,date,realH){
   const wage=wageAt(p,date);
   if(!wage)return{pay:0,basePay:0,overtimePay:0,holidayPay:0,normalH:0,overtimeH:0};
   if(isT){
-    // 조교: 가산 없음. T단가 × T수, 결과 올림
-    // realH는 시간 단위. T수 = realH × 60 / 70
-    const tCount=realH*60/70;
-    const raw=wage*tCount;
-    const pay=Math.ceil(raw);
+    // ⭐ v10.8: 조교 페이 = 표시 T수 (0.5T 올림) × 시급 — 실시수와 100% 일치
+    // 부동소수점 오차 보정: 시급이 21,666.67원 같은 반올림 값일 때
+    // wage × T가 정수에 매우 가까우면 정수로 처리 (변환 오차 제거)
+    // 정상 소수는 올림 (안녕님 정책: 소수 첫째에서 올림)
+    const tutorH=realH*60/70;
+    const sign=tutorH<0?-1:1;
+    const absH=Math.abs(tutorH);
+    const tCountRounded=Math.ceil(absH*2-0.001)/2*sign; // 0.5T 단위 올림
+    const raw=wage*tCountRounded;
+    // 정수에서 0.05원 이내면 부동소수점 오차로 간주 → 반올림
+    // 그 이상은 안녕님 정책대로 올림
+    const distToInt=Math.abs(raw-Math.round(raw));
+    const pay=distToInt<0.05?Math.round(raw):Math.ceil(raw);
     return{pay,basePay:pay,overtimePay:0,holidayPay:0,normalH:realH,overtimeH:0};
   }
   // 일반 (관리/기타): 시간당 시급
@@ -662,6 +672,42 @@ function fmtH(p,h){
   return (Math.round(h*10)/10)+'h';
 }
 window.fmtH=fmtH;
+// ⭐ v10.8.1: 일별 표시값을 그대로 합산 (사용자 정책)
+// 입력: part(또는 cat 정보 객체), 시간(h) 배열
+// 동작: 조교는 일별 T값(0.5T 올림) 합 / 일반은 시간 합
+// 예: 5/1 230분(3.5T) + 5/2 190분(3T) → 6.5T (분합산 후 변환=6T가 아니라!)
+function sumDispH(p,hArr){
+  if(!hArr||!hArr.length)return 0;
+  if(p&&p.cat==='tutor'){
+    return hArr.reduce((sum,h)=>{
+      if(!h||h<=0)return sum;
+      const tutorH=h*60/70;
+      const sign=tutorH<0?-1:1;
+      const absH=Math.abs(tutorH);
+      const rounded=Math.ceil(absH*2-0.001)/2;
+      return sum+sign*rounded;
+    },0);
+  }
+  return Math.round(hArr.reduce((s,h)=>s+(h||0),0)*10)/10;
+}
+window.sumDispH=sumDispH;
+// 합계 표시 (사용자 룰): sumDispH로 합한 값 + 단위 라벨
+function fmtSumH(p,hArr){
+  const v=sumDispH(p,hArr);
+  if(p&&p.cat==='tutor')return v+'T';
+  return v+'h';
+}
+window.fmtSumH=fmtSumH;
+// PAY_DATA row 전용 (월 시수)
+function fmtRowMonthH(r){
+  if(!r||r.monthH===null||r.monthH===undefined)return '-';
+  if(r.cat==='tutor'){
+    const v=r.monthHDisp!==undefined?r.monthHDisp:0;
+    return v+'T';
+  }
+  return (Math.round(r.monthH*10)/10)+'h';
+}
+window.fmtRowMonthH=fmtRowMonthH;
 function toCatH(p,h){
   if(h===null||h===undefined)return 0;
   if(p&&p.cat==='tutor'){
@@ -2080,13 +2126,18 @@ return`<tr style="${rowStyle}"><td style="background:${col};padding:0;width:3px;
 }).join('');
 if(isSingleDay)return rowsHtml;
 const doneRows=g.rows.filter(r=>r.att.outTime||r.att.adjustedEnd);
-const doneReal=doneRows.length?Math.round(doneRows.reduce((s,r)=>s+(r.realH||0),0)*10)/10:null;
-const doneSched=Math.round(doneRows.reduce((s,r)=>s+r.schedH,0)*10)/10;
-const df2=doneReal!==null?Math.round((doneReal-doneSched)*10)/10:null;
 const samplePart=g.rows[0]?g.rows[0].part:{cat:g.cat};
-const subDfDisp=df2!==null&&fmtH(samplePart,doneReal)!==fmtH(samplePart,doneSched);
-const db3=df2===null||!subDfDisp?'':df2<0?`<span class="diff-minus">${fmtH(samplePart,df2)}</span>`:df2>0?`<span class="diff-plus">+${fmtH(samplePart,df2)}</span>`:'';
-const subtotalDisp=doneReal!==null?`${fmtH(samplePart,doneReal)}${db3?' '+db3:''}`:'-';
+// ⭐ v10.8.1: 일별 표시값 그대로 합 (사용자 정책: 분 합산 X)
+const doneRealDispV=doneRows.length?sumDispH(samplePart,doneRows.map(r=>r.realH||0)):null;
+const doneSchedDispV=sumDispH(samplePart,doneRows.map(r=>r.schedH||0));
+const doneReal=doneRows.length?Math.round(doneRows.reduce((s,r)=>s+(r.realH||0),0)*10)/10:null; // 페이 계산용 보조
+const doneSched=Math.round(doneRows.reduce((s,r)=>s+r.schedH,0)*10)/10;
+const df2=doneRealDispV!==null?Math.round((doneRealDispV-doneSchedDispV)*100)/100:null;
+const subDfDisp=df2!==null&&df2!==0;
+const unitS=samplePart.cat==='tutor'?'T':'h';
+const db3=df2===null||!subDfDisp?'':df2<0?`<span class="diff-minus">${df2}${unitS}</span>`:df2>0?`<span class="diff-plus">+${df2}${unitS}</span>`:'';
+const subtotalDisp=doneRealDispV!==null?`${doneRealDispV}${unitS}${db3?' '+db3:''}`:'-';
+const subtotalSchedDisp=doneSchedDispV+unitS;
 // 재직상태 배지 (leaveDate가 오늘 이전이면 퇴사로 간주)
 const todayG=kstDate();
 const gResigned=g.status==='inactive'||(g.leaveDate&&g.leaveDate<=todayG);
@@ -2101,32 +2152,30 @@ if(g.isCasual){
   statusBadge+=`<span style="font-size:10px;color:#7e22ce;background:#fdf4ff;padding:1px 7px;border-radius:10px;margin-left:6px;font-weight:700;border:1px solid #e9d5ff">⭐ 단발근무자</span>`;
 }
 const subtotalPay=canSeeWage()?g.rows.reduce((s,r)=>{if(r.realH===null)return s;const dp=calcDayPay(r.part,r.date,r.realH);return s+(dp.pay||0);},0):0;
-const subtotal=`<tr style="background:${subBg};border-bottom:2px solid var(--border)"><td style="background:${col};padding:0;width:3px;min-width:3px"></td><td colspan="7" style="padding:7px 10px;font-size:12px;font-weight:700;color:${col}">${g.role} (${g.name})${tkBadge(g)} 소계 ${g.rows.length}일${statusBadge} <button class="icon-btn" style="margin-left:8px;font-size:10px;padding:2px 7px;border-color:#bfdbfe;color:#1d4ed8;background:#eff6ff;font-weight:600" onclick="openHistoryModal('${g.id}')">📋 이력</button></td><td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--text-muted)">${fmtH(samplePart,g.totalSched)}</td><td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700">${subtotalDisp}</td>${canSeeWage()?`<td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700;text-align:right;color:#1e3a8a">${subtotalPay.toLocaleString()}원</td>`:''}<td colspan="3"></td></tr>`;
+const subtotal=`<tr style="background:${subBg};border-bottom:2px solid var(--border)"><td style="background:${col};padding:0;width:3px;min-width:3px"></td><td colspan="7" style="padding:7px 10px;font-size:12px;font-weight:700;color:${col}">${g.role} (${g.name})${tkBadge(g)} 소계 ${g.rows.length}일${statusBadge} <button class="icon-btn" style="margin-left:8px;font-size:10px;padding:2px 7px;border-color:#bfdbfe;color:#1d4ed8;background:#eff6ff;font-weight:600" onclick="openHistoryModal('${g.id}')">📋 이력</button></td><td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--text-muted)">${fmtSumH(samplePart,g.rows.map(r=>r.schedH||0))}</td><td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700">${subtotalDisp}</td>${canSeeWage()?`<td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700;text-align:right;color:#1e3a8a">${subtotalPay.toLocaleString()}원</td>`:''}<td colspan="3"></td></tr>`;
 return rowsHtml+subtotal;}).join('');
 const tr=tr2;
 const _unused=0;
-// 카테고리별 합계 (조교 H + 그 외 h 분리)
+// 카테고리별 합계 (조교 H + 그 외 h 분리) — ⭐ v10.8.1: 사용자 룰 (일별 표시값 합)
 const tutorRows=AD.filter(r=>r.part.cat==='tutor');
 const otherRows=AD.filter(r=>r.part.cat!=='tutor');
-const tutorSched=Math.round(tutorRows.reduce((s,r)=>s+r.schedH,0)*10)/10;
-const otherSched=Math.round(otherRows.reduce((s,r)=>s+r.schedH,0)*10)/10;
 const tutorDoneAll=tutorRows.filter(r=>r.att.outTime||r.att.adjustedEnd);
 const otherDoneAll=otherRows.filter(r=>r.att.outTime||r.att.adjustedEnd);
-const tutorReal=tutorDoneAll.length?Math.round(tutorDoneAll.reduce((s,r)=>s+(r.realH||0),0)*10)/10:null;
-const otherReal=otherDoneAll.length?Math.round(otherDoneAll.reduce((s,r)=>s+(r.realH||0),0)*10)/10:null;
 let totalSchedDisp='';
 let totalRealDisp='';
 if(tutorRows.length&&otherRows.length){
-  totalSchedDisp=`${fmtH({cat:'tutor'},tutorSched)} + ${fmtH({cat:'mgmt'},otherSched)}`;
-  const trd=tutorReal!==null?fmtH({cat:'tutor'},tutorReal):'-';
-  const ord=otherReal!==null?fmtH({cat:'mgmt'},otherReal):'-';
+  const tSch=sumDispH({cat:'tutor'},tutorRows.map(r=>r.schedH||0));
+  const oSch=sumDispH({cat:'mgmt'},otherRows.map(r=>r.schedH||0));
+  totalSchedDisp=`${tSch}T + ${oSch}h`;
+  const trd=tutorDoneAll.length?sumDispH({cat:'tutor'},tutorDoneAll.map(r=>r.realH||0))+'T':'-';
+  const ord=otherDoneAll.length?sumDispH({cat:'mgmt'},otherDoneAll.map(r=>r.realH||0))+'h':'-';
   totalRealDisp=`${trd} + ${ord}`;
 }else if(tutorRows.length){
-  totalSchedDisp=fmtH({cat:'tutor'},tutorSched);
-  totalRealDisp=tutorReal!==null?fmtH({cat:'tutor'},tutorReal):'-';
+  totalSchedDisp=sumDispH({cat:'tutor'},tutorRows.map(r=>r.schedH||0))+'T';
+  totalRealDisp=tutorDoneAll.length?sumDispH({cat:'tutor'},tutorDoneAll.map(r=>r.realH||0))+'T':'-';
 }else{
-  totalSchedDisp=fmtH({cat:'mgmt'},otherSched);
-  totalRealDisp=otherReal!==null?fmtH({cat:'mgmt'},otherReal):'-';
+  totalSchedDisp=sumDispH({cat:'mgmt'},otherRows.map(r=>r.schedH||0))+'h';
+  totalRealDisp=otherDoneAll.length?sumDispH({cat:'mgmt'},otherDoneAll.map(r=>r.realH||0))+'h':'-';
 }
 document.getElementById('acct-body').innerHTML=`<table class="acct-table"><thead><tr><th style="width:3px;padding:0"></th><th>날짜</th><th>카테고리</th><th>직무</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th style="color:var(--text-muted)">스케줄시수</th><th>실시수</th>${canSeeWage()?'<th style="text-align:right">페이</th>':''}<th>처리구분</th><th>메모</th><th>처리자</th></tr></thead><tbody>${tr}</tbody><tfoot><tr><td style="padding:0;background:var(--border)"></td><td colspan="7" style="padding:10px;font-size:13px;color:var(--text-secondary)">합계 (${AD.length}건)</td><td style="padding:10px;font-family:'DM Mono',monospace;color:var(--text-muted)">${totalSchedDisp}</td><td style="padding:10px;font-family:'DM Mono',monospace;font-weight:700">${totalRealDisp}</td>${canSeeWage()?`<td style="padding:10px;font-family:'DM Mono',monospace;font-weight:700;text-align:right;color:#1e3a8a">${(()=>{const totalPay=AD.reduce((s,r)=>{if(r.realH===null)return s;const dp=calcDayPay(r.part,r.date,r.realH);return s+(dp.pay||0);},0);return totalPay.toLocaleString()+'원';})()}</td>`:''}<td colspan="3"></td></tr></tfoot></table>`;}
 window.loadAcct=loadAcct;
@@ -2157,11 +2206,14 @@ function exportMonthlyGrid(){
       const out=a.adjustedEnd||a.outTime||'';
       return(a.adjustedStart||a.inTime)+(out?'~'+out:'');
     });
-    const ts=Math.round(AD.filter(r=>r.part.id===e.id).reduce((s,r)=>s+r.schedH,0)*10)/10;
-    const realRows=AD.filter(r=>r.part.id===e.id&&r.realH!==null);
-    const tf=realRows.length?Math.round(realRows.reduce((s,r)=>s+r.realH,0)*10)/10:null;
-    const tsDisp=fmtH(e,ts);
-    const tfDisp=tf!==null?fmtH(e,tf):'-';
+    // ⭐ v10.8.1: 사용자 룰 (일별 표시값 합)
+    const empARows=AD.filter(r=>r.part.id===e.id);
+    const realRows=empARows.filter(r=>r.realH!==null);
+    const tsV=sumDispH(e,empARows.map(r=>r.schedH||0));
+    const tfV=realRows.length?sumDispH(e,realRows.map(r=>r.realH)):null;
+    const unit=e.cat==='tutor'?'T':'h';
+    const tsDisp=tsV+unit;
+    const tfDisp=tfV!==null?tfV+unit:'-';
     return[`"${CATL[e.cat]||e.cat}"`,`"${e.role}"`,`"${e.name}"`,...cells.map(c=>`"${c}"`),tsDisp,tfDisp].join(',');
   }).join('\n');
   const b=new Blob(['\uFEFF'+header+'\n'+rows],{type:'text/csv;charset=utf-8;'});
@@ -2169,6 +2221,150 @@ function exportMonthlyGrid(){
   a.href=u;a.download=`강안교육_월별근무표_${fr}_${to}.csv`;a.click();URL.revokeObjectURL(u);
 }
 window.exportMonthlyGrid=exportMonthlyGrid;
+
+// ⭐ v10.8: 일별 시수표 — 직원/날짜 매트릭스로 시수 한 눈에 보기
+function showDailyHoursTable(){
+  const fr=document.getElementById('acct-from').value;
+  const to=document.getElementById('acct-to').value;
+  if(!fr||!to){ST('기간을 선택하고 먼저 조회해주세요');return;}
+  if(!AD.length){ST('먼저 조회해주세요');return;}
+  // 날짜 목록
+  const dates=[...new Set(AD.map(r=>r.date))].sort();
+  // 직원/직무 그룹 (id 기준)
+  const empMap={};
+  AD.forEach(r=>{
+    if(!empMap[r.part.id]){
+      empMap[r.part.id]={id:r.part.id,name:r.part.name,role:r.part.role,cat:r.part.cat,tutorKind:r.part.tutorKind};
+    }
+  });
+  const emps=Object.values(empMap).sort((a,b)=>{
+    const co=(a.cat||'').localeCompare(b.cat||'');if(co!==0)return co;
+    const ro=(a.role||'').localeCompare(b.role||'');if(ro!==0)return ro;
+    return (a.name||'').localeCompare(b.name||'');
+  });
+  // 출결 맵
+  const attMap={};AD.forEach(r=>{attMap[r.part.id+'_'+r.date]=r;});
+  // 카테고리 라벨
+  const CATL2={mgmt:'관리',tutor:'조교',etc:'기타'};
+  // 헤더
+  const dayNames=['일','월','화','수','목','금','토'];
+  const headerCells=['<th style="position:sticky;left:0;background:#f9fafb;z-index:2;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:700;min-width:80px">카테</th><th style="position:sticky;left:80px;background:#f9fafb;z-index:2;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:700;min-width:100px">직무</th><th style="position:sticky;left:180px;background:#f9fafb;z-index:2;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:700;min-width:90px">이름</th>'];
+  dates.forEach(d=>{
+    const dt=new Date(d+'T00:00:00+09:00');
+    const dn=dayNames[dt.getDay()];
+    const isWeekend=dt.getDay()===0||dt.getDay()===6;
+    const bg=isWeekend?'#fef3c7':'#f9fafb';
+    headerCells.push(`<th style="background:${bg};border:1px solid #e5e7eb;padding:4px 6px;font-size:10px;font-weight:700;min-width:60px">${d.slice(5)}<br><span style="color:var(--text-muted);font-weight:400">${dn}</span></th>`);
+  });
+  headerCells.push('<th style="background:#dcfce7;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:700;min-width:80px">스케줄<br>합계</th>');
+  headerCells.push('<th style="background:#dcfce7;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:700;min-width:80px">실시수<br>합계</th>');
+  headerCells.push('<th style="background:#fee2e2;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:700;min-width:80px">차이<br>(실-스)</th>');
+  // 데이터 행
+  let totalCells=0,diffCells=0;
+  const rowsHtml=emps.map((e,ei)=>{
+    const rowBg=ei%2===0?'#fff':'#f9fafb';
+    const cells=dates.map(d=>{
+      const r=attMap[e.id+'_'+d];
+      const dt=new Date(d+'T00:00:00+09:00');
+      const isWeekend=dt.getDay()===0||dt.getDay()===6;
+      const cellBg=isWeekend?'#fffbeb':rowBg;
+      if(!r){
+        return `<td style="background:${cellBg};border:1px solid #e5e7eb;padding:4px 6px;font-size:10px;color:#cbd5e1;text-align:center">·</td>`;
+      }
+      const sh=r.schedH||0;
+      const rh=r.realH;
+      const a=r.att;
+      // 셀 표시 우선순위
+      let display='';let style='';let title='';let clickable=true;
+      // 결근 예정 (plannedAbsent) 체크
+      const isPlnAbs=r.part.plannedAbsent&&r.part.plannedAbsent.some(x=>(typeof x==='string'&&x===d)||(x.date===d)||(x.startDate&&x.endDate&&d>=x.startDate&&d<=x.endDate));
+      if(a.stdPhrase==='결근'){
+        display='0';style='color:#b91c1c;font-weight:700';title='결근 (확정)';
+      }else if(isPlnAbs){
+        display='0';style='color:#fca5a5;font-weight:600';title='결근 예정';
+      }else if(rh===null||rh===undefined){
+        // 실시수 없음 → 스케줄 시수로 폴백 (미래/오늘 근무중 모두)
+        if(sh<=0){
+          display='-';style='color:#cbd5e1';
+        }else{
+          // ⭐ fmtH로 통일 (0.5T 단위 올림 - 출결현황과 동일)
+          display=fmtH(r.part,sh);
+          style='color:#94a3b8'; // 회색 (실시수 미확정 표시)
+          title=`스케줄 ${sh.toFixed(1)}h (실시수 미확정)`;
+        }
+      }else{
+        // ⭐ fmtH로 통일 (0.5T 단위 올림 - 출결현황과 동일)
+        display=fmtH(r.part,rh);
+        // 차이 강조
+        const diff=Math.abs(sh-rh);
+        if(diff>0.05){
+          totalCells++;
+          if(diff>=0.5){
+            // 1T = 70분 이상 차이
+            diffCells++;
+            style='background:#fee2e2;color:#b91c1c;font-weight:700';
+            title=`스케줄 ${sh.toFixed(1)}h / 실시수 ${rh.toFixed(1)}h\\n차이: ${(rh-sh).toFixed(1)}h`;
+          }else{
+            // 작은 차이
+            style='color:#c2410c';
+            title=`스케줄 ${sh.toFixed(1)}h / 실시수 ${rh.toFixed(1)}h`;
+          }
+        }
+      }
+      // 변경 종류 추가 표시
+      const isTemp=e.id&&AP[e.id]&&AP[e.id].tempDates&&AP[e.id].tempDates.find(td=>td.date===d);
+      const isReplace=e.id&&AP[e.id]&&AP[e.id].scheduleReplaces&&AP[e.id].scheduleReplaces.find(rr=>d>=rr.startDate&&d<=rr.endDate);
+      const hasExt=a.adjustedStart||a.adjustedEnd;
+      let badge='';
+      if(isTemp)badge=' <span style="color:#7e22ce;font-size:8px">⭐</span>';
+      else if(isReplace)badge=' <span style="color:#15803d;font-size:8px">🔁</span>';
+      else if(hasExt)badge=' <span style="color:#c2410c;font-size:8px">↔</span>';
+      const click=clickable&&display!=='·'?` onclick="openHistoryModal('${e.id}','${d}')" style="cursor:pointer"`:'';
+      return `<td title="${title}" style="background:${cellBg};border:1px solid #e5e7eb;padding:4px 6px;font-size:10px;text-align:center;${style};${clickable&&display!=='·'?'cursor:pointer':''}"${click}>${display}${badge}</td>`;
+    });
+    // 합계 계산 — ⭐ v10.8.1: 사용자 룰 (일별 표시값 합)
+    const empRows=AD.filter(r=>r.part.id===e.id);
+    const samplePart=empRows[0]?empRows[0].part:e;
+    const schSumDisp=sumDispH(samplePart,empRows.map(r=>r.schedH||0));
+    const realSumDisp=sumDispH(samplePart,empRows.filter(r=>r.realH!==null&&r.realH!==undefined).map(r=>r.realH));
+    const diffSumDisp=Math.round((realSumDisp-schSumDisp)*100)/100;
+    const unit=e.cat==='tutor'?'T':'h';
+    const fmtHCell=(h)=>fmtH(samplePart,h);
+    const diffStyle=Math.abs(diffSumDisp)<0.01?'':diffSumDisp>0?'color:#c2410c;font-weight:700':'color:#b91c1c;font-weight:700';
+    const col=cof(e.role);
+    return `<tr>
+      <td style="position:sticky;left:0;background:${rowBg};z-index:1;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px"><span class="cat-badge cat-${e.cat}">${CATL2[e.cat]||e.cat}</span></td>
+      <td style="position:sticky;left:80px;background:${rowBg};z-index:1;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px"><span style="color:${col};font-weight:600">${e.role}</span>${e.tutorKind?'<span style="color:var(--text-muted);font-size:10px"> '+e.tutorKind+'</span>':''}</td>
+      <td style="position:sticky;left:180px;background:${rowBg};z-index:1;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:600">${e.name}</td>
+      ${cells.join('')}
+      <td style="background:#f0fdf4;border:1px solid #e5e7eb;padding:4px 6px;font-size:11px;text-align:center;font-weight:700">${schSumDisp}${unit}</td>
+      <td style="background:#f0fdf4;border:1px solid #e5e7eb;padding:4px 6px;font-size:11px;text-align:center;font-weight:700">${realSumDisp}${unit}</td>
+      <td style="background:#fef2f2;border:1px solid #e5e7eb;padding:4px 6px;font-size:11px;text-align:center;${diffStyle}">${diffSumDisp>=0?'+':''}${diffSumDisp}${unit}</td>
+    </tr>`;
+  }).join('');
+  // 안내 + 표
+  const guide=`<div style="padding:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;margin-bottom:12px;font-size:12px;color:#1e40af;line-height:1.6">
+    📝 <b>읽는 방법</b>:<br>
+    • <b>회색 글씨</b> = 미래/오늘근무 (스케줄 시수 표시, 실시수 미확정)<br>
+    • <b>검정 글씨</b> = 처리 완료 (실시수)<br>
+    • <b>빨강 셀</b> = 차이 1T(70분) 이상 → 휴게/패드/변경 의심 (점검 필요)<br>
+    • <b>주황 글씨</b> = 작은 차이 (10분 이상)<br>
+    • <b>0</b> = 결근 (빨강=확정, 분홍=예정)<br>
+    • ⭐ = 추가근무 / 🔁 = 기간교체 / ↔ = 시간 조정<br>
+    • <b>셀 클릭</b> → 그 직원 그 날 처리 이력 (등록자 확인)
+  </div>
+  <div style="padding:8px 16px;font-size:12px;color:var(--text-muted)">
+    📅 ${fr} ~ ${to} (${dates.length}일) · 👥 ${emps.length}명 · ⚠ 차이 큰 셀 ${diffCells}개 / 차이 있는 셀 ${totalCells}개
+  </div>`;
+  const tableHtml=`<div style="overflow:auto;max-height:65vh"><table style="border-collapse:collapse;width:100%">
+    <thead style="position:sticky;top:0;z-index:3"><tr>${headerCells.join('')}</tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table></div>`;
+  document.getElementById('modal-daily-hours-body').innerHTML=guide+tableHtml;
+  OM('modal-daily-hours');
+}
+window.showDailyHoursTable=showDailyHoursTable;
+
 function openSchedHist(pid){
   // 파트 수정 모달의 스케줄 관리 탭(달력)으로 통합
   document.getElementById('modal-part-title').textContent='근무 달력';
@@ -4278,6 +4474,26 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
   });
   // 월 총 시수
   const monthH=Math.round(weeks.reduce((s,w)=>s+w.totalH,0)*100)/100;
+  // ⭐ v10.8.1: 표시용 월 시수 — 사용자 룰 (각 일자 표시 T를 그대로 합)
+  // 조교는 일별 0.5T 올림한 값을 합 → 시수확인 표/명세서에 표시
+  // 예: 5/1 230분→3.5T, 5/2 190분→3T → 합 6.5T (분 합산 후 변환은 6T가 나오는데, 사용자 정책은 6.5T)
+  // 일반(관리/기타)은 시간 단위 그대로 합
+  const isTutorCat=p.cat==='tutor';
+  let monthHDisp;
+  if(isTutorCat){
+    // 일별 fmtH 한 후 T수 합. fmtH는 'T' 문자열 반환이라 직접 환산 로직 사용
+    monthHDisp=days.reduce((sum,d)=>{
+      if(!d.h||d.future||d.offDay)return sum;
+      const tutorH=d.h*60/70;
+      const sign=tutorH<0?-1:1;
+      const absH=Math.abs(tutorH);
+      const rounded=Math.ceil(absH*2-0.001)/2;
+      return sum+sign*rounded;
+    },0);
+    monthHDisp=Math.round(monthHDisp*100)/100; // 부동소수 정리
+  }else{
+    monthHDisp=monthH;
+  }
   // 월 60h 이상 조건 체크
   const meetMonthly=monthH>=60;
   // 실제 지급 주휴수당 시수
@@ -4334,7 +4550,14 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
   }).length;
   // 시급 변경 (이번 달에 wage가 바뀌었는지)
   const monthPermsWithWage=(p.permChanges||[]).filter(pc=>(pc.startDate||'').startsWith(monthPrefix)&&pc.wage!==undefined&&pc.wage!==null);
-  const reviewWageChanged=monthPermsWithWage.length>0;
+  // ⭐ v10.8 안녕님 정책: 시급이 진짜 변경된 경우만 검토 대상 (휴게/스케줄만 변경은 제외)
+  const allPermsSorted=(p.permChanges||[]).filter(pc=>pc.wage!==undefined&&pc.wage!==null).sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||''));
+  const monthWageChangedPerms=monthPermsWithWage.filter(cur=>{
+    const prevPerms=allPermsSorted.filter(pc=>(pc.startDate||'')<(cur.startDate||''));
+    const prevWage=prevPerms.length>0?prevPerms[prevPerms.length-1].wage:p.wage;
+    return prevWage!==cur.wage;
+  });
+  const reviewWageChanged=monthWageChangedPerms.length>0;
   // 주휴 자격 변동 (자격 주와 미달/결근 주가 모두 있을 때)
   const eligibleWeeks=weeks.filter(w=>w.eligible).length;
   const ineligibleWeeks=weeks.filter(w=>!w.eligible&&w.totalH>0).length;
@@ -4342,7 +4565,7 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
   return{
     pid,name:p.name,role:p.role,cat:p.cat,tutorKind:p.tutorKind,
     isT,wage:lastWage,
-    weeks,monthH,meetMonthly,totalBonusH,
+    weeks,monthH,monthHDisp,meetMonthly,totalBonusH,
     basePay,bonusPay,totalPay:basePay+bonusPay,
     days,joinDate:p.joinDate,leaveDate:p.leaveDate,
     status:p.status,
@@ -4351,7 +4574,7 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     reviewIsCasual,casualWorkDays,
     addedWorkDays,monthTempDates,
     extensionDays,
-    reviewWageChanged,monthPermsWithWage,
+    reviewWageChanged,monthPermsWithWage,monthWageChangedPerms,
     reviewWeekVariation,eligibleWeeks,ineligibleWeeks
   };
 }
@@ -4384,7 +4607,7 @@ function calcReviewReasons(r){
     reasons.push({level:'mid',key:'week',icon:'📅',label:'주휴 자격 변동',detail:`자격주 ${r.eligibleWeeks}주 / 미달주 ${r.ineligibleWeeks}주`});
   }
   if(r.reviewWageChanged){
-    const wageDetail=r.monthPermsWithWage.map(pc=>`${pc.startDate.slice(5)} ${pc.wage.toLocaleString()}원`).join(', ');
+    const wageDetail=r.monthWageChangedPerms.map(pc=>`${pc.startDate.slice(5)} ${pc.wage.toLocaleString()}원`).join(', ');
     reasons.push({level:'mid',key:'wage',icon:'💰',label:'시급 변경',detail:wageDetail});
   }
   return reasons;
@@ -4544,7 +4767,7 @@ function renderPayroll(){
               <td style="font-weight:600">${r.name}${tkBadge(r)}</td>
               <td><span style="color:${cof(r.role)};font-weight:600;font-size:12px">${r.role}</span></td>
               <td style="font-family:'DM Mono',monospace;text-align:right">${fmt(r.wage)}<span style="font-size:10px;color:var(--text-muted)">/${r.isT?'T':'h'}</span></td>
-              <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:500">${r.monthH}h${monthLbl}</td>
+              <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:500">${fmtRowMonthH(r)}${monthLbl}</td>
               <td style="font-family:'DM Mono',monospace;text-align:right">${fmt(r.basePay)}</td>
               <td style="font-family:'DM Mono',monospace;text-align:right;color:${r.totalBonusH>0?'#0369a1':'var(--text-muted)'};font-weight:600">${r.bonusPay?fmt(r.bonusPay):'-'}</td>
               <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:700;color:#1e3a8a">${fmt(r.totalPay)}</td>
@@ -4591,7 +4814,7 @@ function renderPayReviewCard(r,reasons,isDone){
         <div style="margin-bottom:8px">${reasonChips}</div>
         <div style="display:flex;gap:14px;font-size:12px;color:var(--text-secondary);flex-wrap:wrap;font-family:'DM Mono',monospace">
           <span>시급 ${fmt(r.wage)}원/${r.isT?'T':'h'}</span>
-          <span>시수 ${r.monthH}h</span>
+          <span>시수 ${fmtRowMonthH(r)}</span>
           <span>기본급 ${fmt(r.basePay)}</span>
           ${r.bonusPay>0?`<span style="color:#0369a1">주휴수당 +${fmt(r.bonusPay)}</span>`:''}
           <span style="color:#1e3a8a;font-weight:700">총 지급 ${fmt(r.totalPay)}원</span>
@@ -4922,7 +5145,7 @@ function renderPayslipResultSection(r){
     <div style="background:#fff;border:1px solid var(--border-light);border-radius:8px;padding:14px 18px">
       <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13px">
         <span style="color:var(--text-secondary)">시수</span>
-        <span style="font-family:'DM Mono',monospace;font-weight:600">${r.monthH} ${r.isT?'T':'시간'}</span>
+        <span style="font-family:'DM Mono',monospace;font-weight:600">${fmtRowMonthH(r)}</span>
       </div>
       <div style="border-top:1px dashed var(--border-light);margin:6px 0"></div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13px">
@@ -5227,7 +5450,7 @@ function buildPrintableResult(r,css){
   return `<div style="${css.section}">
     <div style="${css.sectionTitle}">▣ 이번 달 결과</div>
     <div style="${css.box};${css.boxPad}">
-      <div style="${css.rowBetween};padding:5px 0;font-size:13px"><span style="color:#4b5563">시수</span><span style="${css.mono};font-weight:600">${r.monthH} ${r.isT?'T':'시간'}</span></div>
+      <div style="${css.rowBetween};padding:5px 0;font-size:13px"><span style="color:#4b5563">시수</span><span style="${css.mono};font-weight:600">${fmtRowMonthH(r)}</span></div>
       <div style="border-top:1px dashed #e5e7eb;margin:5px 0"></div>
       <div style="${css.rowBetween};padding:5px 0;font-size:13px"><span style="color:#4b5563">기본급</span><span style="${css.mono}">${fmt(r.basePay)}원</span></div>
       ${r.bonusSum>0?`<div style="${css.rowBetween};padding:5px 0;font-size:13px"><span style="color:#92400e">가산 (0.5 / 1.5)</span><span style="${css.mono};color:#92400e;font-weight:600">+${fmt(r.bonusSum)}원</span></div>`:''}
@@ -5416,7 +5639,7 @@ function renderPayDetail(r){
     else if(w.totalH<15)badge=`<span style="background:#f3f4f6;color:#6b7280;padding:2px 7px;border-radius:10px;font-size:10px;font-weight:600;margin-left:4px">15h미달</span>`;
     return`<tr><td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text-secondary)">${lbl}</td><td style="padding:6px 10px;font-family:'DM Mono',monospace;text-align:right">${w.totalH}h${badge}</td><td style="padding:6px 10px;font-family:'DM Mono',monospace;text-align:right;color:${w.bonusH?'#0369a1':'var(--text-muted)'};font-weight:600">${w.bonusH||'-'}${w.bonusH?'h':''}</td></tr>`;
   }).join('');
-  const monthlyNote=r.meetMonthly?'':`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:11px;color:#991b1b;margin-bottom:10px"><b>⚠ 월 60시간 미달</b> (현재 ${r.monthH}h) — 주휴수당 미지급</div>`;
+  const monthlyNote=r.meetMonthly?'':`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:11px;color:#991b1b;margin-bottom:10px"><b>⚠ 월 60시간 미달</b> (현재 ${(Math.round((r.monthH||0)*10)/10)}h) — 주휴수당 미지급</div>`;
   // 가산 내역 수집 (조교 제외, 일반 직원만) - bonusList 사용
   const bonusRows=[];
   if(r.bonusList&&r.bonusList.length){
@@ -5496,7 +5719,7 @@ function renderPayDetail(r){
   <div style="display:flex;flex-direction:column">
     <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;letter-spacing:0.3px">💵 급여 계산</div>
     <div style="background:#fff;border:1px solid var(--border-light);border-radius:6px;padding:10px 14px;flex:1;display:flex;flex-direction:column">
-      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px"><span>월 총 시수</span><b style="font-family:'DM Mono',monospace">${r.monthH}h</b></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px"><span>월 총 시수</span><b style="font-family:'DM Mono',monospace">${fmtRowMonthH(r)}</b></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px"><span>적용 시급</span><b style="font-family:'DM Mono',monospace">${fmt(r.wage)}원/${r.isT?'T':'h'}</b></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;border-top:1px dashed var(--border-light)"><span>기본급</span><b style="font-family:'DM Mono',monospace">${fmt(r.basePay)}원</b></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px"><span>주휴수당 (${r.totalBonusH||0}h)</span><b style="font-family:'DM Mono',monospace;color:#0369a1">${fmt(r.bonusPay)}원</b></div>
@@ -5522,7 +5745,7 @@ function exportPayrollCSV(){
   const{ym,rows}=PAY_DATA;
   const h='카테고리,직무,종류,이름,시급,단위,월시수,월60h충족,주휴수당시수,기본급,주휴수당,공휴일가산건수,평일0.5가산건수,가산합계,총지급';
   const catLbl={mgmt:'관리',tutor:'조교',etc:'기타'};
-  const data=rows.map(r=>[catLbl[r.cat]||r.cat,r.role,r.tutorKind||'',r.name,r.wage,r.isT?'T':'시간',r.monthH,r.meetMonthly?'O':'X',r.totalBonusH,r.basePay,r.bonusPay,r.holidayCnt||0,r.overtimeCnt||0,r.bonusSum||0,r.totalPay].map(v=>`"${v}"`).join(',')).join('\n');
+  const data=rows.map(r=>[catLbl[r.cat]||r.cat,r.role,r.tutorKind||'',r.name,r.wage,r.isT?'T':'시간',(r.cat==='tutor'?(r.monthHDisp||0):r.monthH),r.meetMonthly?'O':'X',r.totalBonusH,r.basePay,r.bonusPay,r.holidayCnt||0,r.overtimeCnt||0,r.bonusSum||0,r.totalPay].map(v=>`"${v}"`).join(',')).join('\n');
   const b=new Blob(['\uFEFF'+h+'\n'+data],{type:'text/csv;charset=utf-8;'});
   const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`강안교육_급여정산_${ym}.csv`;a.click();URL.revokeObjectURL(u);
 }
