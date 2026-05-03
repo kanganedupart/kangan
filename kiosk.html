@@ -42,6 +42,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:#0f172a;color:#fff;min-hei
 .confirm-btn:active{transform:scale(.96);}
 .confirm-btn.in{background:linear-gradient(135deg,#2563eb,#1d4ed8);}
 .confirm-btn.out{background:linear-gradient(135deg,#374151,#1f2937);}
+.confirm-btn:disabled{background:rgba(255,255,255,.04)!important;cursor:not-allowed;opacity:.35;}
+.confirm-btn:disabled:active{transform:none;}
+.confirm-btn:disabled .confirm-btn-icon,
+.confirm-btn:disabled .confirm-btn-label,
+.confirm-btn:disabled .confirm-btn-time{color:rgba(255,255,255,.35)!important;}
 .confirm-btn-icon{font-size:36px;}
 .confirm-btn-label{font-size:16px;font-weight:700;color:#fff;}
 .confirm-btn.in .confirm-btn-label{color:#bfdbfe;}
@@ -269,13 +274,21 @@ async function showConfirm(pid,p){
   const snap=await get(ref(db,`attendance/${today}/${pid}`));
   const att=snap.val()||{};
   document.getElementById('cf-name').textContent=p.name;
-  document.getElementById('cf-role').textContent=p.role+(p.tutorKind?' · '+p.tutorKind:'');
+  document.getElementById('cf-role').innerHTML=p.role+(p.tutorKind?` <span style="display:inline-block;margin-left:6px;padding:2px 10px;background:rgba(96,165,250,.18);color:#93c5fd;border-radius:12px;font-size:13px;font-weight:600">${p.tutorKind}</span>`:'');
   document.getElementById('cf-schedule').textContent=`${ds.start} ~ ${ds.end}`;
   const notice=document.getElementById('cf-notice');
   if(wasAbsent){notice.style.display='';notice.textContent='⚠ 결근 예정이었으나 출근 처리됩니다';}
   else{notice.style.display='none';}
+  // ⭐ 사용자 원래 설계: 상태별 자동 활성화
+  // - 출근X 퇴근X → 출근만 활성
+  // - 출근O 퇴근X → 퇴근만 활성
+  // - 출근O 퇴근O → 둘 다 비활성 (이미 끝남)
+  const btnIn=document.querySelector('.confirm-btn.in');
+  const btnOut=document.querySelector('.confirm-btn.out');
+  btnIn.disabled=!!att.inTime;
+  btnOut.disabled=!att.inTime||!!att.outTime;
   document.getElementById('cf-in-time').textContent=att.inTime?`이미 출근: ${att.inTime}`:'현재: '+kstTime();
-  document.getElementById('cf-out-time').textContent=att.outTime?`이미 퇴근: ${att.outTime}`:'현재: '+kstTime();
+  document.getElementById('cf-out-time').textContent=att.outTime?`이미 퇴근: ${att.outTime}`:(att.inTime?'현재: '+kstTime():'먼저 출근하세요');
   showScreen('confirm-screen');
 }
 
