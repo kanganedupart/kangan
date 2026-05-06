@@ -5,7 +5,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
-<meta name="version" content="v10.8.6-safe">
+<meta name="version" content="v10.8.7">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="강안교육">
@@ -674,17 +674,14 @@ function makeDraggable(overlayId){
 }
 ['modal-staff','modal-stats','modal-part','modal-workman-edit','modal-account'].forEach(makeDraggable);
 
-// ⭐ v10.8.5: 자동 휴게 정책 (안녕님 결정)
-// - customBreak가 자동 휴게(법정 기준)보다 작으면 자동 휴게 적용
-// - "손해는 반영, 이득은 무시" 정책에 따라 max(customBreak, 자동휴게) 적용
-// - 자동 휴게 기준 (한국 근로기준법):
-//   * 4시간 이상 → 30분
-//   * 8시간 이상 → 60분
-// - 배정우 4/28 케이스 해결: 7~16시 (9h) + customBreak 0분 → 자동 60분 적용 → 8h
-// - 교무가 연장근무 등록 시 휴게 신경 안 써도 자동 정산
+// ⭐ v10.8.7: 자동 휴게 기준 정정 (정지윤/김소영 8h 케이스)
+// - 8h 정확히는 30분 (안녕님 회사 운영 정책)
+// - 8h "초과"만 60분 (배정우 9h 케이스는 그대로 60분)
+// - 정지윤 8h + customBreak 30분 → 자동 30분이라 max(30,30)=30분 → 실시수 7.5h ✅
+// - 배정우 9h + customBreak 0분 → 자동 60분이라 max(0,60)=60분 → 실시수 8h ✅
 function _autoBreakMin(totalMin){
-  if(totalMin>=480)return 60; // 8h 이상 → 60분 (근로기준법)
-  if(totalMin>=240)return 30; // 4h 이상 → 30분
+  if(totalMin>480)return 60;   // 8h "초과" → 60분 (>= 가 아니라 >)
+  if(totalMin>=240)return 30;  // 4h 이상 8h 이하 → 30분
   return 0;
 }
 function brk(p,startT,endT){
