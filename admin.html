@@ -206,6 +206,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .rc-b-casual{background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe}
 .rc-name{font-size:12px;font-weight:500;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
 .rc-person.rc-is-absent .rc-name,.rc-person.rc-is-planned-absent .rc-name{color:#94a3b8;text-decoration:line-through;font-weight:400}
+/* ⭐ v10.8.7: 카테고리 헤더 행 (관리/조교/기타 구분) */
+.rc-cat-row td{position:sticky;left:0;background:linear-gradient(90deg,#f1f5f9,#f8fafc);padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:1px;color:#475569;border-bottom:2px solid #cbd5e1;border-top:2px solid #cbd5e1;text-align:left;z-index:2}
+.rc-cat-row.rc-cat-mgmt td{background:linear-gradient(90deg,#eff6ff,#f8fafc);color:#1e40af;border-color:#bfdbfe}
+.rc-cat-row.rc-cat-tutor td{background:linear-gradient(90deg,#f5f3ff,#f8fafc);color:#7c3aed;border-color:#ddd6fe}
+.rc-cat-row.rc-cat-etc td{background:linear-gradient(90deg,#f0fdf4,#f8fafc);color:#15803d;border-color:#86efac}
 @media(max-width:640px){
   .main{padding:10px;}
   .lc{width:92%;padding:28px 16px;}
@@ -1665,8 +1670,17 @@ async function renderRoleCalendar(){
   });
   html+='</tr></thead><tbody>';
   
-  // 직무 행
+  // 직무 행 (카테고리 변경 시 카테고리 헤더 행 삽입)
+  // ⭐ v10.8.7: 카테고리별로 묶어서 보기 (관리/조교/기타 구분)
+  const catLbl={'mgmt':'📊 관리','tutor':'🎓 조교','etc':'🏢 기타'};
+  let prevCat=null;
   roles.forEach(role=>{
+    // 카테고리 바뀌면 헤더 행 삽입
+    if(role.cat!==prevCat){
+      const catName=catLbl[role.cat]||role.cat||'기타';
+      html+=`<tr class="rc-cat-row rc-cat-${role.cat||'etc'}"><td colspan="${dates.length+1}">${catName}</td></tr>`;
+      prevCat=role.cat;
+    }
     html+='<tr class="rc-row">';
     html+=`<td class="rc-role-name">${role.name}</td>`;
     let prevMonth2=null;
@@ -1783,8 +1797,27 @@ async function exportRoleCalendarXLSX(){
   ws.addRow(hdr);
   ws.getRow(1).font={bold:true};
   ws.getRow(1).alignment={horizontal:'center',vertical:'middle'};
-  // 데이터
+  // 데이터 (카테고리 헤더 행 포함)
+  // ⭐ v10.8.7: 카테고리별 구분 (관리/조교/기타)
+  const catLbl={'mgmt':'📊 관리','tutor':'🎓 조교','etc':'🏢 기타'};
+  let prevCatXl=null;
   roles.forEach(role=>{
+    // 카테고리 바뀌면 구분 행
+    if(role.cat!==prevCatXl){
+      const catName=catLbl[role.cat]||role.cat||'기타';
+      const catRow=[catName];
+      for(let i=0;i<dates.length;i++)catRow.push('');
+      const catRowAdded=ws.addRow(catRow);
+      // 카테고리별 색상
+      let catBg='FFE0E7FF';let catColor='FF1E40AF';
+      if(role.cat==='tutor'){catBg='FFEDE9FE';catColor='FF7C3AED';}
+      else if(role.cat==='etc'){catBg='FFD1FAE5';catColor='FF15803D';}
+      catRowAdded.eachCell({includeEmpty:true},c=>{
+        c.fill={type:'pattern',pattern:'solid',fgColor:{argb:catBg}};
+        c.font={bold:true,color:{argb:catColor},size:11};
+      });
+      prevCatXl=role.cat;
+    }
     const row=[role.name];
     dates.forEach(dt=>{
       const cellParts=role.people.map(p=>{
