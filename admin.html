@@ -1458,7 +1458,19 @@ function initRoleCalendar(){
   const fromEl=document.getElementById('rc-from'),toEl=document.getElementById('rc-to');
   if(!fromEl.value)fromEl.value=rcYmd(first);
   if(!toEl.value)toEl.value=rcYmd(last);
-  renderRoleCalendar();
+  
+  // ⭐ AP 로드 대기 — 데이터 없으면 잠시 후 재시도 (최대 3초)
+  const tryRender=(attempts)=>{
+    if(AP&&Object.keys(AP).length>0){
+      renderRoleCalendar();
+    }else if(attempts<10){
+      setTimeout(()=>tryRender(attempts+1),300);
+    }else{
+      // 최대 시도 후에도 데이터 없으면 안내만
+      document.getElementById('rc-body').innerHTML='<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">직원 데이터가 로드되지 않았습니다.<br>새로고침 후 다시 시도해주세요.</div>';
+    }
+  };
+  tryRender(0);
 }
 window.initRoleCalendar=initRoleCalendar;
 
@@ -1542,6 +1554,12 @@ async function renderRoleCalendar(){
   if(dates.length===0)return;
   if(dates.length>200){if(!confirm('200일이 넘습니다. 그래도 표시할까요?'))return;}
   
+  // ⭐ AP 데이터 체크 — 로드 안 됐으면 안내
+  if(!AP||Object.keys(AP).length===0){
+    document.getElementById('rc-body').innerHTML='<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">직원 데이터가 아직 로드되지 않았습니다.<br>잠시 후 다시 [조회]를 눌러주세요.</div>';
+    return;
+  }
+  
   SL(true);
   const catFilter=document.getElementById('rc-cat')?.value||'';
   const todayStr=kstDate();
@@ -1556,11 +1574,19 @@ async function renderRoleCalendar(){
     })
     .map(([id,p])=>({...p,id}));
   
+  // ⭐ 직원 0명 체크
+  if(allParts.length===0){
+    SL(false);
+    document.getElementById('rc-body').innerHTML='<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">조건에 맞는 직원이 없습니다.<br>카테고리 필터를 [전체]로 바꿔보세요.</div>';
+    return;
+  }
+  
   // 2. 직무별로 그룹화
   const roleMap={};
   allParts.forEach(p=>{
-    if(!roleMap[p.role])roleMap[p.role]={name:p.role,cat:p.cat,people:[]};
-    roleMap[p.role].people.push(p);
+    const roleName=p.role||'(직무 미지정)';
+    if(!roleMap[roleName])roleMap[roleName]={name:roleName,cat:p.cat,people:[]};
+    roleMap[roleName].people.push(p);
   });
   
   // 카테고리 순서대로 정렬
@@ -1570,6 +1596,13 @@ async function renderRoleCalendar(){
     if(c!==0)return c;
     return a.name.localeCompare(b.name);
   });
+  
+  // ⭐ 직무 0개 체크 (방어적)
+  if(roles.length===0){
+    SL(false);
+    document.getElementById('rc-body').innerHTML=`<div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">표시할 직무가 없습니다.<br><span style="font-size:11px">총 ${allParts.length}명의 파트 데이터를 받았으나 그룹화에 실패했습니다.</span></div>`;
+    return;
+  }
   
   // 3. 모든 셀의 attendance를 미리 가져오기 (Promise.all 병렬)
   const datesNeedAtt=dates.filter(d=>d.ymd<=todayStr).map(d=>d.ymd);
