@@ -175,6 +175,37 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 @keyframes lb{0%{width:0}50%{width:70%}100%{width:100%}}
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1a1d23;color:#fff;padding:10px 20px;border-radius:var(--r);font-size:13px;font-weight:500;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;}
 .toast.show{opacity:1;}
+/* ⭐ v10.8.7: 직무 캘린더 (roleCal) 스타일 */
+.rc-table{border-collapse:collapse;width:100%;font-size:12px}
+.rc-table thead th{position:sticky;top:0;background:#f8fafc;z-index:3;border-bottom:2px solid #cbd5e1;padding:8px 6px;font-weight:700;font-size:12px;color:#334155;text-align:center;white-space:nowrap;border-right:1px solid #e5e7eb;min-width:70px}
+.rc-table thead th.rc-role-col{position:sticky;left:0;z-index:4;background:#e2e8f0;min-width:100px}
+.rc-table thead th.rc-weekend{color:#b91c1c}
+.rc-table thead th.rc-saturday{color:#1d4ed8}
+.rc-table thead th.rc-today{background:#fef9c3;color:#1f2937}
+.rc-table thead th.rc-month-line{border-left:2px solid #94a3b8}
+.rc-table thead th.rc-cross-month{border-left:3px solid #006241}
+.rc-table thead th.rc-other-month{background:#f1f5f9;color:#64748b}
+.rc-dow-line{font-size:10px;opacity:.7;font-weight:500;margin-top:2px}
+.rc-month-line-label{font-size:9px;color:#006241;font-weight:700;margin-top:1px}
+.rc-row td{padding:0;vertical-align:top;border-right:1px solid #f3f4f6;border-bottom:1px solid #e5e7eb}
+.rc-row td.rc-role-name{position:sticky;left:0;background:#f1f5f9;z-index:2;padding:12px 10px;font-weight:700;border-right:2px solid #cbd5e1;vertical-align:middle;font-size:14px;text-align:center;min-width:100px}
+.rc-row td.rc-month-line{border-left:2px solid #94a3b8}
+.rc-row td.rc-cross-month{border-left:3px solid #006241}
+.rc-row td.rc-other-month{background:#fafbfc}
+.rc-row td.rc-col-weekend{background:#fefcfc}
+.rc-row td.rc-col-saturday{background:#fafcff}
+.rc-row td.rc-col-today{background:#fefce8}
+.rc-cell{padding:6px 4px;text-align:center;min-height:60px;display:flex;flex-direction:column;gap:3px;align-items:stretch;justify-content:flex-start}
+.rc-person{display:flex;align-items:center;justify-content:center;gap:3px;cursor:pointer;border-radius:4px;padding:2px 4px;transition:all .1s;min-height:20px}
+.rc-person:hover{background:#f0fdf4;z-index:5;position:relative;box-shadow:0 0 0 2px #006241}
+.rc-badge{display:inline-block;font-size:8px;font-weight:700;padding:0 4px;border-radius:2px;flex-shrink:0;line-height:14px;height:14px;white-space:nowrap}
+.rc-b-leave{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca}
+.rc-b-absent{background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}
+.rc-b-planned-absent{background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}
+.rc-b-extra{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
+.rc-b-casual{background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe}
+.rc-name{font-size:12px;font-weight:500;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
+.rc-person.rc-is-absent .rc-name,.rc-person.rc-is-planned-absent .rc-name{color:#94a3b8;text-decoration:line-through;font-weight:400}
 @media(max-width:640px){
   .main{padding:10px;}
   .lc{width:92%;padding:28px 16px;}
@@ -358,6 +389,42 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <button class="btn-secondary" onclick="exportAcctXLSX()" style="background:#f0fdf4;border-color:#86efac;color:#15803d;font-weight:600">📥 엑셀 다운로드</button>
         </div>
         <div style="overflow-x:auto"><div id="acct-body"><div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">기간을 선택하고 조회하세요</div></div></div>
+      </div>
+    </div>
+    <!-- ⭐ v10.8.7: 직무 캘린더 (교무용 — 직무별 한 달 인력 조망) -->
+    <div class="tab-content" id="tab-roleCal">
+      <div class="section-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="font-size:13px;color:var(--text-secondary)">기간:</span>
+            <input type="date" class="form-input" id="rc-from" style="width:150px">
+            <span style="color:var(--text-muted)">~</span>
+            <input type="date" class="form-input" id="rc-to" style="width:150px">
+            <button class="btn-primary" onclick="renderRoleCalendar()">조회</button>
+            <span style="width:1px;height:20px;background:var(--border);margin:0 4px"></span>
+            <button class="icon-btn" onclick="rcSetThisMonth()">이번 달</button>
+            <button class="icon-btn" onclick="rcSetNextMonth()">다음 달</button>
+            <select class="form-input" id="rc-cat" style="width:120px" onchange="renderRoleCalendar()">
+              <option value="">전체 카테고리</option>
+              <option value="mgmt">관리</option>
+              <option value="tutor">조교</option>
+              <option value="etc">기타</option>
+            </select>
+          </div>
+          <button class="icon-btn" onclick="exportRoleCalendarXLSX()" style="border-color:#86efac;color:#15803d;background:#f0fdf4">📥 엑셀 다운로드</button>
+        </div>
+        <!-- 범례 -->
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:10px 12px;background:#f8fafc;border:1px solid var(--border);border-radius:6px;margin-bottom:12px;font-size:12px;color:var(--text-secondary)">
+          <span style="font-weight:700;color:var(--text-primary)">표시 안내:</span>
+          <span style="display:flex;align-items:center;gap:5px"><span class="rc-badge rc-b-leave">퇴사</span>마지막 근무일</span>
+          <span style="display:flex;align-items:center;gap:5px"><span class="rc-badge rc-b-absent">결근</span>당일 결근</span>
+          <span style="display:flex;align-items:center;gap:5px"><span class="rc-badge rc-b-planned-absent">결근예정</span>사전 등록</span>
+          <span style="display:flex;align-items:center;gap:5px"><span class="rc-badge rc-b-extra">추가</span>스케줄 외</span>
+          <span style="display:flex;align-items:center;gap:5px"><span class="rc-badge rc-b-casual">단발</span>퇴사자 일시 복귀</span>
+        </div>
+        <div id="rc-body" style="overflow-x:auto;max-height:75vh;overflow-y:auto;border:1px solid var(--border);border-radius:8px;background:#fff">
+          <div style="padding:30px;text-align:center;color:var(--text-muted);font-size:13px">기간을 선택하고 조회하세요</div>
+        </div>
       </div>
     </div>
     <div class="tab-content" id="tab-payroll">
@@ -593,7 +660,7 @@ window.canSeeWage=canSeeWage;
 const COLORS={순찰:'#0ea5e9','1층':'#8b5cf6',식관:'#f59e0b',응대:'#10b981',등원:'#f97316',국어:'#e11d48',수학:'#3b82f6',영어:'#ec4899',지리:'#f59e0b',물리:'#f97316',화학:'#14b8a6',생명:'#16a34a',지학:'#8b5cf6',사문:'#0ea5e9',생윤:'#6366f1',스타터:'#6366f1',디자인:'#e11d48'};
 const CAT={mgmt:{label:'관리',icon:'📊'},tutor:{label:'조교',icon:'🎓'},etc:{label:'기타',icon:'🏢'}};
 const CATL={mgmt:'관리',tutor:'조교',etc:'기타'};
-const TABS=[{key:'mgmt',label:'관리',icon:'📊',roles:['관리자','총무','일반직원']},{key:'tutor',label:'조교',icon:'🎓',roles:['관리자','총무','일반직원']},{key:'etc',label:'기타',icon:'🏢',roles:['관리자','총무','일반직원']},{key:'workman',label:'출근 현황',icon:'📋',roles:['관리자','총무','일반직원']},{key:'parts',label:'파트 관리',icon:'👥',roles:['관리자','총무','일반직원']},{key:'acct',label:'시수 확인',icon:'📊',roles:['관리자','총무','일반직원']},{key:'payroll',label:'급여 정산',icon:'💰',roles:['관리자','총무']},{key:'settings',label:'설정',icon:'⚙️',roles:['관리자']}];
+const TABS=[{key:'mgmt',label:'관리',icon:'📊',roles:['관리자','총무','일반직원']},{key:'tutor',label:'조교',icon:'🎓',roles:['관리자','총무','일반직원']},{key:'etc',label:'기타',icon:'🏢',roles:['관리자','총무','일반직원']},{key:'workman',label:'출근 현황',icon:'📋',roles:['관리자','총무','일반직원']},{key:'parts',label:'파트 관리',icon:'👥',roles:['관리자','총무','일반직원']},{key:'acct',label:'시수 확인',icon:'📊',roles:['관리자','총무','일반직원']},{key:'roleCal',label:'직무 캘린더',icon:'📅',roles:['관리자','총무','일반직원']},{key:'payroll',label:'급여 정산',icon:'💰',roles:['관리자','총무']},{key:'settings',label:'설정',icon:'⚙️',roles:['관리자']}];
 let CU=null,AT='mgmt',AP={},TA={},AA=[],SP={},AD=[];
 let DD={mgmt:null,tutor:null,etc:null};
 let TB={mgmt:{},tutor:{},etc:{}};
@@ -674,14 +741,17 @@ function makeDraggable(overlayId){
 }
 ['modal-staff','modal-stats','modal-part','modal-workman-edit','modal-account'].forEach(makeDraggable);
 
-// ⭐ v10.8.7: 자동 휴게 기준 정정 (정지윤/김소영 8h 케이스)
-// - 8h 정확히는 30분 (안녕님 회사 운영 정책)
-// - 8h "초과"만 60분 (배정우 9h 케이스는 그대로 60분)
-// - 정지윤 8h + customBreak 30분 → 자동 30분이라 max(30,30)=30분 → 실시수 7.5h ✅
-// - 배정우 9h + customBreak 0분 → 자동 60분이라 max(0,60)=60분 → 실시수 8h ✅
+// ⭐ v10.8.5: 자동 휴게 정책 (안녕님 결정)
+// - customBreak가 자동 휴게(법정 기준)보다 작으면 자동 휴게 적용
+// - "손해는 반영, 이득은 무시" 정책에 따라 max(customBreak, 자동휴게) 적용
+// - 자동 휴게 기준 (한국 근로기준법):
+//   * 4시간 이상 → 30분
+//   * 8시간 이상 → 60분
+// - 배정우 4/28 케이스 해결: 7~16시 (9h) + customBreak 0분 → 자동 60분 적용 → 8h
+// - 교무가 연장근무 등록 시 휴게 신경 안 써도 자동 정산
 function _autoBreakMin(totalMin){
-  if(totalMin>480)return 60;   // 8h "초과" → 60분 (>= 가 아니라 >)
-  if(totalMin>=240)return 30;  // 4h 이상 8h 이하 → 30분
+  if(totalMin>=480)return 60; // 8h 이상 → 60분 (근로기준법)
+  if(totalMin>=240)return 30; // 4h 이상 → 30분
   return 0;
 }
 function brk(p,startT,endT){
@@ -1011,7 +1081,7 @@ async function deleteRoleInline(){
 }
 window.deleteRoleInline=deleteRoleInline;
 function buildTabs(){const nav=document.getElementById('tabnav');nav.innerHTML='';TABS.filter(t=>t.roles.includes(CU.role)).forEach(t=>{const b=document.createElement('button');b.className='tab-btn'+(t.key===AT?' active':'');b.innerHTML=`${t.icon} ${t.label}`;b.onclick=()=>swTab(t.key);nav.appendChild(b);});}
-function swTab(k){AT=k;document.querySelectorAll('.tab-content').forEach(e=>e.classList.remove('active'));document.getElementById('tab-'+k)?.classList.add('active');const ts=TABS.filter(t=>t.roles.includes(CU.role));document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',ts[i]?.key===k));if(k==='parts'){renderPT();const addBtn=document.getElementById('btn-add-part');if(addBtn)addBtn.style.display=CU.role==='관리자'?'':'none';}if(k==='settings'){loadRoles();renderAccList();loadExtraHolidays().then(()=>renderExtraHolidays());}if(k==='payroll'){initPayroll();}}
+function swTab(k){AT=k;document.querySelectorAll('.tab-content').forEach(e=>e.classList.remove('active'));document.getElementById('tab-'+k)?.classList.add('active');const ts=TABS.filter(t=>t.roles.includes(CU.role));document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',ts[i]?.key===k));if(k==='parts'){renderPT();const addBtn=document.getElementById('btn-add-part');if(addBtn)addBtn.style.display=CU.role==='관리자'?'':'none';}if(k==='settings'){loadRoles();renderAccList();loadExtraHolidays().then(()=>renderExtraHolidays());}if(k==='payroll'){initPayroll();}if(k==='roleCal'){initRoleCalendar();}}
 window.switchTab=swTab;
 function pfc(cat){return Object.entries(AP).filter(([,p])=>p.cat===cat&&(p.status!=='inactive'||p.isCasual)).map(([id,p])=>({...p,id}));}
 // ⭐ v10.7: 활동 로그 — 직원 작업 추적용
@@ -1365,6 +1435,376 @@ async function openHistoryModal(pid,dt){
   setTimeout(()=>loadHistoryList(pid),50);
 }
 window.openHistoryModal=openHistoryModal;
+
+// ⭐ v10.8.7: 직무 캘린더 (교무용) — 직무별 한 달 인력 조망
+const RC_DM=['일','월','화','수','목','금','토'];
+function rcYmd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function rcParseYMD(s){const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d);}
+function rcGetDateRange(fromStr,toStr){
+  const arr=[];
+  const start=rcParseYMD(fromStr);
+  const end=rcParseYMD(toStr);
+  for(let d=new Date(start);d<=end;d.setDate(d.getDate()+1)){
+    arr.push({ymd:rcYmd(d),day:d.getDate(),month:d.getMonth()+1,year:d.getFullYear(),dow:d.getDay()});
+  }
+  return arr;
+}
+
+function initRoleCalendar(){
+  // 기본 기간 = 이번 달 1일~말일
+  const today=rcParseYMD(kstDate());
+  const y=today.getFullYear(),m=today.getMonth();
+  const first=new Date(y,m,1),last=new Date(y,m+1,0);
+  const fromEl=document.getElementById('rc-from'),toEl=document.getElementById('rc-to');
+  if(!fromEl.value)fromEl.value=rcYmd(first);
+  if(!toEl.value)toEl.value=rcYmd(last);
+  renderRoleCalendar();
+}
+window.initRoleCalendar=initRoleCalendar;
+
+function rcSetThisMonth(){
+  const today=rcParseYMD(kstDate());
+  const y=today.getFullYear(),m=today.getMonth();
+  document.getElementById('rc-from').value=rcYmd(new Date(y,m,1));
+  document.getElementById('rc-to').value=rcYmd(new Date(y,m+1,0));
+  renderRoleCalendar();
+}
+window.rcSetThisMonth=rcSetThisMonth;
+
+function rcSetNextMonth(){
+  const today=rcParseYMD(kstDate());
+  const y=today.getFullYear(),m=today.getMonth();
+  document.getElementById('rc-from').value=rcYmd(new Date(y,m+1,1));
+  document.getElementById('rc-to').value=rcYmd(new Date(y,m+2,0));
+  renderRoleCalendar();
+}
+window.rcSetNextMonth=rcSetNextMonth;
+
+// 그 직원 그 날의 모든 상태 추출
+// 반환: {name, timeLabel, isLastDay, isExtra, isCasual, isAbsent, isPlannedAbsent} 또는 null
+async function rcGetPersonStatus(p,dt){
+  // 입사 전: 안 보임
+  if(p.joinDate&&dt<p.joinDate)return null;
+  // 퇴사일 이후: 단발근무자가 그 날 추가근무 있을 때만 허용
+  if(p.leaveDate&&dt>p.leaveDate){
+    const hasTemp=p.tempDates&&p.tempDates.find(d=>d.date===dt);
+    if(!(p.isCasual&&hasTemp))return null;
+  }
+  
+  const dt0=rcParseYMD(dt);
+  const dow=RC_DM[dt0.getDay()];
+  const ds=getDayTime(p,dow,dt);
+  // 추가근무?
+  const tempDay=p.tempDates&&p.tempDates.find(d=>d.date===dt);
+  // 정규 근무일? (영구변경/기간교체/기간추가/요일 모두 고려)
+  const isRegular=isWorkDay(p,dow,dt)&&ds.start; // ds.start 없으면 (permExcluded/replaced) 미근무
+  const isTempOnly=!!tempDay&&!isRegular;
+  
+  if(!isRegular&&!tempDay)return null;
+  
+  const startT=tempDay?tempDay.start:ds.start;
+  const endT=tempDay?tempDay.end:ds.end;
+  if(!startT||!endT)return null;
+  
+  // 결근/결근예정 체크 (attendance)
+  let isAbsent=false,isPlannedAbsent_=false;
+  if(dt<=kstDate()){
+    // 과거/오늘: attendance 데이터 확인
+    try{
+      const sn=await get(ref(db,`attendance/${dt}/${p.id}`));
+      const a=sn.val();
+      if(a&&a.stdPhrase==='결근')isAbsent=true;
+    }catch(e){}
+  }
+  // 결근예정 (미래/과거 무관)
+  if(!isAbsent&&isPlannedAbsent(p,dt))isPlannedAbsent_=true;
+  
+  return {
+    name:p.name,
+    timeLabel:`${startT}~${endT}`,
+    isLastDay:p.leaveDate===dt,
+    isExtra:isTempOnly,
+    isCasual:p.isCasual===true,
+    isAbsent,
+    isPlannedAbsent:isPlannedAbsent_,
+    pid:p.id||p.pid
+  };
+}
+
+// 메인 렌더 함수
+async function renderRoleCalendar(){
+  const fromStr=document.getElementById('rc-from').value;
+  const toStr=document.getElementById('rc-to').value;
+  if(!fromStr||!toStr){ST('기간을 선택해주세요');return;}
+  if(fromStr>toStr){ST('시작일이 종료일보다 늦습니다');return;}
+  
+  const dates=rcGetDateRange(fromStr,toStr);
+  if(dates.length===0)return;
+  if(dates.length>200){if(!confirm('200일이 넘습니다. 그래도 표시할까요?'))return;}
+  
+  SL(true);
+  const catFilter=document.getElementById('rc-cat')?.value||'';
+  const todayStr=kstDate();
+  const baseMonth=dates[0].month;
+  
+  // 1. 모든 활성 파트 (퇴사자도 단발근무 가능하면 포함)
+  const allParts=Object.entries(AP)
+    .filter(([,p])=>{
+      if(p.status==='inactive'&&!p.isCasual)return false;
+      if(catFilter&&p.cat!==catFilter)return false;
+      return true;
+    })
+    .map(([id,p])=>({...p,id}));
+  
+  // 2. 직무별로 그룹화
+  const roleMap={};
+  allParts.forEach(p=>{
+    if(!roleMap[p.role])roleMap[p.role]={name:p.role,cat:p.cat,people:[]};
+    roleMap[p.role].people.push(p);
+  });
+  
+  // 카테고리 순서대로 정렬
+  const catOrder={'mgmt':1,'tutor':2,'etc':3};
+  const roles=Object.values(roleMap).sort((a,b)=>{
+    const c=(catOrder[a.cat]||9)-(catOrder[b.cat]||9);
+    if(c!==0)return c;
+    return a.name.localeCompare(b.name);
+  });
+  
+  // 3. 모든 셀의 attendance를 미리 가져오기 (Promise.all 병렬)
+  const datesNeedAtt=dates.filter(d=>d.ymd<=todayStr).map(d=>d.ymd);
+  const attByDate={};
+  if(datesNeedAtt.length>0){
+    await Promise.all(datesNeedAtt.map(dk=>get(ref(db,`attendance/${dk}`)).then(sn=>{attByDate[dk]=sn.val()||{};})));
+  }
+  
+  // 4. 셀 정보 빌드 (sync 버전 — attByDate 사용)
+  function getStatusSync(p,dt){
+    if(p.joinDate&&dt<p.joinDate)return null;
+    if(p.leaveDate&&dt>p.leaveDate){
+      const hasTemp=p.tempDates&&p.tempDates.find(d=>d.date===dt);
+      if(!(p.isCasual&&hasTemp))return null;
+    }
+    const dt0=rcParseYMD(dt);
+    const dow=RC_DM[dt0.getDay()];
+    const ds=getDayTime(p,dow,dt);
+    const tempDay=p.tempDates&&p.tempDates.find(d=>d.date===dt);
+    const isRegular=isWorkDay(p,dow,dt)&&ds.start;
+    const isTempOnly=!!tempDay&&!isRegular;
+    if(!isRegular&&!tempDay)return null;
+    const startT=tempDay?tempDay.start:ds.start;
+    const endT=tempDay?tempDay.end:ds.end;
+    if(!startT||!endT)return null;
+    let isAbsent=false,isPlannedAbsent_=false;
+    if(dt<=todayStr){
+      const a=(attByDate[dt]||{})[p.id];
+      if(a&&a.stdPhrase==='결근')isAbsent=true;
+    }
+    if(!isAbsent&&isPlannedAbsent(p,dt))isPlannedAbsent_=true;
+    return {
+      name:p.name,timeLabel:`${startT}~${endT}`,
+      isLastDay:p.leaveDate===dt,
+      isExtra:isTempOnly,
+      isCasual:p.isCasual===true,
+      isAbsent,isPlannedAbsent:isPlannedAbsent_,
+      pid:p.id
+    };
+  }
+  
+  // 5. HTML 빌드
+  let html='<table class="rc-table"><thead><tr>';
+  html+='<th class="rc-role-col">직무</th>';
+  let prevMonth=null;
+  dates.forEach(dt=>{
+    let cls='';
+    if(dt.dow===0)cls+=' rc-weekend';
+    else if(dt.dow===6)cls+=' rc-saturday';
+    if(dt.ymd===todayStr)cls+=' rc-today';
+    if(dt.dow===1)cls+=' rc-month-line';
+    if(prevMonth!==null&&dt.month!==prevMonth)cls+=' rc-cross-month';
+    if(dt.month!==baseMonth)cls+=' rc-other-month';
+    const showMonth=(prevMonth!==dt.month);
+    let inner='';
+    if(showMonth)inner+=`<div class="rc-month-line-label">${dt.month}월</div>`;
+    inner+=`${dt.day}<div class="rc-dow-line">${RC_DM[dt.dow]}</div>`;
+    html+=`<th class="${cls.trim()}">${inner}</th>`;
+    prevMonth=dt.month;
+  });
+  html+='</tr></thead><tbody>';
+  
+  // 직무 행
+  roles.forEach(role=>{
+    html+='<tr class="rc-row">';
+    html+=`<td class="rc-role-name">${role.name}</td>`;
+    let prevMonth2=null;
+    dates.forEach(dt=>{
+      let cls='';
+      if(dt.dow===0)cls+=' rc-col-weekend';
+      else if(dt.dow===6)cls+=' rc-col-saturday';
+      if(dt.ymd===todayStr)cls=' rc-col-today';
+      if(dt.dow===1)cls+=' rc-month-line';
+      if(prevMonth2!==null&&dt.month!==prevMonth2)cls+=' rc-cross-month';
+      if(dt.month!==baseMonth)cls+=' rc-other-month';
+      
+      // 그 날 그 직무에 등장하는 사람들
+      const todayParts=role.people.map(p=>getStatusSync(p,dt.ymd)).filter(s=>s);
+      // 같은 이름 묶기 (한 사람이 한 직무에 여러 시간대 등록된 경우)
+      const grouped={};
+      todayParts.forEach(s=>{
+        if(!grouped[s.name]){
+          grouped[s.name]={name:s.name,times:[],pid:s.pid,
+            isLastDay:false,isExtra:false,isCasual:false,
+            isAbsent:false,isPlannedAbsent:false};
+        }
+        const g=grouped[s.name];
+        g.times.push(s.timeLabel);
+        if(s.isLastDay)g.isLastDay=true;
+        if(s.isExtra)g.isExtra=true;
+        if(s.isCasual)g.isCasual=true;
+        if(s.isAbsent)g.isAbsent=true;
+        if(s.isPlannedAbsent)g.isPlannedAbsent=true;
+      });
+      
+      let cellContent='';
+      Object.values(grouped).forEach(g=>{
+        let itemCls='rc-person';
+        if(g.isAbsent)itemCls+=' rc-is-absent';
+        if(g.isPlannedAbsent)itemCls+=' rc-is-planned-absent';
+        let badgeHtml='';
+        if(g.isAbsent)badgeHtml='<span class="rc-badge rc-b-absent">결근</span>';
+        else if(g.isPlannedAbsent)badgeHtml='<span class="rc-badge rc-b-planned-absent">결근예정</span>';
+        else if(g.isLastDay)badgeHtml='<span class="rc-badge rc-b-leave">퇴사</span>';
+        else if(g.isCasual)badgeHtml='<span class="rc-badge rc-b-casual">단발</span>';
+        else if(g.isExtra)badgeHtml='<span class="rc-badge rc-b-extra">추가</span>';
+        const timeStr=g.times.join(' / ');
+        const ttExtra=[];
+        if(g.isLastDay)ttExtra.push('마지막 근무일');
+        if(g.isAbsent)ttExtra.push('결근');
+        if(g.isPlannedAbsent)ttExtra.push('결근예정');
+        if(g.isExtra)ttExtra.push('추가근무');
+        if(g.isCasual)ttExtra.push('단발근무');
+        cellContent+=`<div class="${itemCls}" onclick="rcCellClick('${g.pid}','${dt.ymd}')" title="${g.name}\n${dt.month}/${dt.day} · ${timeStr}${ttExtra.length?'\n'+ttExtra.join(' · '):''}">${badgeHtml}<span class="rc-name">${g.name}</span></div>`;
+      });
+      
+      html+=`<td class="${cls.trim()}"><div class="rc-cell">${cellContent}</div></td>`;
+      prevMonth2=dt.month;
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+  
+  document.getElementById('rc-body').innerHTML=html;
+  SL(false);
+}
+window.renderRoleCalendar=renderRoleCalendar;
+
+// 셀 클릭 → 그 직원 그 날 이력 모달
+function rcCellClick(pid,dt){
+  if(typeof openHistoryModal==='function')openHistoryModal(pid,dt);
+}
+window.rcCellClick=rcCellClick;
+
+// 엑셀 다운로드
+async function exportRoleCalendarXLSX(){
+  if(typeof ExcelJS==='undefined'){
+    ST('ExcelJS 로딩 중...');
+    await new Promise(r=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';s.onload=r;document.head.appendChild(s);});
+  }
+  const fromStr=document.getElementById('rc-from').value;
+  const toStr=document.getElementById('rc-to').value;
+  if(!fromStr||!toStr){ST('기간을 선택해주세요');return;}
+  const dates=rcGetDateRange(fromStr,toStr);
+  if(dates.length===0)return;
+  
+  SL(true);
+  const catFilter=document.getElementById('rc-cat')?.value||'';
+  const todayStr=kstDate();
+  const allParts=Object.entries(AP).filter(([,p])=>{
+    if(p.status==='inactive'&&!p.isCasual)return false;
+    if(catFilter&&p.cat!==catFilter)return false;
+    return true;
+  }).map(([id,p])=>({...p,id}));
+  const roleMap={};
+  allParts.forEach(p=>{
+    if(!roleMap[p.role])roleMap[p.role]={name:p.role,cat:p.cat,people:[]};
+    roleMap[p.role].people.push(p);
+  });
+  const catOrder={'mgmt':1,'tutor':2,'etc':3};
+  const roles=Object.values(roleMap).sort((a,b)=>{
+    const c=(catOrder[a.cat]||9)-(catOrder[b.cat]||9);
+    if(c!==0)return c;
+    return a.name.localeCompare(b.name);
+  });
+  // attendance 미리 로드
+  const datesNeedAtt=dates.filter(d=>d.ymd<=todayStr).map(d=>d.ymd);
+  const attByDate={};
+  if(datesNeedAtt.length>0){
+    await Promise.all(datesNeedAtt.map(dk=>get(ref(db,`attendance/${dk}`)).then(sn=>{attByDate[dk]=sn.val()||{};})));
+  }
+  
+  const wb=new ExcelJS.Workbook();
+  const ws=wb.addWorksheet('직무 캘린더');
+  // 헤더
+  const hdr=['직무'];
+  dates.forEach(dt=>{hdr.push(`${dt.month}/${dt.day} (${RC_DM[dt.dow]})`);});
+  ws.addRow(hdr);
+  ws.getRow(1).font={bold:true};
+  ws.getRow(1).alignment={horizontal:'center',vertical:'middle'};
+  // 데이터
+  roles.forEach(role=>{
+    const row=[role.name];
+    dates.forEach(dt=>{
+      const cellParts=role.people.map(p=>{
+        if(p.joinDate&&dt.ymd<p.joinDate)return null;
+        if(p.leaveDate&&dt.ymd>p.leaveDate){
+          const hasTemp=p.tempDates&&p.tempDates.find(d=>d.date===dt.ymd);
+          if(!(p.isCasual&&hasTemp))return null;
+        }
+        const dow=RC_DM[rcParseYMD(dt.ymd).getDay()];
+        const ds=getDayTime(p,dow,dt.ymd);
+        const tempDay=p.tempDates&&p.tempDates.find(d=>d.date===dt.ymd);
+        const isRegular=isWorkDay(p,dow,dt.ymd)&&ds.start;
+        const isTempOnly=!!tempDay&&!isRegular;
+        if(!isRegular&&!tempDay)return null;
+        const startT=tempDay?tempDay.start:ds.start;
+        const endT=tempDay?tempDay.end:ds.end;
+        if(!startT||!endT)return null;
+        let prefix='';
+        let isAbsent=false;
+        if(dt.ymd<=todayStr){
+          const a=(attByDate[dt.ymd]||{})[p.id];
+          if(a&&a.stdPhrase==='결근')isAbsent=true;
+        }
+        const isPlnAbs=!isAbsent&&isPlannedAbsent(p,dt.ymd);
+        if(isAbsent)prefix='[결근] ';
+        else if(isPlnAbs)prefix='[결근예정] ';
+        else if(p.leaveDate===dt.ymd)prefix='[퇴사] ';
+        else if(p.isCasual)prefix='[단발] ';
+        else if(isTempOnly)prefix='[추가] ';
+        return prefix+p.name;
+      }).filter(s=>s);
+      // 같은 이름 중복 제거
+      const uniq=[...new Set(cellParts)];
+      row.push(uniq.join('\n'));
+    });
+    ws.addRow(row);
+  });
+  // 셀 wrap + 너비
+  ws.getColumn(1).width=12;
+  for(let i=2;i<=hdr.length;i++)ws.getColumn(i).width=10;
+  ws.eachRow(r=>{r.alignment={wrapText:true,vertical:'middle',horizontal:'center'};});
+  // 다운로드
+  const buf=await wb.xlsx.writeBuffer();
+  const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`강안교육_직무캘린더_${fromStr}_${toStr}.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+  SL(false);
+}
+window.exportRoleCalendarXLSX=exportRoleCalendarXLSX;
 async function loadHistoryList(pid){
   const from=document.getElementById('hist-from').value;
   const to=document.getElementById('hist-to').value;
