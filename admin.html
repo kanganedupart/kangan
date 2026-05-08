@@ -772,6 +772,25 @@ function brk(p,startT,endT){
   return autoB;
 }
 
+// ⭐ v10.8.7-fix: pEff 빌드 시 customBreak 결정 (안녕님 정책)
+// - 추가근무(_isTemp) / 기간교체(fromReplace) / 기간추가(fromPeriod):
+//   휴게 명시 안 했으면 → undefined (brk()에서 자동 휴게 적용)
+//   원본 p.customBreak 가져오지 않음 (안녕님 정책)
+// - 영구변경(fromPerm): 휴게 명시 안 했으면 원본 유지 (안녕님이 만드신 정책 그대로)
+// - 기본 요일별: 원본 customBreak 적용
+function _resolveBreak(p,ds){
+  // 추가근무 / 기간교체 / 기간추가 → 명시값만 사용 (없으면 자동)
+  if(ds._isTemp||ds.fromReplace||ds.fromPeriod){
+    return ds.customBreak; // undefined 가능 → brk()에서 자동
+  }
+  // 영구변경 → 명시값 우선, 없으면 원본
+  if(ds.fromPerm){
+    return ds.customBreak!==undefined?ds.customBreak:p.customBreak;
+  }
+  // 기본 (요일별) → 원본
+  return p.customBreak;
+}
+
 // ⭐ v10.8.5: history 전체 메모 합산 (도승우 4/30 케이스 해결)
 function getMemoAll(a){
   if(!a)return '';
@@ -1198,7 +1217,7 @@ const scheduled=parts.map(p=>{
   if(!worksDay)return null;
 const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,td,date);
 if(!ds.start||!ds.end)return null;
-const a=attData[p.id]||{};const ep={...p,start:ds.start,end:ds.end,customBreak:ds._isTemp?ds.customBreak:(ds.fromPerm?(ds.customBreak!==undefined?ds.customBreak:p.customBreak):(ds.customBreak!==undefined?ds.customBreak:p.customBreak))};
+const a=attData[p.id]||{};const ep={...p,start:ds.start,end:ds.end,customBreak:_resolveBreak(p,ds)};
 // 결근 예정 체크 (단일+기간)
 if(isPlannedAbsent(p,date)&&!a.inTime)return{...ep,actual:null,status:'absent-pln',ar:a};
 // 추가근무(임시) 처리
@@ -1355,7 +1374,7 @@ const kstToday=kstDate();
 const isViewingToday=viewDate===kstToday;
 const isViewingFuture=viewDate>kstToday;
 const isViewingPast=viewDate<kstToday;
-const DM=['일','월','화','수','목','금','토'];const dw=DM[new Date(viewDate+'T00:00:00+09:00').getDay()];const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===viewDate);const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,viewDate);const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:ds._isTemp?ds.customBreak:(ds.fromPerm?(ds.customBreak!==undefined?ds.customBreak:p.customBreak):(ds.customBreak!==undefined?ds.customBreak:p.customBreak))};const isPlnAbs=isPlannedAbsent(p,viewDate);let st='pending';
+const DM=['일','월','화','수','목','금','토'];const dw=DM[new Date(viewDate+'T00:00:00+09:00').getDay()];const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===viewDate);const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,viewDate);const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};const isPlnAbs=isPlannedAbsent(p,viewDate);let st='pending';
 if(isPlnAbs&&!a.inTime)st='absent-pln';
 else if(ph==='결근')st='absent-con';
 else if(a.inTime){const effIn=a.adjustedStart||a.inTime;st=toM(effIn)>toM(pEff.start)?'late':'done';}
@@ -2151,7 +2170,7 @@ while(cur<=end){
   sc.forEach(p=>{
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dt);
     const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dt);
-    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:ds._isTemp?ds.customBreak:(ds.fromPerm?(ds.customBreak!==undefined?ds.customBreak:p.customBreak):(ds.customBreak!==undefined?ds.customBreak:p.customBreak))};
+    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
     WD.push({dt,p:pEff,a:ad[p.id]||{},alertHtml:''});
   });
   // 스케줄 없는 출근 (이름 필터는 렌더 단계에서)
@@ -2630,7 +2649,7 @@ dateList.forEach(dk=>{
     const a=ad[p.id]||{};
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dk);
     const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dk);
-    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:ds._isTemp?ds.customBreak:(ds.fromPerm?(ds.customBreak!==undefined?ds.customBreak:p.customBreak):(ds.customBreak!==undefined?ds.customBreak:p.customBreak))};
+    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
     const sh=schedH(pEff,a);
     const isAbsent=a.stdPhrase==='결근'||isPlannedAbsent(p,dk);
     const rh=a.inTime?calcRealH(pEff,a):isAbsent?0:null;
@@ -5226,7 +5245,7 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     const dw=DM[new Date(dt+'T00:00:00+09:00').getDay()];
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dt);
     const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dt);
-    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:ds._isTemp?ds.customBreak:(ds.fromPerm?(ds.customBreak!==undefined?ds.customBreak:p.customBreak):(ds.customBreak!==undefined?ds.customBreak:p.customBreak))};
+    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
     if(p.joinDate&&dt<p.joinDate){days.push({dt,h:0,attended:false,offDay:true});continue;}
     if(p.leaveDate&&dt>p.leaveDate){days.push({dt,h:0,attended:false,offDay:true});continue;}
     const a=attByDate[dt]?.[pid]||{};
