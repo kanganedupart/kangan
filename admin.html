@@ -754,10 +754,17 @@ function makeDraggable(overlayId){
 //   * 8시간 이상 → 60분
 // - 배정우 4/28 케이스 해결: 7~16시 (9h) + customBreak 0분 → 자동 60분 적용 → 8h
 // - 교무가 연장근무 등록 시 휴게 신경 안 써도 자동 정산
+// ⭐ v10.8.7: 자동 휴게 기준 (한국 근로기준법 + 회사 운영 정책)
+// - "정확히" 의무 시간은 회사 운영상 휴게 없음 (안녕님 정책)
+// - 4시간 정확히 = 휴게 0분 (응대 9~13시 케이스)
+// - 8시간 정확히 = 휴게 30분 (정지윤 8~16시 케이스)
+//   (8시간 정확히는 customBreak로 회사가 30분 운영 — 자동은 0분, max로 30분 적용)
+// - 4시간 초과 ~ 8시간 이하 = 30분 자동
+// - 8시간 초과 = 60분 자동
 function _autoBreakMin(totalMin){
-  if(totalMin>=480)return 60; // 8h 이상 → 60분 (근로기준법)
-  if(totalMin>=240)return 30; // 4h 이상 → 30분
-  return 0;
+  if(totalMin>480)return 60;   // 8h "초과" → 60분
+  if(totalMin>240)return 30;   // 4h "초과" → 30분
+  return 0;                     // 4h 이하 (정확히 4h도) → 0분
 }
 function brk(p,startT,endT){
   const s=startT||p.start;
