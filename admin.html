@@ -205,6 +205,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .rc-b-extra{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
 .rc-b-casual{background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe}
 .rc-name{font-size:12px;font-weight:500;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
+/* ⭐ v10.8.7: 조교 과목 (이름 옆 작은 회색, 안녕님 정책) */
+.rc-subject{font-size:10px;color:#94a3b8;font-weight:400;margin-left:3px}
 .rc-person.rc-is-absent .rc-name,.rc-person.rc-is-planned-absent .rc-name{color:#94a3b8;text-decoration:line-through;font-weight:400}
 /* ⭐ v10.8.7: 카테고리 헤더 행 (관리/조교/기타 구분) */
 .rc-cat-row td{position:sticky;left:0;background:linear-gradient(90deg,#f1f5f9,#f8fafc);padding:8px 14px;font-size:11px;font-weight:700;letter-spacing:1px;color:#475569;border-bottom:2px solid #cbd5e1;border-top:2px solid #cbd5e1;text-align:left;z-index:2}
@@ -1613,9 +1615,17 @@ async function renderRoleCalendar(){
   }
   
   // 2. 직무별로 그룹화
+  // ⭐ v10.8.7: 조교는 tutorKind(부담임/질의응답)로만 그룹화
+  //   - role은 과목(영어/수학/국어 등)으로 사용 → 이름 옆에 작게 표시
+  //   - tutorKind 없는 조교는 (조교 미지정)으로 묶음
   const roleMap={};
   allParts.forEach(p=>{
-    const roleName=p.role||'(직무 미지정)';
+    let roleName;
+    if(p.cat==='tutor'){
+      roleName=p.tutorKind||'(조교 미지정)';
+    }else{
+      roleName=p.role||'(직무 미지정)';
+    }
     if(!roleMap[roleName])roleMap[roleName]={name:roleName,cat:p.cat,people:[]};
     roleMap[roleName].people.push(p);
   });
@@ -1671,7 +1681,9 @@ async function renderRoleCalendar(){
       isExtra:isTempOnly,
       isCasual:p.isCasual===true,
       isAbsent,isPlannedAbsent:isPlannedAbsent_,
-      pid:p.id
+      pid:p.id,
+      // ⭐ v10.8.7: 조교는 role을 과목으로 표시 (안녕님 정책)
+      subject:p.cat==='tutor'?(p.role||''):''
     };
   }
   
@@ -1725,7 +1737,7 @@ async function renderRoleCalendar(){
       const grouped={};
       todayParts.forEach(s=>{
         if(!grouped[s.name]){
-          grouped[s.name]={name:s.name,times:[],pid:s.pid,
+          grouped[s.name]={name:s.name,times:[],pid:s.pid,subject:s.subject||'',
             isLastDay:false,isExtra:false,isCasual:false,
             isAbsent:false,isPlannedAbsent:false};
         }
@@ -1756,7 +1768,7 @@ async function renderRoleCalendar(){
         if(g.isPlannedAbsent)ttExtra.push('결근예정');
         if(g.isExtra)ttExtra.push('추가근무');
         if(g.isCasual)ttExtra.push('단발근무');
-        cellContent+=`<div class="${itemCls}" onclick="rcCellClick('${g.pid}','${dt.ymd}')" title="${g.name}\n${dt.month}/${dt.day} · ${timeStr}${ttExtra.length?'\n'+ttExtra.join(' · '):''}">${badgeHtml}<span class="rc-name">${g.name}</span></div>`;
+        cellContent+=`<div class="${itemCls}" onclick="rcCellClick('${g.pid}','${dt.ymd}')" title="${g.name}${g.subject?' ('+g.subject+')':''}\n${dt.month}/${dt.day} · ${timeStr}${ttExtra.length?'\n'+ttExtra.join(' · '):''}">${badgeHtml}<span class="rc-name">${g.name}${g.subject?'<span class="rc-subject">'+g.subject+'</span>':''}</span></div>`;
       });
       
       html+=`<td class="${cls.trim()}"><div class="rc-cell">${cellContent}</div></td>`;
@@ -1799,8 +1811,15 @@ async function exportRoleCalendarXLSX(){
   }).map(([id,p])=>({...p,id}));
   const roleMap={};
   allParts.forEach(p=>{
-    if(!roleMap[p.role])roleMap[p.role]={name:p.role,cat:p.cat,people:[]};
-    roleMap[p.role].people.push(p);
+    // ⭐ v10.8.7: 조교는 tutorKind로만 분리 (role은 과목)
+    let roleName;
+    if(p.cat==='tutor'){
+      roleName=p.tutorKind||'(조교 미지정)';
+    }else{
+      roleName=p.role||'(직무 미지정)';
+    }
+    if(!roleMap[roleName])roleMap[roleName]={name:roleName,cat:p.cat,people:[]};
+    roleMap[roleName].people.push(p);
   });
   const catOrder={'mgmt':1,'tutor':2,'etc':3};
   const roles=Object.values(roleMap).sort((a,b)=>{
@@ -1873,7 +1892,9 @@ async function exportRoleCalendarXLSX(){
         else if(p.leaveDate===dt.ymd)prefix='[퇴사] ';
         else if(p.isCasual)prefix='[단발] ';
         else if(isTempOnly)prefix='[추가] ';
-        return prefix+p.name;
+        // ⭐ v10.8.7: 조교는 이름 뒤에 과목 표시
+        const subjectStr=p.cat==='tutor'&&p.role?` (${p.role})`:'';
+        return prefix+p.name+subjectStr;
       }).filter(s=>s);
       // 같은 이름 중복 제거
       const uniq=[...new Set(cellParts)];
