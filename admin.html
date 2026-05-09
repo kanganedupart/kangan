@@ -196,8 +196,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .rc-row td.rc-col-saturday{background:#fafcff}
 .rc-row td.rc-col-today{background:#fefce8}
 .rc-cell{padding:6px 4px;text-align:center;min-height:60px;display:flex;flex-direction:column;gap:3px;align-items:stretch;justify-content:flex-start}
-.rc-person{display:flex;align-items:center;justify-content:center;gap:3px;cursor:pointer;border-radius:4px;padding:2px 4px;transition:all .1s;min-height:20px}
+/* ⭐ v10.8.7: grid로 배지 칸 고정 + 이름 정렬 */
+.rc-person{display:grid;grid-template-columns:34px 1fr;align-items:center;gap:3px;cursor:pointer;border-radius:4px;padding:2px 4px;transition:all .1s;min-height:20px}
 .rc-person:hover{background:#f0fdf4;z-index:5;position:relative;box-shadow:0 0 0 2px #006241}
+.rc-badge-slot{display:flex;justify-content:flex-end;align-items:center;min-width:0}
+.rc-name-slot{display:flex;justify-content:flex-start;align-items:center;min-width:0}
 .rc-badge{display:inline-block;font-size:8px;font-weight:700;padding:0 4px;border-radius:2px;flex-shrink:0;line-height:14px;height:14px;white-space:nowrap}
 .rc-b-leave{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca}
 .rc-b-absent{background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}
@@ -1471,6 +1474,8 @@ window.openHistoryModal=openHistoryModal;
 
 // ⭐ v10.8.7: 직무 캘린더 (교무용) — 직무별 한 달 인력 조망
 const RC_DM=['일','월','화','수','목','금','토'];
+// ⭐ v10.8.7: 과목 정렬 우선순위 (국어 → 수학 → 영어 → 그 외 가나다순)
+const RC_SUBJ_ORDER={'국어':1,'수학':2,'영어':3};
 function rcYmd(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function rcParseYMD(s){const[y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d);}
 function rcGetDateRange(fromStr,toStr){
@@ -1631,11 +1636,39 @@ async function renderRoleCalendar(){
   });
   
   // 카테고리 순서대로 정렬
+  // ⭐ v10.8.7: 정렬 정책
+  //   1. 카테고리 (관리 → 조교 → 기타)
+  //   2. 조교 안에서: 부담임 → 질의응답
+  //   3. 같은 그룹 내: 가나다순
+  //   4. 각 직무 안 사람들: 조교는 과목(국어→수학→영어→그외) → 이름, 비조교는 이름 가나다순
   const catOrder={'mgmt':1,'tutor':2,'etc':3};
+  const tutorKindOrder={'부담임':1,'질의응답':2,'(조교 미지정)':9};
+  const subjOrder={'국어':1,'수학':2,'영어':3}; // 그 외는 99
   const roles=Object.values(roleMap).sort((a,b)=>{
     const c=(catOrder[a.cat]||9)-(catOrder[b.cat]||9);
     if(c!==0)return c;
+    if(a.cat==='tutor'){
+      const ta=tutorKindOrder[a.name]||5;
+      const tb=tutorKindOrder[b.name]||5;
+      if(ta!==tb)return ta-tb;
+    }
     return a.name.localeCompare(b.name);
+  });
+  
+  // 각 직무 안의 사람 정렬
+  roles.forEach(role=>{
+    role.people.sort((a,b)=>{
+      // 조교는 과목(role) 우선
+      if(role.cat==='tutor'){
+        const sa=subjOrder[a.role]||99;
+        const sb=subjOrder[b.role]||99;
+        if(sa!==sb)return sa-sb;
+        // 그 외 과목들끼리는 가나다순
+        if(a.role!==b.role)return (a.role||'').localeCompare(b.role||'');
+      }
+      // 같은 과목(또는 비조교): 이름 가나다순
+      return (a.name||'').localeCompare(b.name||'');
+    });
   });
   
   // ⭐ 직무 0개 체크 (방어적)
@@ -1751,7 +1784,21 @@ async function renderRoleCalendar(){
       });
       
       let cellContent='';
-      Object.values(grouped).forEach(g=>{
+      // ⭐ v10.8.7: 셀 안 사람 정렬
+      //   조교: 과목 순 (국어→수학→영어→그 외 가나다) → 같은 과목 내 이름 가나다
+      //   기타: 이름 가나다
+      const sortedPeople=Object.values(grouped).sort((a,b)=>{
+        if(role.cat==='tutor'){
+          const sa=RC_SUBJ_ORDER[a.subject]||99;
+          const sb=RC_SUBJ_ORDER[b.subject]||99;
+          if(sa!==sb)return sa-sb;
+          // 그 외 과목들끼리: 과목명 가나다순
+          if(a.subject!==b.subject)return (a.subject||'').localeCompare(b.subject||'');
+        }
+        // 같은 과목 내 (또는 조교 외): 이름 가나다순
+        return a.name.localeCompare(b.name);
+      });
+      sortedPeople.forEach(g=>{
         let itemCls='rc-person';
         if(g.isAbsent)itemCls+=' rc-is-absent';
         if(g.isPlannedAbsent)itemCls+=' rc-is-planned-absent';
@@ -1768,7 +1815,7 @@ async function renderRoleCalendar(){
         if(g.isPlannedAbsent)ttExtra.push('결근예정');
         if(g.isExtra)ttExtra.push('추가근무');
         if(g.isCasual)ttExtra.push('단발근무');
-        cellContent+=`<div class="${itemCls}" onclick="rcCellClick('${g.pid}','${dt.ymd}')" title="${g.name}${g.subject?' ('+g.subject+')':''}\n${dt.month}/${dt.day} · ${timeStr}${ttExtra.length?'\n'+ttExtra.join(' · '):''}">${badgeHtml}<span class="rc-name">${g.name}${g.subject?'<span class="rc-subject">'+g.subject+'</span>':''}</span></div>`;
+        cellContent+=`<div class="${itemCls}" onclick="rcCellClick('${g.pid}','${dt.ymd}')" title="${g.name}${g.subject?' ('+g.subject+')':''}\n${dt.month}/${dt.day} · ${timeStr}${ttExtra.length?'\n'+ttExtra.join(' · '):''}"><span class="rc-badge-slot">${badgeHtml}</span><span class="rc-name-slot"><span class="rc-name">${g.name}${g.subject?'<span class="rc-subject">'+g.subject+'</span>':''}</span></span></div>`;
       });
       
       html+=`<td class="${cls.trim()}"><div class="rc-cell">${cellContent}</div></td>`;
@@ -1821,11 +1868,31 @@ async function exportRoleCalendarXLSX(){
     if(!roleMap[roleName])roleMap[roleName]={name:roleName,cat:p.cat,people:[]};
     roleMap[roleName].people.push(p);
   });
+  // ⭐ v10.8.7: 화면과 동일한 정렬 정책
   const catOrder={'mgmt':1,'tutor':2,'etc':3};
+  const tutorKindOrder={'부담임':1,'질의응답':2,'(조교 미지정)':9};
+  const subjOrder={'국어':1,'수학':2,'영어':3};
   const roles=Object.values(roleMap).sort((a,b)=>{
     const c=(catOrder[a.cat]||9)-(catOrder[b.cat]||9);
     if(c!==0)return c;
+    if(a.cat==='tutor'){
+      const ta=tutorKindOrder[a.name]||5;
+      const tb=tutorKindOrder[b.name]||5;
+      if(ta!==tb)return ta-tb;
+    }
     return a.name.localeCompare(b.name);
+  });
+  // 각 직무 안 사람 정렬
+  roles.forEach(role=>{
+    role.people.sort((a,b)=>{
+      if(role.cat==='tutor'){
+        const sa=subjOrder[a.role]||99;
+        const sb=subjOrder[b.role]||99;
+        if(sa!==sb)return sa-sb;
+        if(a.role!==b.role)return (a.role||'').localeCompare(b.role||'');
+      }
+      return (a.name||'').localeCompare(b.name||'');
+    });
   });
   // attendance 미리 로드
   const datesNeedAtt=dates.filter(d=>d.ymd<=todayStr).map(d=>d.ymd);
