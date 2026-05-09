@@ -177,7 +177,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .toast.show{opacity:1;}
 /* ⭐ v10.8.7: 직무 캘린더 (roleCal) 스타일 */
 .rc-table{border-collapse:collapse;width:100%;font-size:12px}
-.rc-table thead th{position:sticky;top:0;background:#f8fafc;z-index:3;border-bottom:2px solid #cbd5e1;padding:8px 6px;font-weight:700;font-size:12px;color:#334155;text-align:center;white-space:nowrap;border-right:1px solid #e5e7eb;min-width:70px}
+.rc-table thead th{position:sticky;top:0;background:#f8fafc;z-index:3;border-bottom:2px solid #cbd5e1;padding:8px 6px;font-weight:700;font-size:12px;color:#334155;text-align:center;white-space:nowrap;border-right:1px solid #e5e7eb;min-width:95px}
 .rc-table thead th.rc-role-col{position:sticky;left:0;z-index:4;background:#e2e8f0;min-width:100px}
 .rc-table thead th.rc-weekend{color:#b91c1c}
 .rc-table thead th.rc-saturday{color:#1d4ed8}
@@ -196,18 +196,19 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .rc-row td.rc-col-saturday{background:#fafcff}
 .rc-row td.rc-col-today{background:#fefce8}
 .rc-cell{padding:6px 4px;text-align:center;min-height:60px;display:flex;flex-direction:column;gap:3px;align-items:stretch;justify-content:flex-start}
-/* ⭐ v10.8.7: grid로 배지 칸 고정 + 이름 정렬 */
-.rc-person{display:grid;grid-template-columns:34px 1fr;align-items:center;gap:3px;cursor:pointer;border-radius:4px;padding:2px 4px;transition:all .1s;min-height:20px}
+/* ⭐ v10.8.7: flex로 안전하게, 이름 깨짐 방지 우선 */
+.rc-person{display:flex;align-items:center;justify-content:flex-start;gap:4px;cursor:pointer;border-radius:4px;padding:2px 4px;transition:all .1s;min-height:20px}
 .rc-person:hover{background:#f0fdf4;z-index:5;position:relative;box-shadow:0 0 0 2px #006241}
-.rc-badge-slot{display:flex;justify-content:flex-end;align-items:center;min-width:0}
-.rc-name-slot{display:flex;justify-content:flex-start;align-items:center;min-width:0}
+/* ⭐ v10.8.7: 배지 영역 고정폭 32px — 배지 없으면 빈칸 유지, 이름 일직선 정렬 */
+.rc-badge-slot{display:flex;align-items:center;justify-content:flex-end;width:32px;flex-shrink:0}
+.rc-name-slot{display:flex;align-items:center;flex:1;min-width:0;justify-content:flex-start;text-align:left}
 .rc-badge{display:inline-block;font-size:8px;font-weight:700;padding:0 4px;border-radius:2px;flex-shrink:0;line-height:14px;height:14px;white-space:nowrap}
 .rc-b-leave{background:#fee2e2;color:#b91c1c;border:1px solid #fecaca}
 .rc-b-absent{background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}
 .rc-b-planned-absent{background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0}
 .rc-b-extra{background:#fef3c7;color:#92400e;border:1px solid #fde68a}
 .rc-b-casual{background:#f5f3ff;color:#7c3aed;border:1px solid #ddd6fe}
-.rc-name{font-size:12px;font-weight:500;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
+.rc-name{font-size:12px;font-weight:500;color:#1f2937;white-space:nowrap;flex:0 1 auto}
 /* ⭐ v10.8.7: 조교 과목 (이름 옆 작은 회색, 안녕님 정책) */
 .rc-subject{font-size:10px;color:#94a3b8;font-weight:400;margin-left:3px}
 .rc-person.rc-is-absent .rc-name,.rc-person.rc-is-planned-absent .rc-name{color:#94a3b8;text-decoration:line-through;font-weight:400}
