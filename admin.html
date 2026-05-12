@@ -772,11 +772,17 @@ function _autoBreakMin(totalMin){
   if(totalMin>240)return 30;   // 4h "초과" → 30분
   return 0;                     // 4h 이하 (정확히 4h도) → 0분
 }
-function brk(p,startT,endT){
+function brk(p,startT,endT,a){
   const s=startT||p.start;
   const e=endT||p.end;
   const totalMin=toM(e)-toM(s);
   if(totalMin<=0)return 0;
+  // ⭐ v10.8.8: 연장근무 등록 시 adjustedBreak 명시값 우선 (김영훈 5/12 케이스 빈틈 해결)
+  // - 연장근무 모달에서 등록자가 직접 입력한 휴게는 100% 그대로 적용
+  // - 자동 휴게/customBreak 무관 (등록자 의도 우선)
+  if(a&&a.adjustedBreak!==undefined&&a.adjustedBreak!==null){
+    return Math.max(0,a.adjustedBreak);
+  }
   const autoB=_autoBreakMin(totalMin);
   // customBreak 정의되어 있어도 자동 휴게보다 작으면 자동 휴게 적용
   if(p.customBreak!==undefined){
@@ -802,6 +808,31 @@ function _resolveBreak(p,ds){
   }
   // 기본 (요일별) → 원본
   return p.customBreak;
+}
+
+// ⭐ v10.8.8: 연장근무 예약을 pEff에 반영 (기간교체와 일관성)
+// - 안녕님 정책: "기간교체도 스케줄 시수 바뀌는데, 연장근무도 같은 맥락이어야"
+// - 연장근무 예약 (stdPhrase='추가근무' + adjustedStart/End)이면 그 시각이 새 스케줄
+// - 휴게는 adjustedBreak 명시 시 그 값, 없으면 본 직무 customBreak 유지
+// - 본 직무 시작/종료 시각을 adjustedStart/End로 확장 (절대 축소 X)
+// - 조기퇴근/지각 예약은 시간 축소이므로 pEff 변경 X (스케줄은 본 직무 그대로)
+function _applyExtToPEff(pEff,a){
+  if(!a||a.stdPhrase!=='추가근무')return pEff;
+  let newStart=pEff.start;
+  let newEnd=pEff.end;
+  // 출근 당김: adjustedStart < pEff.start 이면 그 시각으로 확장
+  if(a.adjustedStart&&toM(a.adjustedStart)<toM(pEff.start)){
+    newStart=a.adjustedStart;
+  }
+  // 퇴근 연장: adjustedEnd > pEff.end 이면 그 시각으로 확장
+  if(a.adjustedEnd&&toM(a.adjustedEnd)>toM(pEff.end)){
+    newEnd=a.adjustedEnd;
+  }
+  if(newStart===pEff.start&&newEnd===pEff.end)return pEff;
+  // adjustedBreak 명시 시 그 값으로, 아니면 본 직무 customBreak 유지
+  // (brk() 안에서 a.adjustedBreak 우선 적용되므로 customBreak는 fallback 용도)
+  const newBrk=(a.adjustedBreak!==undefined&&a.adjustedBreak!==null)?a.adjustedBreak:pEff.customBreak;
+  return{...pEff,start:newStart,end:newEnd,customBreak:newBrk};
 }
 
 // ⭐ v10.8.5: history 전체 메모 합산 (도승우 4/30 케이스 해결)
@@ -924,7 +955,7 @@ function calcRealH(p,a){
     else endT=toM(eT)>toM(p.end)?p.end:eT;
     const totalM=toM(endT)-toM(sT);
     if(totalM<=0)return 0;
-    const bm=brk(p,sT,endT);
+    const bm=brk(p,sT,endT,a);
     return Math.max(0,Math.round((totalM-bm)/60*1000)/1000);
   }
   // 시작 시각 결정 (10분 양해를 adjustedStart에도 동일 적용)
@@ -948,7 +979,7 @@ function calcRealH(p,a){
   }
   const totalM=toM(endT)-toM(startT);
   if(totalM<=0)return 0;
-  const bm=brk(p,startT,endT);
+  const bm=brk(p,startT,endT,a);
   return Math.max(0,Math.round((totalM-bm)/60*1000)/1000);
 }
 function needsCheck(p,a,nowM,date){
@@ -1231,7 +1262,7 @@ const scheduled=parts.map(p=>{
   if(!worksDay)return null;
 const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,td,date);
 if(!ds.start||!ds.end)return null;
-const a=attData[p.id]||{};const ep={...p,start:ds.start,end:ds.end,customBreak:_resolveBreak(p,ds)};
+const a=attData[p.id]||{};const epBase={...p,start:ds.start,end:ds.end,customBreak:_resolveBreak(p,ds)};const ep=_applyExtToPEff(epBase,a);
 // 결근 예정 체크 (단일+기간)
 if(isPlannedAbsent(p,date)&&!a.inTime)return{...ep,actual:null,status:'absent-pln',ar:a};
 // 추가근무(임시) 처리
@@ -1388,7 +1419,7 @@ const kstToday=kstDate();
 const isViewingToday=viewDate===kstToday;
 const isViewingFuture=viewDate>kstToday;
 const isViewingPast=viewDate<kstToday;
-const DM=['일','월','화','수','목','금','토'];const dw=DM[new Date(viewDate+'T00:00:00+09:00').getDay()];const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===viewDate);const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,viewDate);const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};const isPlnAbs=isPlannedAbsent(p,viewDate);let st='pending';
+const DM=['일','월','화','수','목','금','토'];const dw=DM[new Date(viewDate+'T00:00:00+09:00').getDay()];const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===viewDate);const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,viewDate);const _pEffBase={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};const pEff=_applyExtToPEff(_pEffBase,a);const isPlnAbs=isPlannedAbsent(p,viewDate);let st='pending';
 if(isPlnAbs&&!a.inTime)st='absent-pln';
 else if(ph==='결근')st='absent-con';
 else if(a.inTime){const effIn=a.adjustedStart||a.inTime;st=toM(effIn)>toM(pEff.start)?'late':'done';}
@@ -1398,7 +1429,7 @@ else if(nm>toM(pEff.start))st=ph?'absent-con':'absent-unc'; // 오늘 + 출근 �
 if(ph==='조기퇴근'||ph==='추가근무')st='changed';const stL={'done':'출근완료','absent-unc':'⚠ 미확인 결근','absent-con':'결근','absent-pln':'예정결근','late':'지각','changed':'변경근무','pending':'출근 전'}[st]||'출근 전';const stC={'done':'var(--success)','absent-unc':'var(--danger)','absent-con':'var(--danger)','absent-pln':'#fca5a5','late':'var(--warning)','changed':'var(--accent)','pending':'var(--text-muted)'}[st];const sh=schedH(pEff,a);
 const isAbsentOrUnproc=st==='absent-con'||st==='absent-unc'||st==='absent-pln';
 const rh=(!isAbsentOrUnproc&&a.inTime)?calcRealH(pEff,a):null;
-const bm=brk(pEff);const nc=needsCheck(pEff,a,nm,kstDate());const ce=CU.role==='관리자';
+const bm=brk(pEff,null,null,a);const nc=needsCheck(pEff,a,nm,kstDate());const ce=CU.role==='관리자';
 // viewDate 형식 변환: 2026-04-23 → 2026.04.23 (메모 저장 형식과 일치)
 const viewDateLabel=viewDate.replace(/-/g,'.');
 const todayMemos=(p.memos||[]).filter(m=>m.date===viewDateLabel);
@@ -2267,7 +2298,8 @@ while(cur<=end){
   sc.forEach(p=>{
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dt);
     const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dt);
-    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
+    const pEffBase={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
+    const pEff=_applyExtToPEff(pEffBase,ad[p.id]||{});
     WD.push({dt,p:pEff,a:ad[p.id]||{},alertHtml:''});
   });
   // 스케줄 없는 출근 (이름 필터는 렌더 단계에서)
@@ -2751,7 +2783,8 @@ dateList.forEach(dk=>{
     const a=ad[p.id]||{};
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dk);
     const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dk);
-    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
+    const pEffBase={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
+    const pEff=_applyExtToPEff(pEffBase,a);
     const sh=schedH(pEff,a);
     const isAbsent=a.stdPhrase==='결근'||isPlannedAbsent(p,dk);
     const rh=a.inTime?calcRealH(pEff,a):isAbsent?0:null;
@@ -4204,12 +4237,17 @@ function timePromptModal(title,defaultStart,defaultEnd,opts){
     document.getElementById('cmodal-msg').textContent=opts?.msg||'';
     const wrap=document.getElementById('cmodal-input-wrap');
     wrap.style.display='block';
+    // ⭐ v10.8.8: withBreak가 singleTime 모드에서도 작동하도록 보완
+    // - 연장근무 등록 시 합산 시간 기준 자동 휴게 제안
+    // - 사용자 수정 가능 (기존 디자인: wa-brk-auto 배지 통일)
+    const _initBrk=opts?.initialBreak!==undefined&&opts?.initialBreak!==null?opts.initialBreak:'';
+    const _autoBrkInit=opts?.autoBreak!==undefined?opts.autoBreak:60;
+    const _brkInfoLine=opts?.breakInfo?`<div style="margin-bottom:6px;padding:8px 10px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text-secondary);line-height:1.6">${opts.breakInfo}</div>`:'';
+    const _brkSectionFull=opts?.withBreak?`<div style="margin-top:10px">${_brkInfoLine}<div style="margin-bottom:4px;font-size:12px;color:#6b7280;display:flex;align-items:center;gap:6px">휴게시간(분) <span id="cmodal-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">자동: ${_autoBrkInit}분</span> <span style="color:var(--text-muted);font-size:10px">— 비워두면 자동값 적용</span></div><input type="number" class="form-input" id="cmodal-break" min="0" max="240" placeholder="${_autoBrkInit}분 (자동) — 비워두면 적용" value="${_initBrk}" style="font-family:'DM Mono',monospace"></div>`:'';
     if(opts?.singleTime){
-      wrap.innerHTML=`<div style="margin-bottom:6px;font-size:12px;color:#6b7280">${opts.label||'시각'}</div>${mkTimeSelect5('cmodal-time1',defaultEnd||defaultStart||'18:00')}`;
+      wrap.innerHTML=`<div style="margin-bottom:6px;font-size:12px;color:#6b7280">${opts.label||'시각'}</div>${mkTimeSelect5('cmodal-time1',defaultEnd||defaultStart||'18:00')}${_brkSectionFull}`;
     }else{
-      // ⭐ v10: withBreak 옵션이 있으면 휴게시간 입력 칸 추가
-      const breakSection=opts?.withBreak?`<div style="margin-top:10px"><div style="margin-bottom:4px;font-size:12px;color:#6b7280">휴게시간(분) <span style="color:var(--text-muted);font-size:10px">— 비워두면 자동 (4h미만 0분, 4-9h 30분, 9h+ 60분)</span></div><input type="number" class="form-input" id="cmodal-break" min="0" max="240" placeholder="자동" style="font-family:'DM Mono',monospace"></div>`:'';
-      wrap.innerHTML=`<div style="display:flex;gap:8px"><div style="flex:1"><div style="margin-bottom:4px;font-size:12px;color:#6b7280">출근 시각</div>${mkTimeSelect5('cmodal-time1',defaultStart||'09:00')}</div><div style="flex:1"><div style="margin-bottom:4px;font-size:12px;color:#6b7280">퇴근 시각</div>${mkTimeSelect5('cmodal-time2',defaultEnd||'18:00')}</div></div>${breakSection}`;
+      wrap.innerHTML=`<div style="display:flex;gap:8px"><div style="flex:1"><div style="margin-bottom:4px;font-size:12px;color:#6b7280">출근 시각</div>${mkTimeSelect5('cmodal-time1',defaultStart||'09:00')}</div><div style="flex:1"><div style="margin-bottom:4px;font-size:12px;color:#6b7280">퇴근 시각</div>${mkTimeSelect5('cmodal-time2',defaultEnd||'18:00')}</div></div>${_brkSectionFull}`;
     }
     const btns=document.getElementById('cmodal-btns');
     btns.innerHTML='';
@@ -4229,7 +4267,13 @@ function timePromptModal(title,defaultStart,defaultEnd,opts){
         }
       }
       el.style.display='none';wrap.style.display='none';
-      resolve(opts?.singleTime?t1:{start:t1,end:t2,customBreak:breakMin});
+      // ⭐ v10.8.8: singleTime + withBreak이면 객체로 반환
+      if(opts?.singleTime){
+        if(opts?.withBreak)resolve({time:t1,customBreak:breakMin});
+        else resolve(t1);
+      }else{
+        resolve({start:t1,end:t2,customBreak:breakMin});
+      }
     };
     btns.appendChild(cancelBtn);btns.appendChild(okBtn);
     el.style.display='flex';
@@ -4255,6 +4299,10 @@ async function waQuickAdjTime(dk,mode,schedStart,schedEnd){
   const p=AP[WA_PID];if(!p)return;
   let title='',msg='',label='',defaultT='';
   let phrase='추가근무';
+  // ⭐ v10.8.8: 연장근무 등록 시 휴게시간 입력 (김영훈 5/12 케이스 빈틈 해결)
+  // - 본 직무 휴게가 새 합산 시간에 부족할 때를 자동 제안으로 안내
+  // - 사용자가 실 운영(점심+간식 등)에 맞춰 수정 가능
+  const isExt=(mode==='end-late'||mode==='start-early');
   if(mode==='end-late'){
     title='연장근무 (퇴근 연장)';msg=`${dk}\n기존 퇴근 시각: ${schedEnd}\n늦게까지 근무\n\n⚠ 단순히 매일 퇴근 시간을 바꾸려면\n   → [🔄 영구 변경] 또는 [🔁 기간 교체] 사용하세요`;label='연장 퇴근 시각';defaultT=schedEnd;phrase='추가근무';
   }else if(mode==='start-early'){
@@ -4264,8 +4312,34 @@ async function waQuickAdjTime(dk,mode,schedStart,schedEnd){
   }else if(mode==='start-late'){
     title='지각 예약';msg=`${dk}\n기존 출근 시각: ${schedStart}\n늦게 출근`;label='지각 출근 시각';defaultT=schedStart;phrase='지각';
   }
-  const newT=await timePromptModal(title,null,defaultT,{singleTime:true,label,msg});
+  // ⭐ v10.8.8: 연장근무용 초기 휴게 자동 계산 헬퍼
+  // 기준: 본 직무 customBreak(있으면) vs 신규 합산시간의 자동 휴게 중 큰 값
+  const _calcExtBreak=(newStart,newEnd)=>{
+    const totalM=toM(newEnd)-toM(newStart);
+    if(totalM<=0)return 60;
+    const auto=_autoBreakMin(totalM);
+    const cb=(p.customBreak!==undefined&&p.customBreak!==null)?p.customBreak:0;
+    return Math.max(auto,cb);
+  };
+  // 모달 옵션: 연장근무면 휴게 입력 추가
+  let modalOpts={singleTime:true,label,msg};
+  if(isExt){
+    // 초기 자동 휴게: 시간이 정해지기 전이라 schedStart~schedEnd 기준 + defaultT 적용
+    const previewStart=mode==='start-early'?defaultT:schedStart;
+    const previewEnd=mode==='end-late'?defaultT:schedEnd;
+    const autoBrkInit=_calcExtBreak(previewStart,previewEnd);
+    // 본 직무 휴게 + 합산 시간 안내
+    const totalM=toM(previewEnd)-toM(previewStart);
+    const baseBrk=(p.customBreak!==undefined&&p.customBreak!==null)?p.customBreak:'없음';
+    modalOpts.withBreak=true;
+    modalOpts.autoBreak=autoBrkInit;
+    modalOpts.breakInfo=`<div style="font-weight:600;color:var(--text-secondary);margin-bottom:4px">💡 휴게시간 안내</div>본 직무 휴게: <b>${baseBrk}${baseBrk==='없음'?'':'분'}</b> · 합산 시간: <b>${Math.floor(totalM/60)}h ${totalM%60}분</b><br>법정 자동 휴게: <b>${autoBrkInit}분</b> (4h초과 30분 / 8h초과 60분)<br><span style="color:#c2410c">⚠ 실제 휴게(점심+간식 등)에 맞춰 수정해주세요</span>`;
+  }
+  const result=await timePromptModal(title,null,defaultT,modalOpts);
+  if(!result)return;
+  const newT=isExt?(result?.time):result;
   if(!newT)return;
+  const newBrk=isExt?(result?.customBreak):null;
   // 검증
   if(mode==='end-late'&&toM(newT)<=toM(schedEnd)){ST('기존 퇴근 시각보다 늦어야 합니다');return;}
   if(mode==='start-early'&&toM(newT)>=toM(schedStart)){ST('기존 출근 시각보다 일러야 합니다');return;}
@@ -4276,11 +4350,19 @@ async function waQuickAdjTime(dk,mode,schedStart,schedEnd){
   ad.stdPhrase=phrase;
   if(mode==='end-late'||mode==='end-early')ad.adjustedEnd=newT;
   if(mode==='start-early'||mode==='start-late')ad.adjustedStart=newT;
+  // ⭐ v10.8.8: 연장근무 휴게 저장 (명시값만)
+  if(isExt&&newBrk!==null&&newBrk!==undefined){
+    ad.adjustedBreak=newBrk;
+  }else if(isExt){
+    // 빈칸 → 자동값 적용을 위해 필드 제거
+    delete ad.adjustedBreak;
+  }
   ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;
   const memoMap={'end-late':'달력에서 연장근무(퇴근) 예약','start-early':'달력에서 연장근무(출근) 예약','end-early':'달력에서 조기퇴근 예약','start-late':'달력에서 지각 예약'};
-  ad.memoText=memoMap[mode];
+  const brkMemo=(isExt&&newBrk!==null&&newBrk!==undefined)?` (휴게 ${newBrk}분)`:'';
+  ad.memoText=memoMap[mode]+brkMemo;
   const h=ad.history||[];
-  h.push({phrase,adjStart:ad.adjustedStart||null,adjEnd:ad.adjustedEnd||null,memo:ad.memoText,by:CU.name,at:`${kstLabel()} ${kstNow()}`});
+  h.push({phrase,adjStart:ad.adjustedStart||null,adjEnd:ad.adjustedEnd||null,adjBreak:isExt?(newBrk!==null&&newBrk!==undefined?newBrk:null):null,memo:ad.memoText,by:CU.name,at:`${kstLabel()} ${kstNow()}`});
   ad.history=h;
   await set(ar,ad);
   SL(false);ST('예약 완료');WA_CACHED_KEY=null;waRenderCal();
@@ -5347,10 +5429,11 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     const dw=DM[new Date(dt+'T00:00:00+09:00').getDay()];
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dt);
     const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dt);
-    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
+    const _pEffBase={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
+    const a=attByDate[dt]?.[pid]||{};
+    const pEff=_applyExtToPEff(_pEffBase,a);
     if(p.joinDate&&dt<p.joinDate){days.push({dt,h:0,attended:false,offDay:true});continue;}
     if(p.leaveDate&&dt>p.leaveDate){days.push({dt,h:0,attended:false,offDay:true});continue;}
-    const a=attByDate[dt]?.[pid]||{};
     const isPlnAbs=isPlannedAbsent(p,dt);
     const a_in=a.adjustedStart||a.inTime;
     const a_out=a.adjustedEnd||a.outTime;
