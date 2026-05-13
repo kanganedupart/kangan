@@ -647,15 +647,20 @@ function calcDayPay(p,date,realH){
     return{pay,basePay:pay,overtimePay:0,holidayPay:0,normalH:realH,overtimeH:0};
   }
   // 일반 (관리/기타): 시간당 시급
+  // ⭐ v10.8.7-fix3: 표시 시수 = 페이 시수 (안녕님 정책)
+  //   - 화면 fmtH 표시값 (소수 1자리 반올림) 그대로 사용
+  //   - 예: 7.983h → 표시 8.0h → 페이 8.0 × 시급
+  //   - 조교 정책(0.5T 올림 × 시급)과 일관
+  const realHDisp = Math.round(realH * 10) / 10;
   const isHol=isHoliday(date);
   if(isHol){
     // 공휴일 1.5배 (시간 무관)
-    const pay=Math.ceil(wage*realH*1.5);
-    return{pay,basePay:Math.ceil(wage*realH),overtimePay:0,holidayPay:Math.ceil(wage*realH*0.5),normalH:realH,overtimeH:0};
+    const pay=Math.ceil(wage*realHDisp*1.5);
+    return{pay,basePay:Math.ceil(wage*realHDisp),overtimePay:0,holidayPay:Math.ceil(wage*realHDisp*0.5),normalH:realHDisp,overtimeH:0};
   }
   // 평일: 8시간 초과분 0.5 가산
-  const normalH=Math.min(realH,8);
-  const overtimeH=Math.max(0,realH-8);
+  const normalH=Math.min(realHDisp,8);
+  const overtimeH=Math.max(0,realHDisp-8);
   const basePay=wage*normalH;
   const overtimePay=wage*overtimeH*1.5;
   const pay=Math.ceil(basePay+overtimePay);
@@ -5306,6 +5311,17 @@ async function loadPayroll(){
   // ⭐ v10: 새 월/재계산 시 검토 상태 초기화
   PAY_REVIEWED=new Set();
   PAY_REVIEW_ISSUES=new Map();
+  // ⭐ v10.8.7-fix3: Firebase에서 저장된 검토 상태 불러오기
+  try{
+    const sn=await get(ref(db,`payroll-review/${ym}`));
+    const reviewData=sn.val()||{};
+    Object.entries(reviewData).forEach(([pid,info])=>{
+      if(info&&info.reviewed){
+        PAY_REVIEWED.add(pid);
+        if(info.issue)PAY_REVIEW_ISSUES.set(pid,info.issue);
+      }
+    });
+  }catch(e){console.error('검토 상태 불러오기 실패:',e);}
   const[y,m]=ym.split('-').map(Number);
   const monthStart=`${y}-${String(m).padStart(2,'0')}-01`;
   const lastDay=new Date(y,m,0).getDate();
@@ -5397,7 +5413,12 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     w.absent=hasUnplannedAbsent;
     if(w.totalH>=15&&!hasUnplannedAbsent){
       w.eligible=true;
-      w.bonusH=Math.round((w.totalH/3)*100)/100;
+      // ⭐ v10.8.7-fix3: 주휴수당 = min(주 시수, 40) / 5 (근로기준법, 안녕님 정책)
+      //   - 주 40시간 이상 = 8시간 지급 (상한)
+      //   - 주 30시간 = 6시간 지급
+      //   - 주 15시간 = 3시간 지급
+      //   - 옛 공식 (totalH/3) → 약 1.67배 과지급 → 법대로 최소
+      w.bonusH=Math.round((Math.min(w.totalH,40)/5)*100)/100;
     }
   });
   // 월 총 시수
@@ -5540,16 +5561,26 @@ function calcReviewReasons(r){
 window.calcReviewReasons=calcReviewReasons;
 
 // 검토 액션 (확인 완료 / 문제 있음 / 되돌리기)
-function togglePayReview(pid,action){
+// ⭐ v10.8.7-fix3: Firebase 영속화 (안녕님 정책)
+//   - 노드: payroll-review/{YYYY-MM}/{pid}
+//   - 데이터: {reviewed, issue, by, at}
+async function togglePayReview(pid,action){
+  // 현재 정산 월 확인
+  const ym=document.getElementById('payroll-ym')?.value||kstDate().slice(0,7);
+  const refPath=`payroll-review/${ym}/${pid}`;
+  const meta={by:CU?.name||'',at:`${kstLabel()} ${kstNow()}`};
   if(action==='ok'){
     PAY_REVIEWED.add(pid);
     PAY_REVIEW_ISSUES.delete(pid);
+    try{await set(ref(db,refPath),{reviewed:true,issue:null,...meta});}catch(e){console.error(e);}
   }else if(action==='issue'){
-    PAY_REVIEWED.add(pid); // 처리 완료로는 침
+    PAY_REVIEWED.add(pid);
     PAY_REVIEW_ISSUES.set(pid,'문제 있음');
+    try{await set(ref(db,refPath),{reviewed:true,issue:'문제 있음',...meta});}catch(e){console.error(e);}
   }else if(action==='undo'){
     PAY_REVIEWED.delete(pid);
     PAY_REVIEW_ISSUES.delete(pid);
+    try{await set(ref(db,refPath),null);}catch(e){console.error(e);}
   }
   renderPayroll();
 }
@@ -5613,22 +5644,22 @@ function renderPayroll(){
 <div class="section-card" style="padding:0;margin-bottom:14px;overflow:hidden">
   <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:0">
     <div style="padding:18px 20px;border-right:1px solid var(--border-light)">
-      <div style="font-size:11px;color:var(--text-secondary);font-weight:600;letter-spacing:0.3px;margin-bottom:6px">정산 대상</div>
-      <div style="font-size:22px;font-weight:700;color:var(--text-primary)">${filtered.length}<span style="font-size:13px;color:var(--text-muted);margin-left:4px">명</span></div>
+      <div style="font-size:11px;color:var(--text-secondary);font-weight:500;letter-spacing:0.3px;margin-bottom:6px">정산 대상</div>
+      <div style="font-size:20px;font-weight:500;color:var(--text-primary)">${filtered.length}<span style="font-size:12px;color:var(--text-muted);margin-left:4px;font-weight:400">명</span></div>
     </div>
-    <div style="padding:18px 20px;border-right:1px solid var(--border-light);${reviewNeeded.length>0&&!allReviewed?'background:#fef2f2':allReviewed&&reviewNeeded.length>0?'background:#f0fdf4':''}">
-      <div style="font-size:11px;color:${allReviewed&&reviewNeeded.length>0?'#15803d':reviewNeeded.length>0?'#b91c1c':'var(--text-secondary)'};font-weight:600;letter-spacing:0.3px;margin-bottom:6px">검토 진행</div>
-      <div style="font-size:22px;font-weight:700;color:${allReviewed&&reviewNeeded.length>0?'#15803d':reviewNeeded.length>0?'#b91c1c':'var(--text-primary)'}">${reviewDone.length}/${reviewNeeded.length}<span style="font-size:13px;color:var(--text-muted);margin-left:4px">${allReviewed&&reviewNeeded.length>0?'✓ 완료':reviewNeeded.length>0?'명 검토 필요':'검토 항목 없음'}</span></div>
-      ${reviewNeeded.length>0?`<div style="height:4px;background:#e5e7eb;border-radius:2px;margin-top:6px;overflow:hidden"><div style="height:100%;background:${allReviewed?'#16a34a':'#dc2626'};width:${reviewProgress}%;transition:width 0.3s"></div></div>`:''}
+    <div style="padding:18px 20px;border-right:1px solid var(--border-light);${reviewNeeded.length>0&&!allReviewed?'background:#fafafa':allReviewed&&reviewNeeded.length>0?'background:#f6faf6':''}">
+      <div style="font-size:11px;color:${allReviewed&&reviewNeeded.length>0?'#4a7d4a':reviewNeeded.length>0?'#9b6b6b':'var(--text-secondary)'};font-weight:500;letter-spacing:0.3px;margin-bottom:6px">검토 진행</div>
+      <div style="font-size:20px;font-weight:500;color:${allReviewed&&reviewNeeded.length>0?'#4a7d4a':reviewNeeded.length>0?'#9b6b6b':'var(--text-primary)'}">${reviewDone.length}/${reviewNeeded.length}<span style="font-size:12px;color:var(--text-muted);margin-left:4px;font-weight:400">${allReviewed&&reviewNeeded.length>0?'✓ 완료':reviewNeeded.length>0?'명 검토 필요':'검토 항목 없음'}</span></div>
+      ${reviewNeeded.length>0?`<div style="height:3px;background:#eee;border-radius:2px;margin-top:6px;overflow:hidden"><div style="height:100%;background:${allReviewed?'#7fb87f':'#b58787'};width:${reviewProgress}%;transition:width 0.3s"></div></div>`:''}
     </div>
-    <div style="padding:18px 20px;border-right:1px solid var(--border-light);background:#fffbeb">
-      <div style="font-size:11px;color:#92400e;font-weight:600;letter-spacing:0.3px;margin-bottom:6px">⚡ 가산 합계 <span style="background:#fff;border:1px solid #fcd34d;color:#92400e;padding:1px 6px;border-radius:6px;font-size:9px">공휴일 ${sumHolidayCnt} / 평일 ${sumOverCnt}</span></div>
-      <div style="font-size:22px;font-weight:700;color:#92400e">${fmt(sumExtra)}<span style="font-size:13px;color:#78350f;margin-left:4px">원</span></div>
+    <div style="padding:18px 20px;border-right:1px solid var(--border-light)">
+      <div style="font-size:11px;color:var(--text-secondary);font-weight:500;letter-spacing:0.3px;margin-bottom:6px">가산 합계 <span style="background:#fafafa;border:1px solid #e5e5e5;color:var(--text-secondary);padding:1px 6px;border-radius:4px;font-size:9px;font-weight:400">공휴일 ${sumHolidayCnt} / 평일 ${sumOverCnt}</span></div>
+      <div style="font-size:20px;font-weight:500;color:var(--text-primary)">${fmt(sumExtra)}<span style="font-size:12px;color:var(--text-muted);margin-left:4px;font-weight:400">원</span></div>
     </div>
-    <div style="padding:18px 20px;background:linear-gradient(135deg,#1e3a8a,#3b82f6);color:#fff">
-      <div style="font-size:11px;opacity:.85;font-weight:600;letter-spacing:0.3px;margin-bottom:6px">${hasIssueRows?'송금 진행':'총 지급액'}</div>
-      <div style="font-size:22px;font-weight:700">${fmt(sumOkPay)}<span style="font-size:13px;opacity:.85;margin-left:4px">원</span></div>
-      ${hasIssueRows?`<div style="font-size:10px;opacity:.85;margin-top:6px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.25);display:flex;justify-content:space-between;gap:6px"><span>⚠ 보류 ${issueRows.length}명</span><span style="font-family:'DM Mono',monospace">${fmt(sumIssuePay)}원</span></div>`:''}
+    <div style="padding:18px 20px;background:#f6f7f8">
+      <div style="font-size:11px;color:var(--text-secondary);font-weight:500;letter-spacing:0.3px;margin-bottom:6px">${hasIssueRows?'송금 진행':'총 지급액'}</div>
+      <div style="font-size:20px;font-weight:500;color:var(--text-primary)">${fmt(sumOkPay)}<span style="font-size:12px;color:var(--text-muted);margin-left:4px;font-weight:400">원</span></div>
+      ${hasIssueRows?`<div style="font-size:10px;color:var(--text-muted);margin-top:6px;padding-top:6px;border-top:1px solid #e5e5e5;display:flex;justify-content:space-between;gap:6px"><span>보류 ${issueRows.length}명</span><span style="font-family:'DM Mono',monospace">${fmt(sumIssuePay)}원</span></div>`:''}
     </div>
   </div>
 </div>`;
@@ -5642,12 +5673,12 @@ function renderPayroll(){
   let html='';
   // ── 검토 필요 섹션 ──
   if(reviewNeeded.length>0){
-    html+=`<div style="background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:14px;margin-bottom:14px">
+    html+=`<div style="background:#fafafa;border:1px solid #d4d4d4;border-radius:8px;padding:14px;margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-        <span style="font-size:18px">⚠</span>
-        <span style="font-size:15px;font-weight:700;color:#b91c1c">검토 필요 (${reviewNeeded.length}명)</span>
-        <span style="font-size:11px;color:#7f1d1d">${reviewDone.length}명 검토 완료 / ${reviewPending.length}명 남음</span>
-        <span style="margin-left:auto;font-size:11px;color:#7f1d1d">송금 전 반드시 확인하세요</span>
+        <span style="font-size:14px;color:#9b6b6b">⚠</span>
+        <span style="font-size:14px;font-weight:500;color:var(--text-primary)">검토 필요 (${reviewNeeded.length}명)</span>
+        <span style="font-size:11px;color:var(--text-muted)">${reviewDone.length}명 검토 완료 / ${reviewPending.length}명 남음</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--text-muted)">송금 전 반드시 확인하세요</span>
       </div>`;
     // 미완료 카드들
     reviewPending.forEach(r=>{
@@ -6835,6 +6866,7 @@ async function exportPayrollXLSX(){
     _xlBuildSummary(wb,ym,year,month,rows);
     _xlBuildDetail(wb,ym,year,month,rows);
     _xlBuildDailyHours(wb,ym,year,month,lastDay,rows);
+    _xlBuildDailyPay(wb,ym,year,month,lastDay,rows);
     _xlBuildBonusVerify(wb,ym,year,month,rows);
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
@@ -7174,7 +7206,124 @@ function _xlBuildDailyHours(wb,ym,year,month,lastDay,rows){
   });
 }
 
-// === Sheet 4: 가산 검증 ===
+// === Sheet 4: 일별 페이표 (v10.8.7-fix3) ===
+// === Sheet 4: 일별 시수·페이 통합 (v10.8.7-fix3) ===
+// 안녕님 정책: 시수 검증과 페이 검증을 한 시트에서 동시에 가능
+// 셀 구조: 위에 시수(8h), 아래에 페이(84,000원) — 줄바꿈으로 두 줄 표시
+function _xlBuildDailyPay(wb,ym,year,month,lastDay,rows){
+  const ws=wb.addWorksheet('일별 시수·페이',{views:[{state:'frozen',xSplit:3,ySplit:4}]});
+  const cols=[{width:7},{width:10},{width:11}];
+  for(let d=1;d<=lastDay;d++)cols.push({width:11});
+  cols.push({width:14});cols.push({width:14});
+  ws.columns=cols;
+  // 제목
+  const totC=3+lastDay+2;
+  const lastL=(()=>{let n=totC,s='';while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;})();
+  ws.mergeCells(`A1:${lastL}1`);
+  const tc=ws.getCell('A1');
+  tc.value=`일별 시수·페이 통합표 — ${year}년 ${month}월`;
+  _xlT(tc,{size:13,color:_XL_T.textPrimary,align:'left',border:false});
+  ws.getRow(1).height=26;
+  // 안내
+  ws.mergeCells(`A2:${lastL}2`);
+  const sc=ws.getCell('A2');
+  sc.value='각 셀: 위=시수(h/T), 아래=페이(원). 공휴일 ×1.5 자동 적용. 일요일/공휴일=옅은 빨강, 토요일=옅은 파랑.';
+  _xlT(sc,{size:9,color:_XL_T.textMuted,align:'left',bg:_XL_T.headerBg,border:false});
+  ws.getRow(2).height=18;
+  // R3-R4 헤더 2줄 (차분한 톤 - bold 없음)
+  const dowMap=['일','월','화','수','목','금','토'];
+  ['카테고리','직무','이름'].forEach((h,i)=>{
+    ws.mergeCells(3,i+1,4,i+1);
+    const c=ws.getCell(3,i+1);c.value=h;
+    _xlT(c,{size:10,bg:_XL_T.headerBg,color:_XL_T.headerText,align:'center'});
+  });
+  for(let d=1;d<=lastDay;d++){
+    const dt=new Date(year,month-1,d);
+    const dow=dowMap[dt.getDay()];
+    const dtStr=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const isHol=isHoliday(dtStr);
+    const isSun=dt.getDay()===0,isSat=dt.getDay()===6;
+    let bg=_XL_T.headerBg,color=_XL_T.headerText;
+    if(isHol||isSun){bg=_XL_T.holidayBg;color=_XL_T.holidayText;}
+    else if(isSat){bg=_XL_T.weekBg;color=_XL_T.weekText;}
+    const c3=ws.getCell(3,3+d);c3.value=dow;
+    _xlT(c3,{size:9,bg,color,align:'center'});
+    const c4=ws.getCell(4,3+d);c4.value=d;
+    _xlT(c4,{size:10,bg,color,align:'center'});
+  }
+  // 합계 헤더 (시수, 페이 분리) - 차분한 톤
+  ws.mergeCells(3,3+lastDay+1,4,3+lastDay+1);
+  const cTh=ws.getCell(3,3+lastDay+1);cTh.value='월 시수';
+  _xlT(cTh,{size:10,bg:_XL_T.bonusBg,color:_XL_T.bonusText,align:'center'});
+  ws.mergeCells(3,3+lastDay+2,4,3+lastDay+2);
+  const cTp=ws.getCell(3,3+lastDay+2);cTp.value='월 페이';
+  _xlT(cTp,{size:10,bg:_XL_T.bonusBg,color:_XL_T.bonusText,align:'center'});
+  ws.getRow(3).height=20;
+  ws.getRow(4).height=20;
+  // 데이터
+  const catLbl={mgmt:'관리',tutor:'조교',etc:'기타'};
+  const order=['mgmt','tutor','etc'];
+  let r=5;
+  order.forEach(cat=>{
+    const grp=rows.filter(x=>x.cat===cat);
+    if(!grp.length)return;
+    grp.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+    grp.forEach(row=>{
+      ws.getCell(r,1).value=catLbl[cat];
+      ws.getCell(r,2).value=row.role;
+      ws.getCell(r,3).value=row.name+(row.tutorKind?` (${row.tutorKind})`:'');
+      _xlT(ws.getCell(r,1),{size:10,align:'center'});
+      _xlT(ws.getCell(r,2),{size:10,align:'center'});
+      _xlT(ws.getCell(r,3),{size:10,align:'left',indent:1});
+      // 일자별: 시수 + 페이 (두 줄로 표시)
+      let monthPay=0;
+      row.days.forEach(d=>{
+        const day=parseInt(d.dt.slice(8,10));
+        const c=ws.getCell(r,3+day);
+        const dt=new Date(d.dt+'T00:00:00+09:00');
+        const isHol=isHoliday(d.dt);
+        const isSun=dt.getDay()===0,isSat=dt.getDay()===6;
+        let bg=undefined;
+        if(isHol||isSun)bg=_XL_T.holidayBg;
+        else if(isSat)bg=_XL_T.weekBg;
+        if(d.h>0){
+          const pForCalc={cat:row.cat,wage:d.wage||row.wage};
+          const pay=calcDayPay(pForCalc,d.dt,d.h).pay;
+          monthPay+=pay;
+          // 시수와 페이를 줄바꿈으로 한 셀에 표시 (가는 글씨, 시수 엑셀 톤)
+          const hLabel=row.cat==='tutor'?(Math.ceil(Math.abs(d.h*60/70)*2-0.001)/2)+'T':(Math.round(d.h*10)/10)+'h';
+          c.value=`${hLabel}\n${pay.toLocaleString()}원`;
+          c.alignment={vertical:'middle',horizontal:'center',wrapText:true};
+          c.font={size:9,name:'Pretendard,맑은 고딕',color:{argb:'FF3F3F3F'}};
+          if(bg)c.fill={type:'pattern',pattern:'solid',fgColor:{argb:bg.replace('#','FF')}};
+          c.border={top:{style:'thin',color:{argb:'FFEFEFEF'}},left:{style:'thin',color:{argb:'FFEFEFEF'}},bottom:{style:'thin',color:{argb:'FFEFEFEF'}},right:{style:'thin',color:{argb:'FFEFEFEF'}}};
+        }else if(d.phrase==='결근'){
+          c.value='결';
+          _xlT(c,{size:10,align:'center',color:_XL_T.absentText,bg:_XL_T.absentBg});
+        }else if(d.phrase==='연차'){
+          c.value='연';
+          _xlT(c,{size:10,align:'center',color:_XL_T.bonusText,bg:_XL_T.bonusBg});
+        }else if(d.phrase==='반차'){
+          c.value='반';
+          _xlT(c,{size:10,align:'center',color:_XL_T.bonusText,bg:_XL_T.bonusBg});
+        }else{
+          _xlT(c,{size:10,align:'center',bg});
+        }
+      });
+      // 월 합계 (시수, 페이 분리) - 차분한 톤
+      const cTh=ws.getCell(r,3+lastDay+1);
+      cTh.value=row.cat==='tutor'?(row.monthHDisp||0)+'T':(Math.round((row.monthH||0)*10)/10)+'h';
+      _xlT(cTh,{size:10,bg:_XL_T.bonusBg,color:_XL_T.bonusText,align:'center'});
+      const cTp=ws.getCell(r,3+lastDay+2);
+      cTp.value=monthPay;
+      _xlT(cTp,{size:10,bg:_XL_T.bonusBg,color:_XL_T.bonusText,align:'right',numFmt:'#,##0'});
+      ws.getRow(r).height=32; // 두 줄 표시를 위해 행 높이 ↑
+      r++;
+    });
+  });
+}
+
+// === Sheet 5: 가산 검증 ===
 function _xlBuildBonusVerify(wb,ym,year,month,rows){
   const ws=wb.addWorksheet('가산검증',{views:[{state:'frozen',ySplit:4}]});
   ws.columns=[
