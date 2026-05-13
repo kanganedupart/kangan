@@ -5384,7 +5384,10 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
       if(a.stdPhrase==='반차')h=h/2;
       attended=true;
     }
-    days.push({dt,h:Math.round(h*100)/100,attended,plnAbs:isPlnAbs,phrase:a.stdPhrase,wage:wageAt(p,dt),att:a,sched:{start:pEff.start,end:pEff.end,customBreak:pEff.customBreak}});
+    // ⭐ v10.8.7-fix3: d.h를 소수 1자리로 저장 → 모든 시트 자동 일관
+    //   - 시수확인 화면 = 일별시수 시트 = 통합 시트 = 정산요약 = 직원별상세
+    //   - 예: 2.983h → 3.0h (시수확인과 동일)
+    days.push({dt,h:Math.round(h*10)/10,attended,plnAbs:isPlnAbs,phrase:a.stdPhrase,wage:wageAt(p,dt),att:a,sched:{start:pEff.start,end:pEff.end,customBreak:pEff.customBreak}});
   }
   // 주별 그룹 (일~토)
   const weeks=[];
@@ -5426,7 +5429,7 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
   // ⭐ v10.8.1: 표시용 월 시수 — 사용자 룰 (각 일자 표시 T를 그대로 합)
   // 조교는 일별 0.5T 올림한 값을 합 → 시수확인 표/명세서에 표시
   // 예: 5/1 230분→3.5T, 5/2 190분→3T → 합 6.5T (분 합산 후 변환은 6T가 나오는데, 사용자 정책은 6.5T)
-  // 일반(관리/기타)은 시간 단위 그대로 합
+  // 일반(관리/기타)은 일별 표시값(소수 1자리) 그대로 합 — v10.8.7-fix3 안녕님 정책
   const isTutorCat=p.cat==='tutor';
   let monthHDisp;
   if(isTutorCat){
@@ -5441,7 +5444,14 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     },0);
     monthHDisp=Math.round(monthHDisp*100)/100; // 부동소수 정리
   }else{
-    monthHDisp=monthH;
+    // ⭐ v10.8.7-fix3: 일반도 일별 표시값(Math.round(h*10)/10) 합
+    //   - 시수확인 화면 = 직원별상세 시트 = 통합 시트 일치
+    //   - 예: 일별 3h × 9일 + 3h(공휴일) = 30h (29.98 X)
+    monthHDisp=days.reduce((sum,d)=>{
+      if(!d.h||d.future||d.offDay)return sum;
+      return sum+Math.round(d.h*10)/10;
+    },0);
+    monthHDisp=Math.round(monthHDisp*100)/100;
   }
   // 월 60h 이상 조건 체크
   const meetMonthly=monthH>=60;
@@ -6767,7 +6777,7 @@ function exportPayrollCSV(){
   const{ym,rows}=PAY_DATA;
   const h='카테고리,직무,종류,이름,시급,단위,월시수,월60h충족,주휴수당시수,기본급,주휴수당,공휴일가산건수,평일0.5가산건수,가산합계,총지급';
   const catLbl={mgmt:'관리',tutor:'조교',etc:'기타'};
-  const data=rows.map(r=>[catLbl[r.cat]||r.cat,r.role,r.tutorKind||'',r.name,r.wage,r.isT?'T':'시간',(r.cat==='tutor'?(r.monthHDisp||0):r.monthH),r.meetMonthly?'O':'X',r.totalBonusH,r.basePay,r.bonusPay,r.holidayCnt||0,r.overtimeCnt||0,r.bonusSum||0,r.totalPay].map(v=>`"${v}"`).join(',')).join('\n');
+  const data=rows.map(r=>[catLbl[r.cat]||r.cat,r.role,r.tutorKind||'',r.name,r.wage,r.isT?'T':'시간',(r.monthHDisp!==undefined?r.monthHDisp:r.monthH),r.meetMonthly?'O':'X',r.totalBonusH,r.basePay,r.bonusPay,r.holidayCnt||0,r.overtimeCnt||0,r.bonusSum||0,r.totalPay].map(v=>`"${v}"`).join(',')).join('\n');
   const b=new Blob(['\uFEFF'+h+'\n'+data],{type:'text/csv;charset=utf-8;'});
   const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`강안교육_급여정산_${ym}.csv`;a.click();URL.revokeObjectURL(u);
 }
@@ -7040,8 +7050,8 @@ function _xlBuildDetail(wb,ym,year,month,rows){
     if(!grp.length)return;
     grp.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
     grp.forEach(row=>{
-      // ⭐ v10.8.1: 조교는 일별 표시 T 합 (사용자 룰)
-      const monthHForDisp=row.cat==='tutor'?(row.monthHDisp||0):(row.monthH||0);
+      // ⭐ v10.8.7-fix3: 일반/조교 모두 monthHDisp 사용 (시수확인 화면과 일치)
+      const monthHForDisp=row.monthHDisp!==undefined?row.monthHDisp:row.monthH;
       [n++,catLbl[cat],row.role,row.name+(row.tutorKind?` (${row.tutorKind})`:''),row.isT?'T':'h',
        row.wage,monthHForDisp,row.totalBonusH||0,
        row.basePay,row.bonusPay,row.bonusSum||0,row.totalPay].forEach((v,i)=>{
@@ -7065,9 +7075,8 @@ function _xlBuildDetail(wb,ym,year,month,rows){
     const sBase=grp.reduce((s,x)=>s+x.basePay,0);
     const sBonus=grp.reduce((s,x)=>s+x.bonusPay,0);
     const sExtra=grp.reduce((s,x)=>s+(x.bonusSum||0),0);
-    const sH=cat==='tutor'
-      ?Math.round(grp.reduce((s,x)=>s+(x.monthHDisp||0),0)*100)/100
-      :Math.round(grp.reduce((s,x)=>s+(x.monthH||0),0)*100)/100;
+    // ⭐ v10.8.7-fix3: 일반/조교 모두 monthHDisp 사용
+    const sH=Math.round(grp.reduce((s,x)=>s+(x.monthHDisp!==undefined?x.monthHDisp:(x.monthH||0)),0)*100)/100;
     const sBh=Math.round(grp.reduce((s,x)=>s+(x.totalBonusH||0),0)*100)/100;
     ws.mergeCells(r,1,r,6);
     const lc=ws.getCell(r,1);
@@ -7079,14 +7088,14 @@ function _xlBuildDetail(wb,ym,year,month,rows){
     });
     ws.getRow(r).height=22;r++;
   });
-  // 총합계 — ⭐ v10.8.1: 사용자 룰 (조교 표시 T 합 + 일반 시간 합)
+  // 총합계 — ⭐ v10.8.7-fix3: 일반/조교 모두 monthHDisp 사용 (시수확인 화면과 일치)
   const tBase=rows.reduce((s,x)=>s+x.basePay,0);
   const tBonus=rows.reduce((s,x)=>s+x.bonusPay,0);
   const tExtra=rows.reduce((s,x)=>s+(x.bonusSum||0),0);
   const tutorRowsX=rows.filter(x=>x.cat==='tutor');
   const otherRowsX=rows.filter(x=>x.cat!=='tutor');
   const tHTutor=Math.round(tutorRowsX.reduce((s,x)=>s+(x.monthHDisp||0),0)*100)/100;
-  const tHOther=Math.round(otherRowsX.reduce((s,x)=>s+(x.monthH||0),0)*100)/100;
+  const tHOther=Math.round(otherRowsX.reduce((s,x)=>s+(x.monthHDisp!==undefined?x.monthHDisp:(x.monthH||0)),0)*100)/100;
   // 합계 셀에 단일 숫자만 들어가야 하니, 조교+일반 분리. 단일 숫자면 일반 또는 조교만 합산
   const tH=tutorRowsX.length&&otherRowsX.length?(tHTutor+tHOther):(tutorRowsX.length?tHTutor:tHOther);
   const tBh=Math.round(rows.reduce((s,x)=>s+(x.totalBonusH||0),0)*100)/100;
