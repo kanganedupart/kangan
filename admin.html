@@ -2816,7 +2816,7 @@ if(!rIsPlnAbs){
 }
 const hasOut=!!(r.att.outTime||r.att.adjustedEnd);
 const rhDisp=(rhNull||isAbsentRow||isWorking)?'-':fmtH(r.part,r.realH);
-const df=hasOut&&!isWorking?Math.round((r.realH-r.schedH)*10)/10:null;
+const df=hasOut&&!isWorking&&r.realH!==null?Math.round((r.realH-r.schedH)*10)/10:null;
 const dfDispDiff=df!==null&&fmtH(r.part,r.realH)!==fmtH(r.part,r.schedH);
 const db2=df===null||!dfDispDiff?'':df<0?`<span class="diff-minus">${fmtH(r.part,df)}</span>`:df>0?`<span class="diff-plus">+${fmtH(r.part,df)}</span>`:'';
 const procDisp=r.att.stdPhrase==='정상'?`<span style="color:#047857;font-size:11px;font-weight:600;background:#d1fae5;padding:2px 7px;border-radius:10px">정상</span>`:r.att.stdPhrase?`<span class="sbadge s-active" style="font-size:10px">${phraseLabel(r.att.stdPhrase)}</span>`:(isUnproc?(rAutoLate&&rAutoEarly?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">지각+조기</span>':rAutoLate?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">지각</span>':rAutoEarly?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:8px;margin-left:3px">조기퇴근</span>':'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span>'):'-');
@@ -4019,12 +4019,11 @@ async function waLoadAttCache(y,m){
   if(WA_CACHED_KEY===key)return;
   const lastDate=new Date(y,m+1,0).getDate();
   WA_ATT_CACHE={};
-  const today=kstDate();
+  // ⭐ v10.8.7-fix3: 미래 날짜도 로드 (조기퇴근/연장근무/지각 예약 표시 위해)
   // 병렬 로드 (Promise.all)
   const promises=[];
   for(let d=1;d<=lastDate;d++){
     const dk=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    if(dk>today)continue;
     promises.push(get(ref(db,`attendance/${dk}/${WA_PID}`)).then(sn=>{if(sn.val())WA_ATT_CACHE[dk]=sn.val();}).catch(()=>{}));
   }
   await Promise.all(promises);
