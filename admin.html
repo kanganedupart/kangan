@@ -99,7 +99,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .modal-overlay.open{display:flex;}
 .modal{background:var(--surface);border-radius:var(--rl);padding:28px;width:100%;max-width:480px;box-shadow:var(--shadow-lg);animation:slideUp .2s ease;max-height:90vh;overflow-y:auto;position:relative;}
 @keyframes slideUp{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
-.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;cursor:move;user-select:none;}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;cursor:move;user-select:none;position:sticky;top:0;background:#fff;z-index:10;padding:4px 0;}
 .modal-title{font-size:17px;font-weight:700;}
 .modal-close{width:28px;height:28px;border-radius:6px;border:none;background:var(--border-light);cursor:pointer;font-size:16px;color:var(--text-secondary);display:flex;align-items:center;justify-content:center;}
 .modal-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light);}
@@ -1362,8 +1362,10 @@ if(!isAbsent){
 const ph=e.ar?.stdPhrase||'';
 const tagStyle='font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;flex-shrink:0;';
 const tagMap={지각:`<span style="${tagStyle}color:var(--warning);background:var(--warning-light)">지각</span>`,조기퇴근:`<span style="${tagStyle}color:var(--accent);background:var(--accent-light)">조기퇴근</span>`,추가근무:`<span style="${tagStyle}color:#047857;background:#d1fae5">연장근무</span>`};
-// 추가근무 (tempDates로 등록된 날)
+// 추가근무 (tempDates로 등록된 날) — 항상 "추가근무" 배지
 const tempTag=e.isTemp?`<span style="${tagStyle}color:#7e22ce;background:#fdf4ff;border:1px solid #e9d5ff">⭐ 추가근무</span>`:'';
+// 단발근무자 배지 — 단발자에게 항상 표시 (추가와 별개)
+const casualTag=e.isCasual?`<span style="${tagStyle}color:#7e22ce;background:#fdf4ff;border:1px solid #e9d5ff">⭐ 단발</span>`:'';
 // 미래 예약 태그 (출근 전 + adjustedEnd 또는 adjustedStart 있음)
 const isPendingExt=(e.status==='pending'||!e.ar?.inTime)&&((e.ar?.adjustedEnd&&toM(e.ar.adjustedEnd)>eM)||(e.ar?.adjustedStart&&toM(e.ar.adjustedStart)<sM));
 const pendingExtTag=isPendingExt?`<span style="${tagStyle}color:#047857;background:#d1fae5">연장근무 예약</span>`:'';
@@ -1378,7 +1380,7 @@ const isPendingEarly=ph==='조기퇴근'&&e.ar?.adjustedEnd&&!e.ar?.outTime;
 const pendingLateTag=isPendingLate?`<span style="${tagStyle}color:#92400e;background:#fef3c7">지각 예약</span>`:'';
 const pendingEarlyTag=isPendingEarly?`<span style="${tagStyle}color:#92400e;background:#fef3c7">조기퇴근 예약</span>`:'';
 const tag=ph==='정상'?'':(autoEarlyDash?tagMap['조기퇴근']:((e.status==='late'||anyLateDash)?tagMap['지각']:e.status==='absent-con'?`<span style="${tagStyle}color:var(--danger);background:var(--danger-light)">결근</span>`:e.status==='absent-pln'?`<span style="${tagStyle}color:#fca5a5;background:#fff0f0">예정결근</span>`:e.status==='changed'?(tagMap[ph]||''):(pendingLateTag||pendingEarlyTag||pendingExtTag||(tagMap[ph]||''))));
-const combinedTag=tempTag+tag;
+const combinedTag=casualTag+tempTag+tag;
 // 빨간점: 미확인결근 + 10분 초과 자동감지 미처리 + 퇴근 미확인
 const dot=(e.status==='absent-unc'||autoLateDash||autoEarlyDash||e.nc)?`<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--danger);margin-left:4px;animation:pulse 1s infinite"></span>`:'';
 // 자동 감지 미처리 vs 진짜 미확인 결근 구분 (isAutoDetected는 위에서 이미 선언됨)
@@ -1814,11 +1816,16 @@ async function renderRoleCalendar(){
         if(g.isAbsent)itemCls+=' rc-is-absent';
         if(g.isPlannedAbsent)itemCls+=' rc-is-planned-absent';
         let badgeHtml='';
+        // ⭐ v10.8.7-fix3: 단발 + 추가 두 배지 모두 표시 (일관성)
         if(g.isAbsent)badgeHtml='<span class="rc-badge rc-b-absent">결근</span>';
         else if(g.isPlannedAbsent)badgeHtml='<span class="rc-badge rc-b-planned-absent">결근예정</span>';
         else if(g.isLastDay)badgeHtml='<span class="rc-badge rc-b-leave">퇴사</span>';
-        else if(g.isCasual)badgeHtml='<span class="rc-badge rc-b-casual">단발</span>';
-        else if(g.isExtra)badgeHtml='<span class="rc-badge rc-b-extra">추가</span>';
+        else{
+          const badges=[];
+          if(g.isCasual)badges.push('<span class="rc-badge rc-b-casual">단발</span>');
+          if(g.isExtra)badges.push('<span class="rc-badge rc-b-extra">추가</span>');
+          badgeHtml=badges.join('');
+        }
         const timeStr=g.times.join(' / ');
         const ttExtra=[];
         if(g.isLastDay)ttExtra.push('마지막 근무일');
@@ -1968,8 +1975,13 @@ async function exportRoleCalendarXLSX(){
         if(isAbsent)prefix='[결근] ';
         else if(isPlnAbs)prefix='[결근예정] ';
         else if(p.leaveDate===dt.ymd)prefix='[퇴사] ';
-        else if(p.isCasual)prefix='[단발] ';
-        else if(isTempOnly)prefix='[추가] ';
+        else{
+          // ⭐ v10.8.7-fix3: 단발 + 추가 동시 표시 (배지 일관성)
+          const tags=[];
+          if(p.isCasual)tags.push('[단발]');
+          if(isTempOnly)tags.push('[추가]');
+          if(tags.length)prefix=tags.join(' ')+' ';
+        }
         // ⭐ v10.8.7: 조교는 이름 뒤에 과목 표시
         const subjectStr=p.cat==='tutor'&&p.role?` (${p.role})`:'';
         return prefix+p.name+subjectStr;
@@ -2750,9 +2762,12 @@ dateList.forEach(dk=>{
   const dw=DM[new Date(dk+'T00:00:00+09:00').getDay()];
   ps.filter(p=>{
     const hasActual=!!(ad[p.id]&&ad[p.id].inTime);
-    if(!isWorkDay(p,dw,dk)&&!hasActual)return false;
+    // ⭐ v10.8.7-fix3: 단발근무자 추가근무 허용 (대시보드와 동일)
+    const hasTemp=p.tempDates&&p.tempDates.find(dt=>dt.date===dk);
+    if(!isWorkDay(p,dw,dk)&&!hasActual&&!(p.isCasual&&hasTemp))return false;
     if(p.joinDate&&dk<p.joinDate)return false;
-    if(p.leaveDate&&dk>p.leaveDate&&!hasActual)return false;
+    // 퇴사일 이후 — 단발근무자 + tempDates 있으면 허용
+    if(p.leaveDate&&dk>p.leaveDate&&!hasActual&&!(p.isCasual&&hasTemp))return false;
     if(nameFilter&&!p.name.toLowerCase().includes(nameFilter)&&!p.role.toLowerCase().includes(nameFilter))return false;
     if(catFilter&&p.cat!==catFilter)return false;
     return true;
@@ -2771,8 +2786,16 @@ SL(false);
 // working 모드: 근무이력 있는 사람만 남김 (실제 출근 or 스케줄된 근무일)
 if(statusFilter==='working'){
   const activePids=new Set(AD.filter(r=>r.att.inTime||r.realH!==null).map(r=>r.part.id));
+  // ⭐ v10.8.7-fix3: 단발자 + tempDates 있는 케이스도 포함
+  const casualWithTempPids=new Set(AD.filter(r=>{
+    if(!r.part.isCasual)return false;
+    return r.part.tempDates&&r.part.tempDates.find(td=>td.date===r.date);
+  }).map(r=>r.part.id));
   AD=AD.filter(r=>{
-    if(r.part.status==='inactive')return activePids.has(r.part.id); // 퇴사자는 실근무자만
+    if(r.part.status==='inactive'){
+      // 퇴사자: 실근무자 또는 단발자+tempDates 있을 때만 표시
+      return activePids.has(r.part.id)||casualWithTempPids.has(r.part.id);
+    }
     return true; // 재직자는 모두 (스케줄 대비 확인용)
   });
 }
@@ -2984,10 +3007,13 @@ async function exportAcctXLSX(){
       if(o.br!==false){const bc={argb:C.bd};cell.border={top:{style:'thin',color:bc},bottom:{style:'thin',color:bc},left:{style:'thin',color:bc},right:{style:'thin',color:bc}};}
       if(o.nf)cell.numFmt=o.nf;
     };
-    // 배지 텍스트 생성 (교무용: 추가/교체/연장/예정결근만)
+    // 배지 텍스트 생성 (교무용: 단발/추가/교체/연장/예정결근)
     const getBadge=(dk,pD,a,isAbs)=>{
       const b=[];
-      if(pD.tempDates&&pD.tempDates.find(td=>td.date===dk))b.push('[추가]');
+      // ⭐ v10.8.7-fix3: 단발자가 그 날 tempDates 있으면 [단발] 추가
+      const hasTemp=pD.tempDates&&pD.tempDates.find(td=>td.date===dk);
+      if(pD.isCasual&&hasTemp)b.push('[단발]');
+      if(hasTemp)b.push('[추가]');
       if(pD.scheduleReplaces&&pD.scheduleReplaces.find(sr=>dk>=sr.startDate&&dk<=sr.endDate))b.push('[교체]');
       if(a&&((a.adjustedEnd&&a.stdPhrase==='추가근무')||(a.adjustedStart&&a.stdPhrase==='추가근무'&&!a.inTime)))b.push('[연장]');
       if(!isAbs&&isPlannedAbsent(pD,dk))b.push('[예정결근]');
@@ -3897,6 +3923,8 @@ async function waRenderList(pid){
   const today=kstDate();
   el.innerHTML=head+filtered.map(e=>{
     const c=WA_COLORS[e.type];const lb=WA_LABELS[e.type];
+    // ⭐ v10.8.7-fix3: 단발자의 oneday(추가근무) 항목에 [단발] 배지 추가 표시
+    const casualLb=(e.type==='oneday'&&p.isCasual)?`<span style="font-size:10px;font-weight:700;color:#7e22ce;background:#fff;padding:2px 7px;border-radius:10px;border:1px solid #e9d5ff;margin-right:4px">⭐ 단발</span>`:'';
     const dateStr=e.startDate===e.endDate||!e.endDate?e.startDate:`${e.startDate} ~ ${e.endDate}`;
     const daysStr=(e.days||[]).length?(e.days||[]).join('·')+' &nbsp;':'';
     let timeStr='';
@@ -3948,7 +3976,7 @@ async function waRenderList(pid){
     // 작성자/등록일시 표시
     const byStr=e.by?`<span style="font-size:10px;color:var(--text-muted)">✍️ ${e.by}${e.at?` · ${e.at}`:''}</span>`:'';
     const futureBadge=isFuture?'<span style="font-size:9px;font-weight:700;color:#1d4ed8;background:#eff6ff;padding:1px 6px;border-radius:8px;border:1px solid #bfdbfe;margin-left:3px">📅 시작 예정</span>':'';
-    return `<div style="border:1px solid ${c.border};background:${c.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;${opacity}"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px"><span style="font-size:10px;font-weight:700;color:${c.text};background:#fff;padding:2px 7px;border-radius:10px;border:1px solid ${c.border}">${lb}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);flex:1">${dateStr}${e.type==='perm'&&!isFuture?' ~ 계속':''}${isPast?' (종료)':''}</span>${futureBadge}${editBtn}${delBtn}</div><div style="font-size:12px;color:${c.text}">${daysStr}${timeStr}${breakStr}${daySchStr}${memoStr}${legacy}</div>${byStr?`<div style="margin-top:3px">${byStr}</div>`:''}</div>`;
+    return `<div style="border:1px solid ${c.border};background:${c.bg};border-radius:8px;padding:8px 10px;margin-bottom:6px;${opacity}"><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:2px">${casualLb}<span style="font-size:10px;font-weight:700;color:${c.text};background:#fff;padding:2px 7px;border-radius:10px;border:1px solid ${c.border}">${lb}</span><span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted);flex:1">${dateStr}${e.type==='perm'&&!isFuture?' ~ 계속':''}${isPast?' (종료)':''}</span>${futureBadge}${editBtn}${delBtn}</div><div style="font-size:12px;color:${c.text}">${daysStr}${timeStr}${breakStr}${daySchStr}${memoStr}${legacy}</div>${byStr?`<div style="margin-top:3px">${byStr}</div>`:''}</div>`;
   }).join('');
 }
 window.waRenderList=waRenderList;
@@ -4049,9 +4077,11 @@ async function waRenderCal(){
     const isToday=dk===today;
     const joinOk=!p.joinDate||dk>=p.joinDate;
     const leaveOk=!p.leaveDate||dk<=p.leaveDate;
-    const works=joinOk&&leaveOk&&isWorkDay(p,dow,dk);
-    const absent=isPlannedAbsent(p,dk);
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dk);
+    // ⭐ v10.8.7-fix3: 단발자 + tempDates 허용 (퇴사일 이후라도)
+    const casualOk=p.isCasual&&tempDay;
+    const works=joinOk&&(leaveOk||casualOk)&&(isWorkDay(p,dow,dk)||casualOk);
+    const absent=isPlannedAbsent(p,dk);
     const ds=tempDay?{start:tempDay.start,end:tempDay.end}:getDayTime(p,dow,dk);
     const hasSchedule=works&&ds.start&&ds.end;
     const conflict=absent&&hasSchedule;
@@ -4430,7 +4460,6 @@ window.waReRenderPermAutofill=waReRenderPermAutofill;
 // 이벤트 모달 열기
 function waOpenModal(pid,type){
   WA_PID=pid;
-  const cats={perm:'영구 변경',replace:'기간 교체',absent:'결근 예정',oneday:'추가근무'};
   document.getElementById('modal-workman-title').innerHTML=`<span style="color:var(--accent)">${WA_LABELS[type]}</span> — 등록`;
   const today=kstDate();
   const DAYS=['월','화','수','목','금','토','일'];
@@ -5332,7 +5361,11 @@ async function loadPayroll(){
   const today=kstDate();
   const parts=Object.entries(AP).filter(([id,p])=>{
     if(p.joinDate&&p.joinDate>monthEnd)return false;
-    if(p.leaveDate&&p.leaveDate<monthStart)return false;
+    // ⭐ v10.8.7-fix3: 단발자 + tempDates 있으면 퇴사일 이후라도 포함
+    if(p.leaveDate&&p.leaveDate<monthStart){
+      const hasTempInMonth=p.tempDates&&p.tempDates.some(td=>td.date>=monthStart&&td.date<=monthEnd);
+      if(!(p.isCasual&&hasTempInMonth))return false;
+    }
     return true;
   });
   // 출결 데이터 일괄 수집 (병렬 처리로 속도 향상)
@@ -5735,9 +5768,12 @@ function renderPayroll(){
           <thead><tr style="background:#fafbfc"><th style="width:24px"></th><th>이름</th><th>직무</th><th style="text-align:right">시급</th><th style="text-align:right">월 시수</th><th style="text-align:right">기본급</th><th style="text-align:right">주휴수당</th><th style="text-align:right">총 지급</th><th style="width:80px;text-align:center">명세서</th></tr></thead>
           <tbody>${grp.map(r=>{
             const monthLbl=r.meetMonthly?'':`<span style="font-size:9px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;padding:1px 5px;border-radius:6px;margin-left:4px;font-weight:700">월&lt;60h</span>`;
+            // ⭐ v10.8.7-fix3: 단발자 배지 추가 표시 (다른 화면과 일관성)
+            const partInfo=AP[r.pid];
+            const casualBadge=(partInfo&&partInfo.isCasual)?`<span style="font-size:9px;color:#7e22ce;background:#fdf4ff;padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:700;border:1px solid #e9d5ff">⭐ 단발</span>`:'';
             return`<tr id="pay-row-${r.pid}" style="cursor:pointer" onclick="togglePayDetail('${r.pid}')">
               <td style="text-align:center;color:var(--text-muted);font-size:10px">▶</td>
-              <td style="font-weight:600">${r.name}${tkBadge(r)}${joinLeaveBadge(r,year,month)}</td>
+              <td style="font-weight:600">${r.name}${tkBadge(r)}${casualBadge}${joinLeaveBadge(r,year,month)}</td>
               <td><span style="color:${cof(r.role)};font-weight:600;font-size:12px">${r.role}</span></td>
               <td style="font-family:'DM Mono',monospace;text-align:right">${fmt(r.wage)}<span style="font-size:10px;color:var(--text-muted)">/${r.isT?'T':'h'}</span></td>
               <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:500">${fmtRowMonthH(r)}${monthLbl}</td>
@@ -6776,7 +6812,12 @@ function exportPayrollCSV(){
   const{ym,rows}=PAY_DATA;
   const h='카테고리,직무,종류,이름,시급,단위,월시수,월60h충족,주휴수당시수,기본급,주휴수당,공휴일가산건수,평일0.5가산건수,가산합계,총지급';
   const catLbl={mgmt:'관리',tutor:'조교',etc:'기타'};
-  const data=rows.map(r=>[catLbl[r.cat]||r.cat,r.role,r.tutorKind||'',r.name,r.wage,r.isT?'T':'시간',(r.monthHDisp!==undefined?r.monthHDisp:r.monthH),r.meetMonthly?'O':'X',r.totalBonusH,r.basePay,r.bonusPay,r.holidayCnt||0,r.overtimeCnt||0,r.bonusSum||0,r.totalPay].map(v=>`"${v}"`).join(',')).join('\n');
+  const data=rows.map(r=>{
+    // ⭐ v10.8.7-fix3: 단발자 [단발] 표시
+    const _pInf=AP[r.pid];
+    const _nm=(_pInf&&_pInf.isCasual?'[단발] ':'')+r.name;
+    return [catLbl[r.cat]||r.cat,r.role,r.tutorKind||'',_nm,r.wage,r.isT?'T':'시간',(r.monthHDisp!==undefined?r.monthHDisp:r.monthH),r.meetMonthly?'O':'X',r.totalBonusH,r.basePay,r.bonusPay,r.holidayCnt||0,r.overtimeCnt||0,r.bonusSum||0,r.totalPay].map(v=>`"${v}"`).join(',');
+  }).join('\n');
   const b=new Blob(['\uFEFF'+h+'\n'+data],{type:'text/csv;charset=utf-8;'});
   const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`강안교육_급여정산_${ym}.csv`;a.click();URL.revokeObjectURL(u);
 }
@@ -7051,7 +7092,10 @@ function _xlBuildDetail(wb,ym,year,month,rows){
     grp.forEach(row=>{
       // ⭐ v10.8.7-fix3: 일반/조교 모두 monthHDisp 사용 (시수확인 화면과 일치)
       const monthHForDisp=row.monthHDisp!==undefined?row.monthHDisp:row.monthH;
-      [n++,catLbl[cat],row.role,row.name+(row.tutorKind?` (${row.tutorKind})`:''),row.isT?'T':'h',
+      // ⭐ v10.8.7-fix3: 단발자 [단발] 표시 (다른 화면과 일관성)
+      const partInfo=AP[row.pid];
+      const casualMark=(partInfo&&partInfo.isCasual)?'[단발] ':'';
+      [n++,catLbl[cat],row.role,casualMark+row.name+(row.tutorKind?` (${row.tutorKind})`:''),row.isT?'T':'h',
        row.wage,monthHForDisp,row.totalBonusH||0,
        row.basePay,row.bonusPay,row.bonusSum||0,row.totalPay].forEach((v,i)=>{
         const c=ws.getCell(r,i+1);c.value=v;
@@ -7171,7 +7215,7 @@ function _xlBuildDailyHours(wb,ym,year,month,lastDay,rows){
     grp.forEach(row=>{
       ws.getCell(r,1).value=catLbl[cat];
       ws.getCell(r,2).value=row.role;
-      ws.getCell(r,3).value=row.name+(row.tutorKind?` (${row.tutorKind})`:'');
+      const _pInf=AP[row.pid];const _csMk=(_pInf&&_pInf.isCasual)?"[단발] ":"";ws.getCell(r,3).value=_csMk+row.name+(row.tutorKind?` (${row.tutorKind})`:"");
       _xlT(ws.getCell(r,1),{size:10,align:'center'});
       _xlT(ws.getCell(r,2),{size:10,align:'center'});
       _xlT(ws.getCell(r,3),{size:10,align:'left',indent:1});
@@ -7279,7 +7323,7 @@ function _xlBuildDailyPay(wb,ym,year,month,lastDay,rows){
     grp.forEach(row=>{
       ws.getCell(r,1).value=catLbl[cat];
       ws.getCell(r,2).value=row.role;
-      ws.getCell(r,3).value=row.name+(row.tutorKind?` (${row.tutorKind})`:'');
+      const _pInf=AP[row.pid];const _csMk=(_pInf&&_pInf.isCasual)?"[단발] ":"";ws.getCell(r,3).value=_csMk+row.name+(row.tutorKind?` (${row.tutorKind})`:"");
       _xlT(ws.getCell(r,1),{size:10,align:'center'});
       _xlT(ws.getCell(r,2),{size:10,align:'center'});
       _xlT(ws.getCell(r,3),{size:10,align:'left',indent:1});
