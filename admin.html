@@ -5268,14 +5268,14 @@ window.updateWaAutoBrk=function(){
 function mkTimeSelect5(id,val){
   let h12='',min='00',ampm='오전';
   if(val){const[hh,mm]=val.split(':').map(Number);ampm=hh<12?'오전':'오후';const h=hh%12||12;h12=String(h);
-    // 분을 10분 단위로 반올림 (표시용)
-    const minRounded=Math.round(mm/10)*10;
-    min=String(Math.min(50,minRounded)).padStart(2,'0');
+    // 분을 5분 단위로 반올림 (표시용)
+    const minRounded=Math.round(mm/5)*5;
+    min=String(Math.min(55,minRounded)).padStart(2,'0');
   }
   const ampmOpts=['오전','오후'].map(v=>`<option value="${v}"${ampm===v?' selected':''}>${v}</option>`).join('');
   const hourOpts=[1,2,3,4,5,6,7,8,9,10,11,12].map(v=>`<option value="${v}"${h12===String(v)?' selected':''}>${v}</option>`).join('');
-  // 분은 10분 단위
-  const minList=['00','10','20','30','40','50'];
+  // ⭐ v10.8.7-fix3: 분은 5분 단위 (00,05,10,...,55)
+  const minList=['00','05','10','15','20','25','30','35','40','45','50','55'];
   const minOpts=minList.map(v=>`<option value="${v}"${min===v?' selected':''}>${v}</option>`).join('');
   return`<div style="display:flex;gap:4px;align-items:center;flex-wrap:nowrap;min-width:0" id="wrap-${id}"><select class="form-select" id="${id}-ap" style="width:64px;min-width:64px;padding:6px 4px" onchange="syncTimeVal('${id}')">${ampmOpts}</select><select class="form-select" id="${id}-h" style="width:54px;min-width:54px;padding:6px 4px" onchange="syncTimeVal('${id}')">${hourOpts}</select><span style="color:var(--text-muted)">:</span><select class="form-select" id="${id}-m" style="width:54px;min-width:54px;padding:6px 4px" onchange="syncTimeVal('${id}')">${minOpts}</select><input type="hidden" id="${id}" value="${val||''}"></div>`;}
 window.mkTimeSelect5=mkTimeSelect5;
