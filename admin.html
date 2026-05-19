@@ -566,6 +566,8 @@ import{getDatabase,ref,set,get,update,onValue,push,remove}from"https://www.gstat
 const FC={apiKey:"AIzaSyDWtvRCSWWmApj0W_qTOXaJg7A2VL-vjVc",authDomain:"kanganedupart-8fb5a.firebaseapp.com",databaseURL:"https://kanganedupart-8fb5a-default-rtdb.firebaseio.com",projectId:"kanganedupart-8fb5a",storageBucket:"kanganedupart-8fb5a.firebasestorage.app",messagingSenderId:"433381824511",appId:"1:433381824511:web:3292f67b193dd0a81079ca"};
 const fbApp=initializeApp(FC);const db=getDatabase(fbApp);
 function kstDate(d){const k=new Date((d||new Date()).getTime()+9*3600000);return`${k.getUTCFullYear()}-${String(k.getUTCMonth()+1).padStart(2,'0')}-${String(k.getUTCDate()).padStart(2,'0')}`;}
+// ⭐ v10.8.7-fix3: YYYY-MM-DD 문자열에 일수 더하기 (자동 단축용)
+function kstDateAddDays(dateStr,days){const d=new Date(dateStr+'T00:00:00+09:00');d.setDate(d.getDate()+days);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
 function kstNow(){const k=new Date(Date.now()+9*3600000);return`${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')}`;}
 function kstLabel(){const k=new Date(Date.now()+9*3600000);return`${k.getUTCFullYear()}.${String(k.getUTCMonth()+1).padStart(2,'0')}.${String(k.getUTCDate()).padStart(2,'0')}`;}
 const DASH_PHRASES=['정상','지각','조기퇴근','추가근무','결근'];
@@ -600,8 +602,29 @@ function joinLeaveBadge(r,year,month){
   return html;
 }
 window.joinLeaveBadge=joinLeaveBadge;
-// 특정 날짜에 적용되는 시급 반환 (permChanges에 wage 있으면 우선 적용)
-function wageAt(p,date){if(!p)return 0;const d=date||kstDate();if(p.permChanges&&p.permChanges.length){const wPerms=p.permChanges.filter(pc=>pc.startDate<=d&&pc.wage!==undefined&&pc.wage!==null).sort((a,b)=>{const c=b.startDate.localeCompare(a.startDate);if(c!==0)return c;return(b.at||'').localeCompare(a.at||'');});if(wPerms.length)return wPerms[0].wage||0;}return p.wage||0;}
+// 특정 날짜에 적용되는 시급 반환
+// ⭐ v10.8.7-fix3: 안녕님 정책 — 직접 시급 변경(p.wage)은 즉시 모든 시점에 적용
+//   영구변경 시급은 그 시작일이 **오늘 또는 미래**인 경우에만 우선
+//   과거에 등록된 영구변경 시급 이력은 무시 (직접 변경한 p.wage가 진실)
+function wageAt(p,date){
+  if(!p)return 0;
+  const d=date||kstDate();
+  const today=kstDate();
+  if(p.permChanges&&p.permChanges.length){
+    // 오늘 이후 시작 + d 날짜 이전/같은 영구변경만 우선 (미래 변경 적용)
+    // 과거 영구변경은 안녕님 정책에 따라 무시 (직접 시급이 우선)
+    const futureWPerms=p.permChanges.filter(pc=>
+      pc.startDate<=d&&pc.startDate>=today&&
+      pc.wage!==undefined&&pc.wage!==null
+    ).sort((a,b)=>{
+      const c=b.startDate.localeCompare(a.startDate);
+      if(c!==0)return c;
+      return(b.at||'').localeCompare(a.at||'');
+    });
+    if(futureWPerms.length)return futureWPerms[0].wage||0;
+  }
+  return p.wage||0;
+}
 window.wageAt=wageAt;
 // 한국 공휴일 (코드 박혀있음, 매년 갱신 필요)
 const KR_HOLIDAYS={
@@ -3956,16 +3979,14 @@ async function waRenderList(pid){
     const opacity=isPast?'opacity:0.55;':'';
     // attendance 기반 이벤트는 별도 삭제 버튼
     const isAttEvent=['ext_end','ext_start','early','late','att_absent'].includes(e.type);
-    // 과거 시작일 보호: 시작일이 오늘 이전이면 삭제 비활성
-    const isStarted=e.startDate&&e.startDate<today;
+    // ⭐ v10.8.7-fix3: 시작된 일정도 삭제 허용 (활동 로그로 추적, 안녕님 정책: 회사 리스크 우선)
     let delBtn='';
     let editBtn='';
     if(CU.role==='관리자'){
       if(isAttEvent){
         delBtn=`<button type="button" class="icon-btn del" style="padding:2px 7px;font-size:10px" onclick="waDeleteAttEvent('${pid}','${e.startDate}','${e.type}')">삭제</button>`;
-      }else if(isStarted){
-        delBtn=`<button type="button" class="icon-btn" disabled style="padding:2px 7px;font-size:10px;opacity:0.4;cursor:not-allowed" title="이미 시작된 일정은 삭제 불가 (시수 보호). 새 영구변경으로 덮어쓰세요.">🔒 삭제</button>`;
       }else{
+        // 시작된 일정 삭제 시 활동 로그 자동 기록
         delBtn=`<button type="button" class="icon-btn del" style="padding:2px 7px;font-size:10px" onclick="waDelete('${pid}','${e.type}','${e.idx}')">삭제</button>`;
       }
       // ⭐ v10.7: 기간교체/추가근무는 휴게시간만 따로 수정 가능
@@ -4398,6 +4419,25 @@ function waCheckConflict(pid,type,newEvent){
 }
 window.waCheckConflict=waCheckConflict;
 
+// ⭐ v10.8.7-fix3: 기간교체끼리 겹침 검사 (송민호 케이스 방지)
+// 회사 리스크: 같은 기간에 두 기간교체 → 어느 게 우선인지 모호 → 데이터 꼬임
+// 해결: 새 기간교체 등록 시 기존과 겹치면 모달 표시 → 자동 단축 또는 취소
+function waCheckReplaceOverlap(pid,newEvent){
+  const p=AP[pid];if(!p||!p.scheduleReplaces||!p.scheduleReplaces.length)return null;
+  const ns=newEvent.startDate,ne=newEvent.endDate||newEvent.startDate;
+  // 기존 기간교체 중 겹치는 것 찾기
+  const overlapping=[];
+  p.scheduleReplaces.forEach((r,idx)=>{
+    const os=r.startDate,oe=r.endDate||r.startDate;
+    // 겹침 조건: !(새 종료 < 기존 시작) && !(새 시작 > 기존 종료)
+    if(!(ne<os)&&!(ns>oe)){
+      overlapping.push({idx,startDate:os,endDate:oe,days:r.days||[],by:r.by,at:r.at});
+    }
+  });
+  return overlapping.length?overlapping:null;
+}
+window.waCheckReplaceOverlap=waCheckReplaceOverlap;
+
 // 영구변경 모달: 변경 시작일이 바뀔 때 그 날짜 기준 스케줄 자동 재채움
 function waReRenderPermAutofill(pid){
   const p=AP[pid];if(!p)return;
@@ -4653,13 +4693,51 @@ async function waSave(pid,type){
         const overlap=checkedDays.filter(d=>oDays.has(d));
         if(!overlap.length)continue;
         // 요일별로 검사 (내 daySchedule, 상대방 daySchedule 둘 다 고려)
+        // ⭐ v10.8.7-fix3: 상대방이 그 날 결근 처리(plannedAbsent)면 시간 겹침 X
+        // 송민호 케이스: 부담임 결근 + 질의응답 추가 — 다른 직무로 시간 비어있음
         let isOverlap=false;let conflictDay='';let conflictTime='';
+        // 새 영구변경의 적용 날짜 범위에서 상대방 결근 검사
+        // (newEvent type='perm'일 때는 startDate부터 30일 정도 검사)
+        const checkEndDate=(()=>{
+          const d=new Date(start+'T00:00:00+09:00');d.setDate(d.getDate()+30);
+          return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        })();
+        // 그 기간 중 결근일 모음 (상대방 직무가 결근 처리된 날들)
+        const oAbsentDates=new Set();
+        if(o.plannedAbsent&&Array.isArray(o.plannedAbsent)){
+          for(const a of o.plannedAbsent){
+            if(typeof a==='string')oAbsentDates.add(a);
+            else if(a.date)oAbsentDates.add(a.date);
+            else if(a.startDate&&a.endDate){
+              let c=new Date(a.startDate+'T00:00:00+09:00');
+              const e=new Date(a.endDate+'T00:00:00+09:00');
+              while(c<=e){oAbsentDates.add(`${c.getFullYear()}-${String(c.getMonth()+1).padStart(2,'0')}-${String(c.getDate()).padStart(2,'0')}`);c.setDate(c.getDate()+1);}
+            }
+          }
+        }
+        // 검사 기간 내 모든 요일별 날짜를 모아서, 그 요일이 결근으로 다 가려진다면 충돌 아님
+        // 간략화: 영구변경(매주 반복)은 결근 검사 어렵지만,
+        // newEvent의 적용 요일이 30일 안에 1번이라도 상대방 결근이 아니면 충돌 가능 → 알림
+        const DM2=['일','월','화','수','목','금','토'];
         for(const d of overlap){
           const myT=daySchedule[d]||{start:newEvent.start,end:newEvent.end};
           const oT=oDsStart.daySchedule&&oDsStart.daySchedule[d]?oDsStart.daySchedule[d]:{start:oDsStart.start,end:oDsStart.end};
           const myS=toM(myT.start),myE=toM(myT.end);
           const oS=toM(oT.start),oE=toM(oT.end);
-          if(myS<oE&&oS<myE){isOverlap=true;conflictDay=d;conflictTime=`${oT.start}~${oT.end}`;break;}
+          if(myS<oE&&oS<myE){
+            // 시간 겹치지만 — 그 요일 모든 적용 날짜가 상대방 결근으로 가려지는지 검사
+            let allCovered=true;let firstUncovered='';
+            let cur=new Date(start+'T00:00:00+09:00');
+            const end30=new Date(checkEndDate+'T00:00:00+09:00');
+            while(cur<=end30){
+              const dkChk=`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
+              if(DM2[cur.getDay()]===d&&!oAbsentDates.has(dkChk)){
+                allCovered=false;firstUncovered=dkChk;break;
+              }
+              cur.setDate(cur.getDate()+1);
+            }
+            if(!allCovered){isOverlap=true;conflictDay=d;conflictTime=`${oT.start}~${oT.end}`;break;}
+          }
         }
         if(isOverlap){
           const lbl=o.tutorKind||o.role;
@@ -5119,6 +5197,8 @@ if(sameP.length){
     while(cur<=checkEnd&&safetyCounter<60){
       safetyCounter++;
       const dow=DM[new Date(cur+'T00:00:00+09:00').getDay()];
+      // ⭐ v10.8.7-fix3: 상대방이 그 날 결근 처리되었으면 시간 겹침 X (송민호 케이스)
+      if(isPlannedAbsent(o,cur)){cur=addDays(cur,1);continue;}
       let myT,oT;
       try{myT=getDayTime(myFakeP,dow,cur);}catch(e){myT={start:null,end:null};}
       if(!myT||!myT.start||!myT.end){cur=addDays(cur,1);continue;}
@@ -7219,7 +7299,9 @@ function _xlBuildDailyHours(wb,ym,year,month,lastDay,rows){
       _xlT(ws.getCell(r,1),{size:10,align:'center'});
       _xlT(ws.getCell(r,2),{size:10,align:'center'});
       _xlT(ws.getCell(r,3),{size:10,align:'left',indent:1});
-      // 일자 시수
+      // 일자 시수 — ⭐ v10.8.7-fix3: 시수확인 화면과 동일한 표시
+      // 조교: 0.5T 단위 (분/70 후 0.5 올림)
+      // 일반: 소수 1자리 (시간)
       row.days.forEach(d=>{
         const day=parseInt(d.dt.slice(8,10));
         const c=ws.getCell(r,3+day);
@@ -7230,7 +7312,19 @@ function _xlBuildDailyHours(wb,ym,year,month,lastDay,rows){
         if(isHol||isSun)bg=_XL_T.holidayBg;
         else if(isSat)bg=_XL_T.weekBg;
         if(d.h>0){
-          c.value=Math.round(d.h*100)/100;
+          // 시수확인 화면 표시값과 100% 일치
+          let dispVal;
+          if(row.cat==='tutor'){
+            // 조교: 0.5T 단위 올림
+            const tutorH=d.h*60/70;
+            const sign=tutorH<0?-1:1;
+            const absH=Math.abs(tutorH);
+            dispVal=sign*(Math.ceil(absH*2-0.001)/2);
+          }else{
+            // 일반: 소수 1자리 (d.h는 이미 라인 5443에서 처리됨)
+            dispVal=Math.round(d.h*10)/10;
+          }
+          c.value=dispVal;
           _xlT(c,{size:10,align:'center',numFmt:'0.##',bg});
         }else if(d.phrase==='결근'){
           c.value='결';
@@ -7245,9 +7339,9 @@ function _xlBuildDailyHours(wb,ym,year,month,lastDay,rows){
           _xlT(c,{size:10,align:'center',bg});
         }
       });
-      // 합계 — ⭐ v10.8.1: 사용자 룰
+      // 합계 — ⭐ v10.8.7-fix3: 시수확인 화면 표시값과 일치 (monthHDisp 우선)
       const cT=ws.getCell(r,3+lastDay+1);
-      cT.value=row.cat==='tutor'?(row.monthHDisp||0):Math.round((row.monthH||0)*100)/100;
+      cT.value=row.monthHDisp!==undefined?row.monthHDisp:(Math.round((row.monthH||0)*10)/10);
       _xlT(cT,{bold:true,size:10,bg:_XL_T.bonusBg,color:_XL_T.bonusText,align:'right',numFmt:'0.##'});
       const cB=ws.getCell(r,3+lastDay+2);
       cB.value=row.totalBonusH?Math.round(row.totalBonusH*100)/100:0;
