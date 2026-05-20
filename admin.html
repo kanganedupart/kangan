@@ -5476,7 +5476,12 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
   const today=kstDate();
   for(let d=1;d<=lastDay;d++){
     const dt=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    if(dt>today){days.push({dt,h:0,future:true,attended:false});continue;}
+    if(dt>today){
+      // ⭐ v10.8.7-fix3: 미래 날짜도 예정결근(plnAbs) 정보 포함 (엑셀 "예" 표시용)
+      const futurePlnAbs=isPlannedAbsent(p,dt);
+      days.push({dt,h:0,future:true,attended:false,plnAbs:futurePlnAbs});
+      continue;
+    }
     // 해당 일자 적용 파트 정보 (영구변경 등 반영)
     const DM=['일','월','화','수','목','금','토'];
     const dw=DM[new Date(dt+'T00:00:00+09:00').getDay()];
