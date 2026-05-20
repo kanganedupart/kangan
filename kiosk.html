@@ -209,7 +209,7 @@ async function checkPin(){
   const k=new Date(Date.now()+9*3600000);
   const dw=DM[k.getUTCDay()];
   // 모든 유효 후보 수집 (한 사람이 두 파트일 수 있음 - 조교 부담임/질의응답)
-  const candidates=Object.entries(parts).filter(([id,p])=>{
+  const allCandidates=Object.entries(parts).filter(([id,p])=>{
     if(p.pin!==pin)return false;
     // 일반 퇴사자(비단발)는 차단, 단발근무자는 추가근무 예약 있는 날만 허용
     const hasTempToday=p.tempDates&&p.tempDates.find(td=>td.date===today);
@@ -223,6 +223,11 @@ async function checkPin(){
     if(!isWorkDay(p,dw,today))return false;
     return true;
   });
+  // ⭐ v10.8.7-fix3: 같은 PIN 다중 행에서 결근 처리된 행은 후보 제외
+  // 안녕님 정책: 부담임+질의응답 같은 PIN, 부담임 결근 처리 시 질의응답으로 자동 인식
+  // 단, 모든 후보가 결근이면 → 결근 행 그대로 (옛 동작: 결근 자동 취소 후 출근)
+  const nonAbsent=allCandidates.filter(([id,p])=>!isPlannedAbsent(p,today));
+  const candidates=nonAbsent.length>0?nonAbsent:allCandidates;
   if(candidates.length===0){
     const anyFound=Object.entries(parts).find(([id,p])=>p.pin===pin&&(p.status!=='inactive'||p.isCasual));
     if(anyFound){showErrorScreen('오늘은 근무일이 아닙니다');}

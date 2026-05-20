@@ -4741,8 +4741,8 @@ async function waSave(pid,type){
         }
         if(isOverlap){
           const lbl=o.tutorKind||o.role;
-          ST(`시간 겹침: ${lbl} (${conflictTime}) — ${conflictDay}요일`);
-          return;
+          // ⭐ v10.8.7-fix3: 시간 겹침은 경고만, 차단 X
+          if(!await CC(`⚠ 시간대 겹침 알림\n\n같은 PIN의 다른 직무와 시간이 겹칩니다:\n${lbl} (${conflictTime}) — ${conflictDay}요일\n\n같은 사람의 두 직무는 결근 처리/추가근무로 회계가 정확히 처리됩니다.\n계속 저장하시겠습니까?`,{title:'⚠ 시간 겹침',danger:true}))return;
         }
       }
     }
@@ -5218,8 +5218,11 @@ if(sameP.length){
     if(conflictFound)break;
   }
   if(conflictFound){
-    ST(`시간 겹침: ${conflictFound.lbl} (${conflictFound.time}) — ${conflictFound.date}`);
-    return;
+    // ⭐ v10.8.7-fix3: 시간 겹침은 경고만, 차단 X
+    // 안녕님 정책: 같은 사람 두 직무 자주 발생 (부담임 + 질의응답)
+    // 회계 자동 보호: PIN 패드 = 한 행 attendance = 한 직무만 페이
+    // → 사용자(직원)가 결근/추가근무로 회계 처리 → 시스템은 자유 등록 허용
+    if(!await CC(`⚠ 시간대 겹침 알림\n\n같은 PIN의 다른 직무와 시간이 겹칩니다:\n${conflictFound.lbl} (${conflictFound.time}) — ${conflictFound.date}\n\n같은 사람의 두 직무는 결근 처리/추가근무로 회계가 정확히 처리됩니다.\n계속 저장하시겠습니까?`,{title:'⚠ 시간 겹침',danger:true}))return;
   }
 }
 }catch(e){
@@ -7329,6 +7332,11 @@ function _xlBuildDailyHours(wb,ym,year,month,lastDay,rows){
         }else if(d.phrase==='결근'){
           c.value='결';
           _xlT(c,{bold:true,size:10,align:'center',color:_XL_T.absentText,bg:_XL_T.absentBg});
+        }else if(d.plnAbs){
+          // ⭐ v10.8.7-fix3: 과거 예정결근은 "결" (확정), 미래는 "예"
+          const today=kstDate();
+          c.value=d.dt<today?'결':'예';
+          _xlT(c,{bold:true,size:10,align:'center',color:_XL_T.absentText,bg:_XL_T.absentBg});
         }else if(d.phrase==='연차'){
           c.value='연';
           _xlT(c,{bold:true,size:10,align:'center',color:_XL_T.bonusText,bg:_XL_T.bonusBg});
@@ -7445,6 +7453,13 @@ function _xlBuildDailyPay(wb,ym,year,month,lastDay,rows){
           c.border={top:{style:'thin',color:{argb:'FFEFEFEF'}},left:{style:'thin',color:{argb:'FFEFEFEF'}},bottom:{style:'thin',color:{argb:'FFEFEFEF'}},right:{style:'thin',color:{argb:'FFEFEFEF'}}};
         }else if(d.phrase==='결근'){
           c.value='결';
+          _xlT(c,{size:10,align:'center',color:_XL_T.absentText,bg:_XL_T.absentBg});
+        }else if(d.plnAbs){
+          // ⭐ v10.8.7-fix3: 예정결근 표시
+          // 과거(오늘 이전): "결" - 회계상 확정 결근
+          // 미래(오늘 이후): "예" - 아직 변경 가능
+          const today=kstDate();
+          c.value=d.dt<today?'결':'예';
           _xlT(c,{size:10,align:'center',color:_XL_T.absentText,bg:_XL_T.absentBg});
         }else if(d.phrase==='연차'){
           c.value='연';
