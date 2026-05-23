@@ -1303,12 +1303,16 @@ else if(ph==='정상')st='done';
 else if(lateOverReserved||earlyOverReserved)st='absent-unc'; // 예정 초과 → 미처리
 else if(autoEarlyDetect||autoLateDetect)st='absent-unc'; // 자동 감지 지각/조기퇴근 → 미처리
 else if(a.inTime){const effectiveIn=a.adjustedStart||a.inTime;if(toM(effectiveIn)>toM(ds.start))st='late';else st='done';}
-else if(isPast)st=ph?'absent-con':'absent-unc';
+else if(isPast)st=(ph==='결근')?'absent-con':'absent-unc'; // 과거 + 패드 X → 미확인 결근 (관리자 결근 처리만 확정)
 // ⭐ v10.8.7-fix3: 연장근무 예약 등록 시 그 시각이 출근 도래 판단 기준 (안녕님 정책)
 //   - 막대 색깔(회색→미처리) 정상화 위해
 //   - ds.start보다 a.adjustedStart가 빠르면 그게 도래 기준
-else if(a.adjustedStart&&nm>toM(a.adjustedStart))st=ph?'absent-con':'absent-unc'; // 연장근무 예약 출근 시각 지남 + 패드 X → 미처리
-else if(nm>toM(ds.start))st=ph?'absent-con':'absent-unc'; // 출근 시간 지나면 즉시 미확인 결근
+else if(a.adjustedStart&&nm>toM(a.adjustedStart))st=(ph==='결근')?'absent-con':'absent-unc'; // 예약(지각/연장 등) 시각 지남 + 패드 X → 미처리 (결근만 확정)
+// ⭐ v10.8.7-fix3: 지각 예약(adjustedStart + ph='지각')이 있으면 그 예약 시각 기준으로 도래 판단
+//   민채원 5/23 케이스: 정기 10:00인데 지각 예약 15:00 → 10:00 지났다고 결근 처리하던 빈틈
+//   + 예약 시각 지나도 패드 X면 미처리(absent-unc) — 예약은 '결근 확정'이 아님
+//   adjustedStart가 있으면 위 분기에서 이미 처리됨 → 정기 ds.start 기준 판단은 adjustedStart 없을 때만
+else if(!a.adjustedStart&&nm>toM(ds.start))st=(ph==='결근')?'absent-con':'absent-unc'; // 출근 시간 지나면 즉시 미확인 결근 (결근만 확정)
 // 연장근무/조기퇴근 예약이 있어도 실제 퇴근(outTime) 없으면 아직 확정 안 됨
 if((ph==='조기퇴근'||ph==='추가근무')&&a.outTime&&!earlyOverReserved)st='changed';
 // 예약만 있는 상태 (퇴근 안 찍음) → 미처리로 간주
