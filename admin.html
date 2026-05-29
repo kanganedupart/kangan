@@ -985,14 +985,19 @@ function needsCheck(p,a,nowM,date){
   if(date===kstDate()&&nowM>toM(p.end)+10)return true;
   return false;
 }
-const IDLE_TIMEOUT={관리자:30*60*1000,총무:10*60*60*1000,일반직원:10*60*60*1000};
+// ⭐ v10.8.7-fix3: 자동 로그아웃 비활성화 (안녕님 정책: 컴퓨터 끄기 전엔 로그인 유지)
+// 활동 감지는 유지 (localStorage 갱신용) — 타이머만 X
+const IDLE_TIMEOUT={관리자:0,총무:0,일반직원:0}; // 0 = 자동 로그아웃 안 함
 let IDLE_TIMER=null;
 function resetIdleTimer(){
   if(IDLE_TIMER)clearTimeout(IDLE_TIMER);
   if(!CU)return;
-  const ms=IDLE_TIMEOUT[CU.role]||IDLE_TIMEOUT['일반직원'];
-  IDLE_TIMER=setTimeout(()=>{ST('장시간 활동이 없어 자동 로그아웃됩니다');setTimeout(()=>doLogout(),1500);},ms);
-  // 활동 시마다 localStorage 갱신
+  const ms=IDLE_TIMEOUT[CU.role]||0;
+  // ms가 0이면 자동 로그아웃 X (안녕님 정책)
+  if(ms>0){
+    IDLE_TIMER=setTimeout(()=>{ST('장시간 활동이 없어 자동 로그아웃됩니다');setTimeout(()=>doLogout(),1500);},ms);
+  }
+  // 활동 시마다 localStorage 갱신 (탭 새로고침 시 자동 로그인용)
   try{localStorage.setItem('kangan_login',JSON.stringify({user:CU,ts:Date.now()}));}catch(e){}
 }
 function startIdleWatch(){
@@ -1012,8 +1017,9 @@ function tryAutoLogin(){
     if(!saved)return false;
     const{user,ts}=JSON.parse(saved);
     if(!user||!ts)return false;
-    const ms=IDLE_TIMEOUT[user.role]||IDLE_TIMEOUT['일반직원'];
-    if(Date.now()-ts>ms){localStorage.removeItem('kangan_login');return false;}
+    const ms=IDLE_TIMEOUT[user.role]||0;
+    // ⭐ v10.8.7-fix3: ms가 0이면 시간 체크 X (안녕님 정책: 무제한 유지)
+    if(ms>0&&Date.now()-ts>ms){localStorage.removeItem('kangan_login');return false;}
     CU=user;
     document.getElementById('login-screen').classList.add('hide');
     setTimeout(()=>{document.getElementById('login-screen').style.display='none';document.getElementById('app').classList.add('show');init();startIdleWatch();},100);
