@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -139,6 +139,12 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .parts-table th{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;padding:8px 8px;border-bottom:2px solid var(--border);text-align:left;white-space:nowrap;}
 .parts-table td{padding:8px 8px;border-bottom:1px solid var(--border-light);font-size:13px;vertical-align:middle;}
 .parts-table tr:hover td{background:var(--bg);}
+#tab-payroll,#modal-payslip{font-family:'Noto Sans KR','Malgun Gothic',sans-serif;}
+#tab-payroll *,#modal-payslip *{letter-spacing:0!important;text-shadow:none!important;}
+#tab-payroll [style*="DM Mono"],#modal-payslip [style*="DM Mono"]{font-family:'Noto Sans KR','Malgun Gothic',sans-serif!important;font-variant-numeric:tabular-nums;}
+#tab-payroll [style*="#1e3a8a"],#tab-payroll [style*="#1d4ed8"],#tab-payroll [style*="#006241"],#tab-payroll [style*="#92400e"],#tab-payroll [style*="#b91c1c"],#tab-payroll [style*="#0369a1"],#modal-payslip [style*="#1e3a8a"],#modal-payslip [style*="#1d4ed8"],#modal-payslip [style*="#006241"],#modal-payslip [style*="#92400e"],#modal-payslip [style*="#b91c1c"],#modal-payslip [style*="#0369a1"]{color:#1f2937!important;}
+#tab-payroll .cat-badge,#modal-payslip .cat-badge{background:#f8fafc!important;color:#334155!important;border:1px solid #cbd5e1!important;}
+#tab-payroll .section-card,#modal-payslip .section-card{box-shadow:none;}
 /* 첫 컬럼들은 한 줄 유지, 시간/시급/상태는 줄바꿈 허용 */
 .parts-table td:nth-child(1),.parts-table td:nth-child(2),.parts-table td:nth-child(4),.parts-table td:nth-child(5){white-space:nowrap;}
 /* 관리 컬럼 (마지막) — 한 줄 유지 + 작게 */
@@ -396,6 +402,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
           <div><div class="form-label">이름/직무 검색</div><input type="text" id="acct-name" class="form-input" style="width:130px" placeholder="비워두면 전체" onkeydown="if(event.key==='Enter')loadAcct()"></div>
           <div><div class="form-label">카테고리</div><select class="form-select" id="acct-cat" style="width:110px"><option value="">전체</option><option value="mgmt">관리</option><option value="tutor">조교</option><option value="etc">기타</option></select></div>
           <div><div class="form-label">재직상태</div><select class="form-select" id="acct-status" style="width:110px" onchange="loadAcct()"><option value="working">근무자</option><option value="active">재직</option><option value="inactive">퇴사자만</option><option value="all">전체</option></select></div>
+          <button class="btn-secondary" onclick="setAcctYesterday()">어제</button>
           <button class="btn-primary" onclick="loadAcct()">조회</button>
           <button class="btn-secondary" onclick="exportAcctXLSX()" style="background:#f0fdf4;border-color:#86efac;color:#15803d;font-weight:600">📥 엑셀 다운로드</button>
         </div>
@@ -439,16 +446,16 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       </div>
     </div>
     <div class="tab-content" id="tab-payroll">
-      <div class="section-card" style="background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);color:#fff;border:none;padding:20px 24px;margin-bottom:14px;border-radius:var(--r)">
+      <div class="section-card" style="background:#fff;color:var(--text-primary);border:1px solid var(--border);padding:18px 22px;margin-bottom:14px;border-radius:var(--r);box-shadow:none">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
           <div>
-            <div style="font-size:13px;opacity:.85;font-weight:500;letter-spacing:0.5px;margin-bottom:4px">PAYROLL · 급여 정산</div>
-            <div style="font-size:22px;font-weight:700;letter-spacing:-0.5px">월별 급여 + 주휴수당 자동 계산</div>
-            <div style="font-size:12px;opacity:.85;margin-top:6px">달력 기준 일~토 단위, 주 15h 이상 자격, 월 60h 이상 지급 룰 적용</div>
+            <div style="font-size:13px;color:var(--text-secondary);font-weight:600;margin-bottom:4px">급여 정산</div>
+            <div style="font-size:21px;font-weight:700">월별 급여와 주휴수당 계산</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:6px">급여시수 기준 급여 반영 · 일~토 주 단위 · 주 15h 이상 및 월 60h 이상 지급 룰 적용</div>
           </div>
           <div style="text-align:right">
-            <div style="font-size:11px;opacity:.85;margin-bottom:4px">정산 월</div>
-            <input type="month" id="pay-month" class="form-input" style="width:160px;background:rgba(255,255,255,0.95);border:none;color:#1e293b;font-weight:600;font-size:14px" onchange="loadPayroll()">
+            <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">정산 월</div>
+            <input type="month" id="pay-month" class="form-input" style="width:160px;color:#1e293b;font-weight:600;font-size:14px" onchange="loadPayroll()">
           </div>
         </div>
       </div>
@@ -461,7 +468,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
               <option value="">전체</option>
               <option value="elig">주휴수당 지급자만</option>
               <option value="under60">월 60h 미달</option>
-              <option value="zero">실시수 0</option>
+              <option value="zero">급여시수 0</option>
               <option value="bonus">⚡ 가산 있음 (0.5/1.5)</option>
             </select>
           </div>
@@ -531,7 +538,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <div class="section-card" style="margin-top:18px">
         <div class="settings-title">공휴일 관리</div>
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;line-height:1.5">
-          ⚠ 공휴일에 근무한 <b>일반직원</b>은 시수 1.5배 자동 가산됩니다.<br>
+          ⚠ 공휴일에 근무한 <b>일반직원</b>은 급여시수 기준 1.5배 자동 가산됩니다.<br>
           • <b>조교(부담임/질의응답)</b>: 가산 없음 (고정 페이)<br>
           • <b>일요일</b>: 공휴일 겹쳐도 가산 없음 (평일 처리)<br>
           • <b>토요일</b>: 평일 동일 (공휴일 겹치면 가산 적용)<br>
@@ -919,7 +926,7 @@ function toCatH(p,h){
 }
 window.toCatH=toCatH;
 function schedH(p,a){
-  // 스케줄시수 = 스케줄 그대로의 시수 (패드/처리 무관)
+  // 기준시수 = 그날 예약/스케줄 그대로의 참고 시수 (패드/처리 무관)
   const s=p.start;
   const e=p.end;
   if(!s||!e)return 0;
@@ -938,14 +945,15 @@ function calcRealH(p,a){
   if(a.manual){
     const inT=a.adjustedStart||a.inTime;
     const eT=a.adjustedEnd||a.outTime;
+    const ph2=a.stdPhrase||'';
     // 시작: 일찍 출근 → 스케줄 시작, 10분 이내 지각 → 양해, 10분 초과 → 실제 시각
     let sT;
     const delayM=toM(inT)-toM(p.start);
-    if(delayM<0)sT=p.start;
+    if(ph2==='추가근무'&&a.adjustedStart&&toM(a.adjustedStart)<toM(p.start))sT=a.adjustedStart;
+    else if(delayM<0)sT=p.start;
     else if(delayM<=10)sT=p.start;
     else sT=inT;
     // 종료: 조기퇴근/추가근무 처리, 그 외는 스케줄 종료 초과는 무시
-    const ph2=a.stdPhrase||'';
     let endT;
     if(ph2==='조기퇴근')endT=eT;
     else if(ph2==='추가근무'&&a.adjustedEnd)endT=toM(eT)>toM(a.adjustedEnd)?a.adjustedEnd:eT;
@@ -960,7 +968,8 @@ function calcRealH(p,a){
   const inSrc=a.adjustedStart||a.inTime;
   if(inSrc){
     const delay=toM(inSrc)-toM(p.start);
-    if(delay<=10)startT=p.start;
+    if(ph==='추가근무'&&a.adjustedStart&&toM(a.adjustedStart)<toM(p.start))startT=a.adjustedStart;
+    else if(delay<=10)startT=p.start;
     else startT=inSrc;
   }else{
     startT=p.start;
@@ -1174,12 +1183,19 @@ async function logActivity(action,target,detail,targetPid){
 }
 window.logActivity=logActivity;
 function renderCat(cat){const ps=enrich(pfc(cat),cat);rStats(cat,ps);rTL(cat,ps);chkAlert(cat,ps);}
+function latestByStartAndAt(list){
+  return [...(list||[])].sort((a,b)=>{
+    const c=(b.startDate||'').localeCompare(a.startDate||'');
+    if(c!==0)return c;
+    return (b.at||'').localeCompare(a.at||'');
+  })[0]||null;
+}
 // 날짜의 적용 스케줄 반환 (우선순위: 기간교체 > 영구변경 > 요일별 > 기본)
 function getDayTime(p,dayOfWeek,date){
   const today=date||kstDate();
   // 1. 기간 교체 (scheduleReplaces): 기간 내면 해당 요일일 때만 적용
   if(p.scheduleReplaces&&p.scheduleReplaces.length){
-    const matched=p.scheduleReplaces.find(r=>today>=r.startDate&&today<=r.endDate);
+    const matched=latestByStartAndAt(p.scheduleReplaces.filter(r=>today>=r.startDate&&today<=r.endDate));
     if(matched){
       if((matched.days||[]).includes(dayOfWeek))return{start:matched.start,end:matched.end,customBreak:matched.customBreak,fromReplace:true};
       return{start:null,end:null,replaced:true};
@@ -1236,7 +1252,7 @@ function isPlannedAbsent(p,date){
 function isWorkDay(p,dayOfWeek,date){
   // 1. 기간 교체
   if(p.scheduleReplaces&&p.scheduleReplaces.length){
-    const matched=p.scheduleReplaces.find(r=>date>=r.startDate&&date<=r.endDate);
+    const matched=latestByStartAndAt(p.scheduleReplaces.filter(r=>date>=r.startDate&&date<=r.endDate));
     if(matched)return (matched.days||[]).includes(dayOfWeek);
   }
   // 2. 기간 추가
@@ -1245,7 +1261,7 @@ function isWorkDay(p,dayOfWeek,date){
   if(p.tempDates&&p.tempDates.find(d=>d.date===date))return true;
   // 4. 영구 변경
   if(p.permChanges&&p.permChanges.length){
-    const applicable=[...p.permChanges].filter(pc=>date>=pc.startDate).sort((a,b)=>b.startDate.localeCompare(a.startDate));
+    const applicable=[...p.permChanges].filter(pc=>date>=pc.startDate).sort((a,b)=>{const c=b.startDate.localeCompare(a.startDate);if(c!==0)return c;return(b.at||'').localeCompare(a.at||'');});
     if(applicable.length>0)return (applicable[0].days||[]).includes(dayOfWeek);
   }
   // 5. 기본 요일
@@ -1358,7 +1374,6 @@ const bl=Math.max(0,(sM-am)/as*100);
 const bw=Math.min(100,(eM-am)/as*100)-bl;
 const isAutoDetected=e.status==='absent-unc'&&e.ar?.inTime;
 const isAbsent=e.status.startsWith('absent')&&!isAutoDetected;
-// ⭐ v10.8.7-fix3: stdPhrase 없는 adjusted 잔재는 무시 (이하수 케이스)
 const _validAdjStart=e.ar?.adjustedStart&&e.ar?.stdPhrase?e.ar.adjustedStart:null;
 const _validAdjEnd=e.ar?.adjustedEnd&&e.ar?.stdPhrase?e.ar.adjustedEnd:null;
 const realIn=_validAdjStart||e.ar?.inTime||null;
@@ -1377,7 +1392,7 @@ if(!isAbsent){
   const ph=e.ar?.stdPhrase||'';
   // 시작 앞당김 연장근무 (adjustedStart < 스케줄 시작) - 진녹색
   const adjStartM=e.ar?.adjustedStart?toM(e.ar.adjustedStart):null;
-  if(adjStartM!==null&&adjStartM<sM){
+  if(ph==='추가근무'&&adjStartM!==null&&adjStartM<sM){
     const extL=Math.max(0,(adjStartM-am)/as*100);
     const extW2=Math.max(0,(sM-adjStartM)/as*100);
     if(extW2>0)bar+=`<div class="tl-bar-fill" style="left:${extL}%;width:${extW2}%;background:${extColor};opacity:${op}"></div>`;
@@ -1385,7 +1400,7 @@ if(!isAbsent){
   let actualW=bw;
   if(ph==='조기퇴근'&&e.ar?.adjustedEnd)actualW=Math.max(0,(toM(e.ar.adjustedEnd)-sM)/as*100);
   // 종료 늦춤 연장근무 (adjustedEnd > 스케줄 종료) - 기본+진녹색
-  if(e.ar?.adjustedEnd&&toM(e.ar.adjustedEnd)>eM){
+  if(ph==='추가근무'&&e.ar?.adjustedEnd&&toM(e.ar.adjustedEnd)>eM){
     const extEnd=Math.min(100,(toM(e.ar.adjustedEnd)-am)/as*100);
     const baseW=bw;
     const extW=extEnd-bl-baseW;
@@ -1403,9 +1418,7 @@ const tempTag=e.isTemp?`<span style="${tagStyle}color:#7e22ce;background:#fdf4ff
 // 단발근무자 배지 — 단발자에게 항상 표시 (추가와 별개)
 const casualTag=e.isCasual?`<span style="${tagStyle}color:#7e22ce;background:#fdf4ff;border:1px solid #e9d5ff">⭐ 단발</span>`:'';
 // 미래 예약 태그 (출근 전 + adjustedEnd 또는 adjustedStart 있음)
-// ⭐ v10.8.7-fix3: 연장근무 예약 표시 — stdPhrase 있을 때만 (잔재 무시)
-// 이하수 케이스: stdPhrase 없이 adjustedStart/End만 박힌 잔재 → 표시 X
-const isPendingExt=(e.status==='pending'||!e.ar?.inTime)&&e.ar?.stdPhrase==='추가근무'&&((e.ar?.adjustedEnd&&toM(e.ar.adjustedEnd)>eM)||(e.ar?.adjustedStart&&toM(e.ar.adjustedStart)<sM));
+const isPendingExt=ph==='추가근무'&&(e.status==='pending'||!e.ar?.inTime)&&((e.ar?.adjustedEnd&&toM(e.ar.adjustedEnd)>eM)||(e.ar?.adjustedStart&&toM(e.ar.adjustedStart)<sM));
 const pendingExtTag=isPendingExt?`<span style="${tagStyle}color:#047857;background:#d1fae5">연장근무 예약</span>`:'';
 // 자동 감지 조기퇴근 (stdPhrase 없고 퇴근이 스케줄보다 10분 이상 빠름)
 const autoEarlyDash=e.ar?.outTime&&!ph&&eM-toM(e.ar.outTime)>10;
@@ -1482,18 +1495,21 @@ const tempBanner=isTempToday?`<div style="background:#fdf4ff;border:1px solid #e
 // 기존 예약 상태 요약
 let reservationBanner='';
 const resList=[];
-if(a.adjustedStart&&existingPhrase!=='지각')resList.push(`출근 ${a.adjustedStart}로 조정`);
-if(a.adjustedEnd){
+const displayAdjustedStart=a.adjustedStart&&toM(a.adjustedStart)!==toM(pEff.start);
+const displayAdjustedEnd=a.adjustedEnd&&toM(a.adjustedEnd)!==toM(pEff.end);
+const adjustedTimeRow=(displayAdjustedStart||displayAdjustedEnd)?`<div class="modal-row"><span class="modal-key">적용 시간</span><span class="modal-val" style="color:var(--success)">${displayAdjustedStart?a.adjustedStart:(a.inTime||pEff.start)} ~ ${displayAdjustedEnd?a.adjustedEnd:(a.outTime||pEff.end)}</span></div>`:'';
+if(displayAdjustedStart&&existingPhrase!=='지각')resList.push(`출근 ${a.adjustedStart}로 조정`);
+if(displayAdjustedEnd){
   if(existingPhrase==='조기퇴근')resList.push(`조기퇴근 ${a.adjustedEnd} 예약`);
   else if(existingPhrase==='추가근무'||toM(a.adjustedEnd)>toM(pEff.end))resList.push(`연장근무 ${a.adjustedEnd}까지 예약`);
   else resList.push(`퇴근 ${a.adjustedEnd}로 조정`);
 }
-if(a.adjustedStart&&existingPhrase==='지각')resList.push(`지각 예약: ${a.adjustedStart} 출근`);
+if(displayAdjustedStart&&existingPhrase==='지각')resList.push(`지각 예약: ${a.adjustedStart} 출근`);
 if(resList.length>0){
   reservationBanner=`<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 14px;margin-bottom:10px"><div style="font-size:12px;font-weight:700;color:#047857;margin-bottom:4px">📋 기존 예약/처리</div><ul style="margin:0;padding-left:18px;font-size:12px;color:#047857;line-height:1.6">${resList.map(r=>`<li>${r}</li>`).join('')}</ul>${existingPhrase?`<div style="margin-top:6px;padding-top:6px;border-top:1px solid #86efac;font-size:11px;color:#047857">현재 처리구분: <b>${phraseLabel(existingPhrase)}</b></div>`:''}</div>`;
 }
 document.getElementById('modal-staff-body').innerHTML=tempBanner+reservationBanner+`<div class="modal-row"><span class="modal-key">날짜</span><span class="modal-val">${viewDate.replace(/-/g,'.')}</span></div><div class="modal-row"><span class="modal-key">상태</span><span class="modal-val" style="color:${stC}">${stL}</span></div>
-<div class="modal-row"><span class="modal-key">휴대폰</span><a class="phone-link" href="tel:${p.phone}">${p.phone||'-'}</a></div><div class="modal-row"><span class="modal-key">${isTempToday?'근무 시간':'스케줄'}</span><span class="modal-val">${pEff.start} ~ ${pEff.end}</span></div>${(a.adjustedStart||a.adjustedEnd)?`<div class="modal-row"><span class="modal-key">적용 시간</span><span class="modal-val" style="color:var(--success)">${a.adjustedStart||a.inTime||pEff.start} ~ ${a.adjustedEnd||a.outTime||pEff.end}</span></div>`:''}<div class="modal-row"><span class="modal-key">${isTempToday?'근무 시수':'스케줄 시수'}</span><span class="modal-val">${fmtH(pEff,sh)}</span></div>${a.inTime?`<div class="modal-row"><span class="modal-key">출근</span><span class="modal-val" style="color:var(--success)">${a.inTime}</span></div>`:''}${a.outTime?`<div class="modal-row"><span class="modal-key">퇴근</span><span class="modal-val">${a.outTime}</span></div>`:''}<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light)"><span class="modal-key" style="align-self:center">실시수</span><span style="font-size:18px;font-weight:700;color:${rh===null?'var(--text-muted)':rh<sh?'var(--danger)':rh>sh?'#047857':'var(--success)'}">${rh===null?'-':fmtH(pEff,rh)}</span>${rh!==null?`<span style="font-size:11px;color:var(--text-muted);align-self:center">(휴게 ${bm}분 제외)</span>`:'<span style="font-size:11px;color:var(--text-muted);align-self:center">(퇴근 전)</span>'}</div>${nc?'<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--orange);margin:6px 0">⚠ 퇴근 패드 미확인</div>':''}${ph?`<div class="modal-row"><span class="modal-key">처리 구분</span><span class="modal-val">${phraseLabel(ph)}</span></div>`:''}<div style="margin-top:14px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">${isViewingToday?'오늘':viewDate.replace(/-/g,'.')} 메모</div><div class="memo-list">${rML(todayMemos)}</div></div>${a.notes&&a.notes.length?`<div style="margin-top:12px;padding:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px"><div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:6px">💬 일반 메모 (최근)</div>${rNotes(a.notes)}</div>`:''}<div style="margin-top:12px;padding:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px"><div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:6px">💬 메모만 저장 ${isViewingFuture?'(사전 안내)':'(미처리 유지)'}</div><textarea class="memo-area" id="staff-note-${pid}" placeholder="${isViewingFuture?'예: 내일 14시 조기퇴근 예정':'예: 14시 조기퇴근 사전연락'}" style="margin-bottom:8px"></textarea><button class="btn-secondary" style="background:#f59e0b;color:#fff;border:none;font-size:12px;padding:6px 12px" onclick="saveNoteOnly('${pid}','${viewDate}','staff-note-${pid}')">💬 메모만 저장</button></div>${ce&&isViewingFuture?`<div style="margin-top:12px;padding:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:12px;color:#0369a1">📅 미래 날짜입니다.<br>• 결근 예정은 <b>파트관리 → [수정] → 스케줄관리 → ❌ 결근 예정</b>으로 등록하세요.<br>• 단순 사전 안내는 위의 <b>💬 메모만 저장</b>을 사용하세요.</div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button></div>`:(ce?`${_confirmSection}${_btnRow}`:`<div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button></div>`)}`;OM('modal-staff');}
+<div class="modal-row"><span class="modal-key">휴대폰</span><a class="phone-link" href="tel:${p.phone}">${p.phone||'-'}</a></div><div class="modal-row"><span class="modal-key">${isTempToday?'근무 시간':'스케줄'}</span><span class="modal-val">${pEff.start} ~ ${pEff.end}</span></div>${adjustedTimeRow}<div class="modal-row"><span class="modal-key">${isTempToday?'근무 시수':'기준시수'}</span><span class="modal-val">${fmtH(pEff,sh)}</span></div>${a.inTime?`<div class="modal-row"><span class="modal-key">출근</span><span class="modal-val" style="color:var(--success)">${a.inTime}</span></div>`:''}${a.outTime?`<div class="modal-row"><span class="modal-key">퇴근</span><span class="modal-val">${a.outTime}</span></div>`:''}<div style="display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border-light)"><span class="modal-key" style="align-self:center">급여시수</span><span style="font-size:18px;font-weight:700;color:${rh===null?'var(--text-muted)':rh<sh?'var(--danger)':rh>sh?'#047857':'var(--success)'}">${rh===null?'-':fmtH(pEff,rh)}</span>${rh!==null?`<span style="font-size:11px;color:var(--text-muted);align-self:center">(휴게 ${bm}분 제외)</span>`:'<span style="font-size:11px;color:var(--text-muted);align-self:center">(퇴근 전)</span>'}</div>${nc?'<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:8px 12px;font-size:12px;color:var(--orange);margin:6px 0">⚠ 퇴근 패드 미확인</div>':''}${ph?`<div class="modal-row"><span class="modal-key">처리 구분</span><span class="modal-val">${phraseLabel(ph)}</span></div>`:''}<div style="margin-top:14px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">${isViewingToday?'오늘':viewDate.replace(/-/g,'.')} 메모</div><div class="memo-list">${rML(todayMemos)}</div></div>${a.notes&&a.notes.length?`<div style="margin-top:12px;padding:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px"><div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:6px">💬 일반 메모 (최근)</div>${rNotes(a.notes)}</div>`:''}<div style="margin-top:12px;padding:10px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px"><div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:6px">💬 메모만 저장 ${isViewingFuture?'(사전 안내)':'(미처리 유지)'}</div><textarea class="memo-area" id="staff-note-${pid}" placeholder="${isViewingFuture?'예: 내일 14시 조기퇴근 예정':'예: 14시 조기퇴근 사전연락'}" style="margin-bottom:8px"></textarea><button class="btn-secondary" style="background:#f59e0b;color:#fff;border:none;font-size:12px;padding:6px 12px" onclick="saveNoteOnly('${pid}','${viewDate}','staff-note-${pid}')">💬 메모만 저장</button></div>${ce&&isViewingFuture?`<div style="margin-top:12px;padding:12px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;font-size:12px;color:#0369a1">📅 미래 날짜입니다.<br>• 결근 예정은 <b>파트관리 → [수정] → 스케줄관리 → ❌ 결근 예정</b>으로 등록하세요.<br>• 단순 사전 안내는 위의 <b>💬 메모만 저장</b>을 사용하세요.</div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button></div>`:(ce?`${_confirmSection}${_btnRow}`:`<div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button></div>`)}`;OM('modal-staff');}
 window.openStaffModal=openStaffModal;
 // 📋 전체 이력 모달
 async function openHistoryModal(pid,dt){
@@ -2293,6 +2309,75 @@ function openStatsModal(c,sk){
 window.openStatsModal=openStatsModal;
 function setWorkmanToday(){const t=kstDate();document.getElementById('workman-from').value=t;document.getElementById('workman-to').value=t;}
 window.setWorkmanToday=setWorkmanToday;
+function setAcctYesterday(){
+  const d=new Date(kstDate()+'T00:00:00+09:00');
+  d.setDate(d.getDate()-1);
+  const y=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const from=document.getElementById('acct-from'),to=document.getElementById('acct-to');
+  if(from)from.value=y;if(to)to.value=y;
+  loadAcct();
+}
+window.setAcctYesterday=setAcctYesterday;
+function acctDiffInfo(r,hasDiff,isUnproc){
+  const a=r.att||{},p=r.part||{};
+  const chips=[];
+  let level='ok',title='일치',desc='기준시수와 급여시수가 같습니다.';
+  const add=(txt)=>chips.push(`<span style="font-size:10px;color:#334155;background:#f8fafc;border:1px solid #cbd5e1;padding:1px 6px;border-radius:8px">${txt}</span>`);
+  if(isPlannedAbsent(p,r.date)&&!a.inTime){level='ok';title='예정결근';desc='결근 예정으로 등록된 날짜입니다.';add('확인됨');}
+  else if(a.stdPhrase==='결근'){level='ok';title='결근';desc='결근 처리로 급여시수 0 처리됩니다.';add('확인됨');}
+  else if(a.stdPhrase==='추가근무'){level='ok';title='연장근무 반영';desc='연장근무 처리 때문에 급여시수가 기준과 다릅니다.';add('연장');}
+  else if(a.stdPhrase==='조기퇴근'){level='ok';title='조기퇴근 반영';desc='조기퇴근 처리 때문에 급여시수가 줄었습니다.';add('조기퇴근');}
+  else if(a.stdPhrase==='지각'){level='ok';title='지각 반영';desc='지각 처리 때문에 급여시수가 줄었습니다.';add('지각');}
+  else if(a.stdPhrase==='정상'){level=hasDiff?'check':'ok';title=hasDiff?'정상 처리 확인':'정상';desc=hasDiff?'정상 처리인데 시수가 다릅니다. 패드 시간 또는 수동 조정을 확인하세요.':'정상 처리되어 있습니다.';}
+  else if(isUnproc){level='check';title='확인 필요';desc='미처리 상태입니다. 처리구분을 확정해야 시수 판단이 안전합니다.';}
+  else if(a.inTime&&!a.outTime&&!a.adjustedEnd){level='check';title='퇴근 미확인';desc='퇴근 기록이 없어 급여시수를 확정할 수 없습니다.';}
+  else if(hasDiff){level='check';title='확인 필요';desc='기준시수와 급여시수가 다르지만 처리구분/메모가 없습니다.';}
+  if(!hasDiff&&!isUnproc&&level==='ok'&&!a.stdPhrase)return '';
+  if(p.tempDates&&p.tempDates.find(td=>td.date===r.date))add('추가근무일');
+  if(p.scheduleReplaces&&p.scheduleReplaces.find(sr=>r.date>=sr.startDate&&r.date<=sr.endDate))add('기간교체');
+  if(a.adjustedStart||a.adjustedEnd)add('시간조정');
+  const tone=level==='check'?{bg:'#fff7ed',bd:'#fed7aa',fg:'#9a3412'}:{bg:'#f0fdf4',bd:'#bbf7d0',fg:'#166534'};
+  return `<div style="margin-top:5px;background:${tone.bg};border:1px solid ${tone.bd};border-radius:6px;padding:5px 7px;line-height:1.45;max-width:240px">
+    <div style="font-size:11px;font-weight:700;color:${tone.fg}">${title}</div>
+    <div style="font-size:10px;color:#475569;white-space:normal">${desc}</div>
+    ${chips.length?`<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:3px">${chips.join('')}</div>`:''}
+  </div>`;
+}
+window.acctDiffInfo=acctDiffInfo;
+function scheduleCell(p){
+  if(!p)return'-';
+  let badge='';
+  if(p._isTemp)badge='<div style="font-size:10px;color:#7e22ce;background:#fdf4ff;border:1px solid #e9d5ff;padding:1px 6px;border-radius:8px;margin-top:2px;display:inline-block">추가근무 기준</div>';
+  else if(p.fromReplace)badge='<div style="font-size:10px;color:#15803d;background:#f0fdf4;border:1px solid #86efac;padding:1px 6px;border-radius:8px;margin-top:2px;display:inline-block">기간교체 기준</div>';
+  else if(p.fromPerm)badge='<div style="font-size:10px;color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;padding:1px 6px;border-radius:8px;margin-top:2px;display:inline-block">영구변경 기준</div>';
+  else if(p.fromPeriod)badge='<div style="font-size:10px;color:#c2410c;background:#fff7ed;border:1px solid #fed7aa;padding:1px 6px;border-radius:8px;margin-top:2px;display:inline-block">기간추가 기준</div>';
+  return `<span style="font-family:'DM Mono',monospace">${p.start||'-'}~${p.end||'-'}</span>${badge}`;
+}
+function attendTimeCell(a,p,kind){
+  a=a||{};p=p||{};
+  const pad=kind==='in'?a.inTime:a.outTime;
+  const adj=kind==='in'?a.adjustedStart:a.adjustedEnd;
+  const sched=kind==='in'?p.start:p.end;
+  let html=`<span style="font-family:'DM Mono',monospace">${pad||'-'}</span>`;
+  if(pad&&adj&&adj!==pad&&adj!==sched){
+    html+=` <span style="color:#1d4ed8;font-size:10px;background:#eff6ff;border:1px solid #bfdbfe;padding:1px 5px;border-radius:8px">수정 ${adj}</span>`;
+  }
+  return html;
+}
+function plannedPhraseBadge(a){
+  a=a||{};
+  if(a.inTime||a.outTime)return '';
+  if(a.stdPhrase==='지각'&&a.adjustedStart)return `<span style="color:#92400e;font-size:11px;font-weight:600;background:#fef3c7;padding:2px 7px;border-radius:10px;border:1px solid #fde68a">지각 예정 ${a.adjustedStart}</span>`;
+  if(a.stdPhrase==='조기퇴근'&&a.adjustedEnd)return `<span style="color:#1d4ed8;font-size:11px;font-weight:600;background:#eff6ff;padding:2px 7px;border-radius:10px;border:1px solid #bfdbfe">조기퇴근 예정 ${a.adjustedEnd}</span>`;
+  if(a.stdPhrase==='추가근무'&&(a.adjustedStart||a.adjustedEnd)){
+    const t=a.adjustedStart?`${a.adjustedStart}부터`:`${a.adjustedEnd}까지`;
+    return `<span style="color:#047857;font-size:11px;font-weight:600;background:#d1fae5;padding:2px 7px;border-radius:10px;border:1px solid #86efac">연장근무 예정 ${t}</span>`;
+  }
+  return '';
+}
+window.scheduleCell=scheduleCell;
+window.attendTimeCell=attendTimeCell;
+window.plannedPhraseBadge=plannedPhraseBadge;
 let WD=[];
 async function loadWorkmanData(){
 const fr=document.getElementById('workman-from').value;
@@ -2326,7 +2411,7 @@ while(cur<=end){
   sc.forEach(p=>{
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dt);
     const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dt);
-    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
+    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds),fromReplace:!!ds.fromReplace,fromPerm:!!ds.fromPerm,fromPeriod:!!ds.fromPeriod,_isTemp:!!ds._isTemp};
     WD.push({dt,p:pEff,a:ad[p.id]||{},alertHtml:''});
   });
   // 스케줄 없는 출근 (이름 필터는 렌더 단계에서)
@@ -2430,6 +2515,7 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   else if(isReservationOnly&&endPassed)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:#047857;background:#d1fae5;padding:1px 5px;border-radius:8px;margin-left:3px">연장예약</span>';
   else if(lateThanReserved)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">예정초과 지각</span>';
   else if(earlyThanReserved)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:8px;margin-left:3px">예정초과 조기</span>';
+  else if(plannedPhraseBadge(a))procBadge=plannedPhraseBadge(a);
   else if(a.stdPhrase==='정상')procBadge=`<span style="color:#047857;font-size:11px;font-weight:600;background:#d1fae5;padding:2px 7px;border-radius:10px">정상</span>`;
   else if(a.stdPhrase)procBadge=`<span class="sbadge s-active" style="font-size:10px">${phraseLabel(a.stdPhrase)}</span>`;
   else if(unproc&&autoLate&&autoEarly)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">지각+조기</span>';
@@ -2440,9 +2526,9 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   else if(!a.inTime&&!startPassed&&isToday2)procBadge='<span style="color:var(--text-muted);font-size:11px">출근 전</span>';
   else if(isFuture)procBadge='<span style="color:var(--text-muted);font-size:11px">예정</span>';
   else procBadge='-';
-  return alertRow+`<tr style="${unproc?'background:#fffbeb;':''}"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})${tkBadge(p)}${pTempBadge}${pReplaceBadge}${pResignedBadge}${pCasualBadge}</td><td style="font-family:'DM Mono',monospace">${p.start}~${p.end}</td><td style="font-family:'DM Mono',monospace">${a.inTime||'-'}${a.adjustedStart&&a.adjustedStart!==a.inTime?' <span style="color:var(--accent);font-size:10px">('+(a.inTime?'조정':'예약')+' '+a.adjustedStart+')</span>':''}</td><td style="font-family:'DM Mono',monospace">${a.outTime||'-'}${a.adjustedEnd&&a.adjustedEnd!==a.outTime?' <span style="color:var(--accent);font-size:10px">('+(a.outTime?'조정':'예약')+' '+a.adjustedEnd+')</span>':''}${!a.outTime&&!a.adjustedEnd&&a.inTime&&!a.stdPhrase&&endPassed?'<span style="font-size:10px;color:var(--orange);margin-left:4px">⚠미확인</span>':''}${a.notes&&a.notes.length?'<span style="font-size:10px;color:#92400e;background:#fef3c7;padding:1px 5px;border-radius:8px;margin-left:4px;border:1px solid #fde68a">💬'+a.notes.length+'</span>':''}</td><td style="font-family:'DM Mono',monospace;color:var(--text-muted);font-weight:400">${unscheduled?'-':fmtH(p,sh)}</td><td style="font-weight:500;font-family:'DM Mono',monospace;color:${rhColor}">${rhDisp}</td><td>${procBadge}</td><td>${ce?(isFuture?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="미래 날짜는 파트관리 달력에서 등록해주세요">수정</button>`:`<button class="icon-btn" onclick="openWE('${p.id}','${dt}')">수정</button>`):(isFuture?'':`<button class="icon-btn" style="color:#92400e;border-color:#fde68a" onclick="openWE('${p.id}','${dt}')">💬 메모</button>`)}${ce?(isFuture?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="미래 날짜는 파트관리 달력에서 등록해주세요">수동입력</button>`:`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동입력</button>`):''}<button class="icon-btn" onclick="openHistoryModal('${p.id}','${dt}')" style="color:#1d4ed8;border-color:#bfdbfe">📋 이력</button></td></tr>`;
+  return alertRow+`<tr style="${unproc?'background:#fffbeb;':''}"><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${dt}</td><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span> (${p.name})${tkBadge(p)}${pTempBadge}${pReplaceBadge}${pResignedBadge}${pCasualBadge}</td><td>${scheduleCell(p)}</td><td>${attendTimeCell(a,p,'in')}</td><td>${attendTimeCell(a,p,'out')}${!a.outTime&&!a.adjustedEnd&&a.inTime&&!a.stdPhrase&&endPassed?'<span style="font-size:10px;color:var(--orange);margin-left:4px">⚠미확인</span>':''}${a.notes&&a.notes.length?'<span style="font-size:10px;color:#92400e;background:#fef3c7;padding:1px 5px;border-radius:8px;margin-left:4px;border:1px solid #fde68a">💬'+a.notes.length+'</span>':''}</td><td style="font-family:'DM Mono',monospace;color:var(--text-muted);font-weight:400">${unscheduled?'-':fmtH(p,sh)}</td><td style="font-weight:500;font-family:'DM Mono',monospace;color:${rhColor}">${rhDisp}</td><td>${procBadge}</td><td>${ce?(isFuture?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="미래 날짜는 파트관리 달력에서 등록해주세요">수정</button>`:`<button class="icon-btn" onclick="openWE('${p.id}','${dt}')">수정</button>`):(isFuture?'':`<button class="icon-btn" style="color:#92400e;border-color:#fde68a" onclick="openWE('${p.id}','${dt}')">💬 메모</button>`)}${ce?(isFuture?`<button class="icon-btn" disabled style="opacity:0.4;cursor:not-allowed" title="미래 날짜는 파트관리 달력에서 등록해주세요">수동입력</button>`:`<button class="icon-btn" onclick="openMA('${p.id}','${dt}')">수동입력</button>`):''}<button class="icon-btn" onclick="openHistoryModal('${p.id}','${dt}')" style="color:#1d4ed8;border-color:#bfdbfe">📋 이력</button></td></tr>`;
 }).join('');
-document.getElementById('workman-list').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>날짜</th><th>카테고리</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th style="color:var(--text-muted);font-weight:500">스케줄시수</th><th>실시수</th><th>처리구분</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
+document.getElementById('workman-list').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>날짜</th><th>카테고리</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th style="color:var(--text-muted);font-weight:500">기준시수</th><th>급여시수</th><th>처리구분</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 window.loadWorkmanData=loadWorkmanData;
 window.renderWorkmanList=renderWorkmanList;
 // 카테고리 선택에 따라 역할(직무) 드롭다운 동적 업데이트
@@ -2481,7 +2567,7 @@ if(catF)data=data.filter(({p})=>p.cat===catF);
 if(roleF)data=data.filter(({p})=>p.role===roleF);
 if(nameF)data=data.filter(({p})=>p.name.toLowerCase().includes(nameF));
 if(!data.length){ST('현재 필터 조건에 맞는 데이터가 없습니다');return;}
-const wageCol=canSeeWage();const h='날짜,카테고리,직무,종류,이름,스케줄,출근,퇴근,실시수'+(wageCol?',시급,단위':'')+',처리구분,메모,처리자';const rows=data.map(({dt,p,a})=>{const base=[dt,CATL[p.cat]||p.cat,p.role,p.tutorKind||'',p.name,p.start+'~'+p.end,a.inTime||'',a.outTime||'',calcRealH(p,a.inTime?a:null)];if(wageCol){const w=wageAt(p,dt);base.push(w||'',w?wageUnit(p):'');}/* ⭐ v10.8.5 */base.push(getProcDisp(p,a,dt),getMemoAll(a),a.memoBy||'');return base.map(v=>'"'+(v+'').replace(/[\r\n]/g,' ').replace(/"/g,'""')+'"').join(',');}).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_출근현황_'+document.getElementById('workman-from').value+'_'+document.getElementById('workman-to').value+'.csv';a.click();URL.revokeObjectURL(u);}
+const wageCol=canSeeWage();const h='날짜,카테고리,직무,종류,이름,스케줄,출근,퇴근,급여시수'+(wageCol?',시급,단위':'')+',처리구분,메모,처리자';const rows=data.map(({dt,p,a})=>{const base=[dt,CATL[p.cat]||p.cat,p.role,p.tutorKind||'',p.name,p.start+'~'+p.end,a.inTime||'',a.outTime||'',calcRealH(p,a.inTime?a:null)];if(wageCol){const w=wageAt(p,dt);base.push(w||'',w?wageUnit(p):'');}/* ⭐ v10.8.5 */base.push(getProcDisp(p,a,dt),getMemoAll(a),a.memoBy||'');return base.map(v=>'"'+(v+'').replace(/[\r\n]/g,' ').replace(/"/g,'""')+'"').join(',');}).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_출근현황_'+document.getElementById('workman-from').value+'_'+document.getElementById('workman-to').value+'.csv';a.click();URL.revokeObjectURL(u);}
 window.exportWorkmanCSV=exportWorkmanCSV;
 function openUnscheduled(pid,dt){const p=AP[pid];if(!p)return;const col=cof(p.role);document.getElementById('modal-workman-title').innerHTML=`<span style="color:${col}">${p.role}</span> (${p.name}) 추가근무 처리`;document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">📌 스케줄 없는 날 출근 기록 — 추가근무로 처리합니다.</div><div style="display:flex;gap:10px;margin-bottom:14px"><div class="form-group" style="flex:1"><label class="form-label">출근 시각</label>${mkTimeSelect5('us-in',p.start)}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근 시각</label>${mkTimeSelect5('us-out',p.end)}</div></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현</div><div class="memo-quick">${(MEMO_QUICK['추가근무']||[]).map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('us-mo').value+=(document.getElementById('us-mo').value?' / ':'')+'${q}'">${q}</button>`).join('')}</div><div class="form-group" style="margin-top:8px"><label class="form-label">메모 (필수)</label><textarea class="memo-area" id="us-mo" placeholder="추가근무 사유"></textarea></div><div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button class="btn-primary" onclick="saveUnscheduled('${pid}','${dt}')">추가근무 처리</button></div>`;OM('modal-workman-edit');}
 window.openUnscheduled=openUnscheduled;
@@ -2813,7 +2899,7 @@ dateList.forEach(dk=>{
     const a=ad[p.id]||{};
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dk);
     const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dk);
-    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
+    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds),fromReplace:!!ds.fromReplace,fromPerm:!!ds.fromPerm,fromPeriod:!!ds.fromPeriod,_isTemp:!!ds._isTemp};
     const sh=schedH(pEff,a);
     const isAbsent=a.stdPhrase==='결근'||isPlannedAbsent(p,dk);
     const rh=a.inTime?calcRealH(pEff,a):isAbsent?0:null;
@@ -2880,7 +2966,9 @@ const rhDisp=(rhNull||isAbsentRow||isWorking)?'-':fmtH(r.part,r.realH);
 const df=hasOut&&!isWorking&&r.realH!==null?Math.round((r.realH-r.schedH)*10)/10:null;
 const dfDispDiff=df!==null&&fmtH(r.part,r.realH)!==fmtH(r.part,r.schedH);
 const db2=df===null||!dfDispDiff?'':df<0?`<span class="diff-minus">${fmtH(r.part,df)}</span>`:df>0?`<span class="diff-plus">+${fmtH(r.part,df)}</span>`:'';
-const procDisp=r.att.stdPhrase==='정상'?`<span style="color:#047857;font-size:11px;font-weight:600;background:#d1fae5;padding:2px 7px;border-radius:10px">정상</span>`:r.att.stdPhrase?`<span class="sbadge s-active" style="font-size:10px">${phraseLabel(r.att.stdPhrase)}</span>`:(isUnproc?(rAutoLate&&rAutoEarly?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">지각+조기</span>':rAutoLate?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">지각</span>':rAutoEarly?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:8px;margin-left:3px">조기퇴근</span>':'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span>'):'-');
+const plannedBadge=plannedPhraseBadge(r.att);
+const procDisp=plannedBadge?plannedBadge:(r.att.stdPhrase==='정상'?`<span style="color:#047857;font-size:11px;font-weight:600;background:#d1fae5;padding:2px 7px;border-radius:10px">정상</span>`:r.att.stdPhrase?`<span class="sbadge s-active" style="font-size:10px">${phraseLabel(r.att.stdPhrase)}</span>`:(isUnproc?(rAutoLate&&rAutoEarly?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">지각+조기</span>':rAutoLate?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">지각</span>':rAutoEarly?'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:8px;margin-left:3px">조기퇴근</span>':'<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span>'):'-'));
+const diffInfo=acctDiffInfo(r,dfDispDiff,isUnproc);
 const unc=r.att.inTime&&!r.att.outTime&&!isWorking;
 const today2=kstDate();
 const pResigned=r.part.status==='inactive'||(r.part.leaveDate&&r.part.leaveDate<today2);
@@ -2896,7 +2984,7 @@ const _b3=(r.att.adjustedEnd&&r.att.stdPhrase==='추가근무')||(r.att.adjusted
 const _b4=(isPlannedAbsent(_partD,_dk)&&!isAbsentRow)?'<span style="font-size:9px;font-weight:700;color:#dc2626;background:#fef2f2;border:1px solid #fecaca;padding:1px 5px;border-radius:8px">예정결근</span>':'';
 const dateBadges=[_b1,_b2,_b3,_b4].filter(Boolean).join(' ');
 const rowStyle=`background:${rowBg}${isSingleDay?';border-bottom:2px solid var(--border)':''}`;
-return`<tr style="${rowStyle}"><td style="background:${col};padding:0;width:3px;min-width:3px"></td><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${r.date}</td><td><span class="cat-badge cat-${r.part.cat}">${CATL[r.part.cat]}</span></td><td><span style="color:${col};font-weight:700">${r.part.role}</span></td><td>${r.part.name}${tkBadge(r.part)}${nameBadge}</td><td style="font-family:'DM Mono',monospace">${r.part.start}~${r.part.end}</td><td style="font-family:'DM Mono',monospace">${r.att.inTime||'-'}</td><td style="font-family:'DM Mono',monospace">${(r.att.adjustedEnd||r.att.outTime)||'-'}${unc?'<span style="color:var(--orange);font-size:10px;margin-left:2px">⚠</span>':''}</td><td style="font-family:'DM Mono',monospace;color:var(--text-muted)">${fmtH(r.part,r.schedH)}</td><td style="font-family:'DM Mono',monospace;font-weight:700">${rhDisp}${db2?' '+db2:''}</td>${canSeeWage()?`<td style="font-family:'DM Mono',monospace;text-align:right;font-weight:600;color:#1e3a8a">${(()=>{if(r.realH===null||isAbsentRow||isWorking||rhNull)return'<span style="color:var(--text-muted);font-weight:normal">-</span>';const dp=calcDayPay(r.part,r.date,r.realH);if(!dp.pay)return'<span style="color:var(--text-muted);font-weight:normal">-</span>';let extra='';if(dp.holidayPay>0)extra=`<span style=\"font-size:9px;color:#b91c1c;background:#fef2f2;padding:1px 4px;border-radius:6px;margin-left:3px\">공휴일</span>`;else if(dp.overtimePay>0)extra=`<span style=\"font-size:9px;color:#92400e;background:#fef3c7;padding:1px 4px;border-radius:6px;margin-left:3px\">+0.5</span>`;return dp.pay.toLocaleString()+'<span style=\"font-size:10px;color:var(--text-muted);font-weight:normal\">원</span>'+extra;})()}</td>`:''}<td>${procDisp}${dateBadges?'<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px">'+dateBadges+'</div>':''}</td><td style="font-size:11px;color:var(--text-muted);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.att.memoText||'-'}</td><td style="font-size:11px;color:var(--text-muted)">${r.att.memoBy||'-'}</td></tr>`;
+return`<tr style="${rowStyle}"><td style="background:${col};padding:0;width:3px;min-width:3px"></td><td style="font-family:'DM Mono',monospace;font-size:11px;color:var(--text-muted)">${r.date}</td><td><span class="cat-badge cat-${r.part.cat}">${CATL[r.part.cat]}</span></td><td><span style="color:${col};font-weight:700">${r.part.role}</span></td><td>${r.part.name}${tkBadge(r.part)}${nameBadge}</td><td>${scheduleCell(r.part)}</td><td>${attendTimeCell(r.att,r.part,'in')}</td><td>${attendTimeCell(r.att,r.part,'out')}${unc?'<span style="color:var(--orange);font-size:10px;margin-left:2px">⚠</span>':''}</td><td style="font-family:'DM Mono',monospace;color:var(--text-muted);font-size:11px" title="판단 기준용 참고 시수">${fmtH(r.part,r.schedH)}</td><td style="font-family:'DM Mono',monospace;font-weight:800;color:#047857;background:#ecfdf5;border-left:2px solid #a7f3d0" title="총무 입금 기준 급여시수">${rhDisp}</td>${canSeeWage()?`<td style="font-family:'DM Mono',monospace;text-align:right;font-weight:700;color:#1e3a8a;background:#eff6ff">${(()=>{if(r.realH===null||isAbsentRow||isWorking||rhNull)return'<span style="color:var(--text-muted);font-weight:normal">-</span>';const dp=calcDayPay(r.part,r.date,r.realH);if(!dp.pay)return'<span style="color:var(--text-muted);font-weight:normal">-</span>';let extra='';if(dp.holidayPay>0)extra=`<span style=\"font-size:9px;color:#b91c1c;background:#fef2f2;padding:1px 4px;border-radius:6px;margin-left:3px\">공휴일</span>`;else if(dp.overtimePay>0)extra=`<span style=\"font-size:9px;color:#92400e;background:#fef3c7;padding:1px 4px;border-radius:6px;margin-left:3px\">+0.5</span>`;return dp.pay.toLocaleString()+'<span style=\"font-size:10px;color:var(--text-muted);font-weight:normal\">원</span>'+extra;})()}</td>`:''}<td>${procDisp}${diffInfo}${dateBadges?'<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px">'+dateBadges+'</div>':''}</td><td style="font-size:11px;color:var(--text-muted);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.att.memoText||'-'}</td><td style="font-size:11px;color:var(--text-muted)">${r.att.memoBy||'-'}</td></tr>`;
 }).join('');
 if(isSingleDay)return rowsHtml;
 const doneRows=g.rows.filter(r=>r.att.outTime||r.att.adjustedEnd);
@@ -2910,7 +2998,7 @@ const df2=doneRealDispV!==null?Math.round((doneRealDispV-doneSchedDispV)*100)/10
 const subDfDisp=df2!==null&&df2!==0;
 const unitS=samplePart.cat==='tutor'?'T':'h';
 const db3=df2===null||!subDfDisp?'':df2<0?`<span class="diff-minus">${df2}${unitS}</span>`:df2>0?`<span class="diff-plus">+${df2}${unitS}</span>`:'';
-const subtotalDisp=doneRealDispV!==null?`${doneRealDispV}${unitS}${db3?' '+db3:''}`:'-';
+const subtotalDisp=doneRealDispV!==null?`${doneRealDispV}${unitS}`:'-';
 const subtotalSchedDisp=doneSchedDispV+unitS;
 // 재직상태 배지 (leaveDate가 오늘 이전이면 퇴사로 간주)
 const todayG=kstDate();
@@ -2926,7 +3014,7 @@ if(g.isCasual){
   statusBadge+=`<span style="font-size:10px;color:#7e22ce;background:#fdf4ff;padding:1px 7px;border-radius:10px;margin-left:6px;font-weight:700;border:1px solid #e9d5ff">⭐ 단발근무자</span>`;
 }
 const subtotalPay=canSeeWage()?g.rows.reduce((s,r)=>{if(r.realH===null)return s;const dp=calcDayPay(r.part,r.date,r.realH);return s+(dp.pay||0);},0):0;
-const subtotal=`<tr style="background:${subBg};border-bottom:2px solid var(--border)"><td style="background:${col};padding:0;width:3px;min-width:3px"></td><td colspan="7" style="padding:7px 10px;font-size:12px;font-weight:700;color:${col}">${g.role} (${g.name})${tkBadge(g)} 소계 ${g.rows.length}일${statusBadge} <button class="icon-btn" style="margin-left:8px;font-size:10px;padding:2px 7px;border-color:#bfdbfe;color:#1d4ed8;background:#eff6ff;font-weight:600" onclick="openHistoryModal('${g.id}')">📋 이력</button></td><td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700;color:var(--text-muted)">${fmtSumH(samplePart,g.rows.map(r=>r.schedH||0))}</td><td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700">${subtotalDisp}</td>${canSeeWage()?`<td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:700;text-align:right;color:#1e3a8a">${subtotalPay.toLocaleString()}원</td>`:''}<td colspan="3"></td></tr>`;
+const subtotal=`<tr style="background:${subBg};border-bottom:2px solid var(--border)"><td style="background:${col};padding:0;width:3px;min-width:3px"></td><td colspan="7" style="padding:7px 10px;font-size:12px;font-weight:700;color:${col}">${g.role} (${g.name})${tkBadge(g)} 소계 ${g.rows.length}일${statusBadge} <button class="icon-btn" style="margin-left:8px;font-size:10px;padding:2px 7px;border-color:#bfdbfe;color:#1d4ed8;background:#eff6ff;font-weight:600" onclick="openHistoryModal('${g.id}')">📋 이력</button></td><td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:600;color:var(--text-muted);font-size:11px">${fmtSumH(samplePart,g.rows.map(r=>r.schedH||0))}</td><td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:800;color:#047857;background:#dcfce7">${subtotalDisp}</td>${canSeeWage()?`<td style="padding:7px 10px;font-family:'DM Mono',monospace;font-weight:800;text-align:right;color:#1e3a8a;background:#dbeafe">${subtotalPay.toLocaleString()}원</td>`:''}<td colspan="3"></td></tr>`;
 return rowsHtml+subtotal;}).join('');
 const tr=tr2;
 const _unused=0;
@@ -2951,9 +3039,9 @@ if(tutorRows.length&&otherRows.length){
   totalSchedDisp=sumDispH({cat:'mgmt'},otherRows.map(r=>r.schedH||0))+'h';
   totalRealDisp=otherDoneAll.length?sumDispH({cat:'mgmt'},otherDoneAll.map(r=>r.realH||0))+'h':'-';
 }
-document.getElementById('acct-body').innerHTML=`<table class="acct-table"><thead><tr><th style="width:3px;padding:0"></th><th>날짜</th><th>카테고리</th><th>직무</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th style="color:var(--text-muted)">스케줄시수</th><th>실시수</th>${canSeeWage()?'<th style="text-align:right">페이</th>':''}<th>처리구분</th><th>메모</th><th>처리자</th></tr></thead><tbody>${tr}</tbody><tfoot><tr><td style="padding:0;background:var(--border)"></td><td colspan="7" style="padding:10px;font-size:13px;color:var(--text-secondary)">합계 (${AD.length}건)</td><td style="padding:10px;font-family:'DM Mono',monospace;color:var(--text-muted)">${totalSchedDisp}</td><td style="padding:10px;font-family:'DM Mono',monospace;font-weight:700">${totalRealDisp}</td>${canSeeWage()?`<td style="padding:10px;font-family:'DM Mono',monospace;font-weight:700;text-align:right;color:#1e3a8a">${(()=>{const totalPay=AD.reduce((s,r)=>{if(r.realH===null)return s;const dp=calcDayPay(r.part,r.date,r.realH);return s+(dp.pay||0);},0);return totalPay.toLocaleString()+'원';})()}</td>`:''}<td colspan="3"></td></tr></tfoot></table>`;}
+document.getElementById('acct-body').innerHTML=`<table class="acct-table"><thead><tr><th style="width:3px;padding:0"></th><th>날짜</th><th>카테고리</th><th>직무</th><th>이름</th><th>스케줄</th><th>출근</th><th>퇴근</th><th style="color:var(--text-muted);font-weight:500">기준시수<br><span style="font-size:9px;font-weight:400">참고</span></th><th style="color:#047857">급여시수<br><span style="font-size:9px;font-weight:500">입금 기준</span></th>${canSeeWage()?'<th style="text-align:right;color:#1e3a8a">입금액</th>':''}<th>확인사항</th><th>메모</th><th>처리자</th></tr></thead><tbody>${tr}</tbody><tfoot><tr><td style="padding:0;background:var(--border)"></td><td colspan="7" style="padding:10px;font-size:13px;color:var(--text-secondary)">조회 ${AD.length}건 · 총무 확인은 급여시수 기준</td><td style="padding:10px;font-family:'DM Mono',monospace;color:var(--text-muted);font-size:11px">${totalSchedDisp}</td><td style="padding:10px;font-family:'DM Mono',monospace;font-weight:800;color:#047857;background:#dcfce7">${totalRealDisp}</td>${canSeeWage()?`<td style="padding:10px;font-family:'DM Mono',monospace;font-weight:800;text-align:right;color:#1e3a8a;background:#dbeafe">${(()=>{const totalPay=AD.reduce((s,r)=>{if(r.realH===null)return s;const dp=calcDayPay(r.part,r.date,r.realH);return s+(dp.pay||0);},0);return totalPay.toLocaleString()+'원';})()}</td>`:''}<td colspan="3"></td></tr></tfoot></table>`;}
 window.loadAcct=loadAcct;
-function exportCSV(){if(!AD.length){ST('먼저 조회해주세요');return;}const wageCol=canSeeWage();const h='날짜,카테고리,직무,종류,이름,재직상태,퇴사일,스케줄,출근,퇴근,스케줄시수,실시수'+(wageCol?',시급,단위':'')+',처리구분,메모,처리자';const todayC=kstDate();const statusLbl=p=>{if(p.status==='inactive')return '퇴사';if(p.leaveDate&&p.leaveDate<todayC)return '퇴사';if(p.leaveDate&&p.leaveDate>todayC)return '퇴사예정';return '재직';};const rows=AD.map(r=>{const base=[r.date,CATL[r.part.cat]||r.part.cat,r.part.role,r.part.tutorKind||'',r.part.name,statusLbl(r.part),r.part.leaveDate||'',`${r.part.start}~${r.part.end}`,r.att.inTime||'',r.att.outTime||'',fmtH(r.part,r.schedH),r.realH===null?'':fmtH(r.part,r.realH)];if(wageCol){const w=wageAt(r.part,r.date);base.push(w||'',w?wageUnit(r.part):'');}/* ⭐ v10.8.5 */base.push(getProcDisp(r.part,r.att,r.date),getMemoAll(r.att),r.att.memoBy||'');return base.map(v=>`"${(v+'').replace(/[\r\n]/g,' ').replace(/"/g,'""')}"`).join(',');}).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`강안교육_시수_${document.getElementById('acct-from').value}_${document.getElementById('acct-to').value}.csv`;a.click();URL.revokeObjectURL(u);}
+function exportCSV(){if(!AD.length){ST('먼저 조회해주세요');return;}const wageCol=canSeeWage();const h='날짜,카테고리,직무,종류,이름,재직상태,퇴사일,스케줄,출근,퇴근,기준시수(참고),급여시수'+(wageCol?',시급,단위':'')+',확인사항,메모,처리자';const todayC=kstDate();const statusLbl=p=>{if(p.status==='inactive')return '퇴사';if(p.leaveDate&&p.leaveDate<todayC)return '퇴사';if(p.leaveDate&&p.leaveDate>todayC)return '퇴사예정';return '재직';};const rows=AD.map(r=>{const base=[r.date,CATL[r.part.cat]||r.part.cat,r.part.role,r.part.tutorKind||'',r.part.name,statusLbl(r.part),r.part.leaveDate||'',`${r.part.start}~${r.part.end}`,r.att.inTime||'',r.att.outTime||'',fmtH(r.part,r.schedH),r.realH===null?'':fmtH(r.part,r.realH)];if(wageCol){const w=wageAt(r.part,r.date);base.push(w||'',w?wageUnit(r.part):'');}/* ⭐ v10.8.5 */base.push(getProcDisp(r.part,r.att,r.date),getMemoAll(r.att),r.att.memoBy||'');return base.map(v=>`"${(v+'').replace(/[\r\n]/g,' ').replace(/"/g,'""')}"`).join(',');}).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`강안교육_시수_${document.getElementById('acct-from').value}_${document.getElementById('acct-to').value}.csv`;a.click();URL.revokeObjectURL(u);}
 window.exportCSV=exportCSV;
 function exportMonthlyGrid(){
   const fr=document.getElementById('acct-from').value;
@@ -2968,7 +3056,7 @@ function exportMonthlyGrid(){
   // 출결 맵 생성 {partId_date: att}
   const attMap={};AD.forEach(r=>{attMap[r.part.id+'_'+r.date]=r;});
   // 헤더 행
-  const header=['카테고리','직무','이름',...dates.map(d=>d.slice(5)),'스케줄시수합','실시수합'].join(',');
+  const header=['카테고리','직무','이름',...dates.map(d=>d.slice(5)),'기준시수(참고)','급여시수'].join(',');
   // 데이터 행
   const rows=emps.map(e=>{
     const cells=dates.map(d=>{
@@ -3134,7 +3222,7 @@ async function exportAcctXLSX(){
     });
 
     // ════════════════════════════════════════
-    // Sheet 2: 시수 (날짜별 실시수 숫자 + 배지 + 합계)
+    // Sheet 2: 시수 (날짜별 급여시수 숫자 + 배지 + 합계)
     // ════════════════════════════════════════
     const ws2=wb.addWorksheet('시수',{views:[{state:'frozen',xSplit:3,ySplit:3}]});
     const c2=[{width:7},{width:11},{width:12}];dates.forEach(()=>c2.push({width:9}));c2.push({width:10},{width:10},{width:10});ws2.columns=c2;
@@ -3143,16 +3231,9 @@ async function exportAcctXLSX(){
     xlS(ws2.getCell(1,1),{b:true,sz:13,c:C.brand,br:false});ws2.getRow(1).height=26;ws2.getRow(2).height=4;
     ['카테고리','직무','이름'].forEach((h,i)=>{ws2.getCell(3,i+1).value=h;xlS(ws2.getCell(3,i+1),{b:true,sz:10,bg:C.hBg,c:C.hTx,a:'center'});});
     dateHdr(ws2,4,3);
-    // ⭐ v10.8.7-fix3: 안녕님 정책 - 실시수가 가장 중요, 스케줄합/차이는 참고용
-    // 시각적 강조: 실시수 = 진녹색, 스케줄합/차이 = 회색
-    const headerStyles=[
-      {bg:'FFF1F5F9',c:'FF64748B'},  // 스케줄합: 회색
-      {bg:'FFDCFCE7',c:'FF15803D'},  // 실시수합: 진녹색 (강조)
-      {bg:'FFF1F5F9',c:'FF64748B'}   // 차이: 회색
-    ];
-    ['스케줄합','실시수합','차이'].forEach((h,i)=>{
+    ['기준합(참고)','급여시수합','확인사항'].forEach((h,i)=>{
       ws2.getCell(3,4+dates.length+i).value=h;
-      xlS(ws2.getCell(3,4+dates.length+i),{b:true,sz:10,bg:headerStyles[i].bg,c:headerStyles[i].c,a:'center'});
+      xlS(ws2.getCell(3,4+dates.length+i),{b:true,sz:10,bg:'FFDCFCE7',c:'FF15803D',a:'center'});
     });
     ws2.getRow(3).height=28;
     ws2.autoFilter={from:{row:3,column:1},to:{row:3,column:tc2}};
@@ -3205,11 +3286,9 @@ async function exportAcctXLSX(){
       const diff=realSum!==null?Math.round((realSum-schSum)*100)/100:null;
       [schSum+unit, realSum!==null?realSum+unit:'-', diff!==null?(diff>=0?'+':'')+diff+unit:'-'].forEach((v,i)=>{
         const cell=ws2.getCell(rn2,4+dates.length+i);cell.value=v;
-        // ⭐ v10.8.7-fix3: 안녕님 정책 - 실시수만 강조, 나머지는 회색
-        let bg='FFF1F5F9',c='FF64748B'; // 기본: 회색 (스케줄합/차이)
-        if(i===1){ // 실시수합 (강조)
-          bg='FFDCFCE7';c=C.doneTx;
-        }
+        let bg='FFDCFCE7',c=C.doneTx;
+        if(i===2&&diff!==null&&diff>0.05){bg=C.diffPBg;c=C.diffPTx;}
+        else if(i===2&&diff!==null&&diff<-0.05){bg=C.diffMBg;c=C.diffMTx;}
         xlS(cell,{b:true,sz:10,a:'right',bg,c});
       });
       ws2.getRow(rn2).height=20;rn2++;
@@ -3262,9 +3341,9 @@ function showDailyHoursTable(){
     const bg=isWeekend?'#fef3c7':'#f9fafb';
     headerCells.push(`<th style="background:${bg};border:1px solid #e5e7eb;padding:4px 6px;font-size:10px;font-weight:700;min-width:60px">${d.slice(5)}<br><span style="color:var(--text-muted);font-weight:400">${dn}</span></th>`);
   });
-  headerCells.push('<th style="background:#dcfce7;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:700;min-width:80px">스케줄<br>합계</th>');
-  headerCells.push('<th style="background:#dcfce7;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:700;min-width:80px">실시수<br>합계</th>');
-  headerCells.push('<th style="background:#fee2e2;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:700;min-width:80px">차이<br>(실-스)</th>');
+  headerCells.push('<th style="background:#f8fafc;color:#64748b;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:600;min-width:80px">기준시수<br><span style="font-weight:400">참고</span></th>');
+  headerCells.push('<th style="background:#dcfce7;color:#047857;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:800;min-width:90px">급여시수<br><span style="font-weight:500">입금 기준</span></th>');
+  headerCells.push('<th style="background:#fef3c7;border:1px solid #e5e7eb;padding:6px 8px;font-size:11px;font-weight:700;min-width:90px">확인사항</th>');
   // 데이터 행
   let totalCells=0,diffCells=0;
   const rowsHtml=emps.map((e,ei)=>{
@@ -3289,14 +3368,14 @@ function showDailyHoursTable(){
       }else if(isPlnAbs){
         display='0';style='color:#fca5a5;font-weight:600';title='결근 예정';
       }else if(rh===null||rh===undefined){
-        // 실시수 없음 → 스케줄 시수로 폴백 (미래/오늘 근무중 모두)
+        // 급여시수 없음 → 기준시수로 폴백 (미래/오늘 근무중 모두)
         if(sh<=0){
           display='-';style='color:#cbd5e1';
         }else{
           // ⭐ fmtH로 통일 (0.5T 단위 올림 - 출결현황과 동일)
           display=fmtH(r.part,sh);
           style='color:#94a3b8'; // 회색 (실시수 미확정 표시)
-          title=`스케줄 ${sh.toFixed(1)}h (실시수 미확정)`;
+          title=`기준 ${sh.toFixed(1)}h (급여시수 미확정)`;
         }
       }else{
         // ⭐ fmtH로 통일 (0.5T 단위 올림 - 출결현황과 동일)
@@ -3309,11 +3388,11 @@ function showDailyHoursTable(){
             // 1T = 70분 이상 차이
             diffCells++;
             style='background:#fee2e2;color:#b91c1c;font-weight:700';
-            title=`스케줄 ${sh.toFixed(1)}h / 실시수 ${rh.toFixed(1)}h\\n차이: ${(rh-sh).toFixed(1)}h`;
+            title=`기준 ${sh.toFixed(1)}h / 급여시수 ${rh.toFixed(1)}h\\n확인: ${(rh-sh).toFixed(1)}h`;
           }else{
             // 작은 차이
             style='color:#c2410c';
-            title=`스케줄 ${sh.toFixed(1)}h / 실시수 ${rh.toFixed(1)}h`;
+            title=`기준 ${sh.toFixed(1)}h / 급여시수 ${rh.toFixed(1)}h`;
           }
         }
       }
@@ -3351,16 +3430,16 @@ function showDailyHoursTable(){
   // 안내 + 표
   const guide=`<div style="padding:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;margin-bottom:12px;font-size:12px;color:#1e40af;line-height:1.6">
     📝 <b>읽는 방법</b>:<br>
-    • <b>회색 글씨</b> = 미래/오늘근무 (스케줄 시수 표시, 실시수 미확정)<br>
-    • <b>검정 글씨</b> = 처리 완료 (실시수)<br>
-    • <b>빨강 셀</b> = 차이 1T(70분) 이상 → 휴게/패드/변경 의심 (점검 필요)<br>
-    • <b>주황 글씨</b> = 작은 차이 (10분 이상)<br>
+    • <b>급여시수</b> = 총무 입금 기준 최종값<br>
+    • <b>회색 글씨</b> = 미래/오늘근무 (기준시수 표시, 급여시수 미확정)<br>
+    • <b>검정 글씨</b> = 처리 완료 (급여시수)<br>
+    • <b>확인사항</b> = 기준과 급여시수가 다를 때만 사유 확인<br>
     • <b>0</b> = 결근 (빨강=확정, 분홍=예정)<br>
     • ⭐ = 추가근무 / 🔁 = 기간교체 / ↔ = 시간 조정<br>
     • <b>셀 클릭</b> → 그 직원 그 날 처리 이력 (등록자 확인)
   </div>
   <div style="padding:8px 16px;font-size:12px;color:var(--text-muted)">
-    📅 ${fr} ~ ${to} (${dates.length}일) · 👥 ${emps.length}명 · ⚠ 차이 큰 셀 ${diffCells}개 / 차이 있는 셀 ${totalCells}개
+    📅 ${fr} ~ ${to} (${dates.length}일) · 👥 ${emps.length}명 · 확인 필요한 셀 ${totalCells}개
   </div>`;
   const tableHtml=`<div style="overflow:auto;max-height:65vh"><table style="border-collapse:collapse;width:100%">
     <thead style="position:sticky;top:0;z-index:3"><tr>${headerCells.join('')}</tr></thead>
@@ -3884,8 +3963,8 @@ function toggleDayTime(d){
 window.toggleDayTime=toggleDayTime;
 
 // ===== 근무 조정 (근무 조정) =====
-const WA_LABELS={perm:'🔄 영구 변경',replace:'🔁 기간 교체',absent:'❌ 결근 예정',oneday:'⭐ 추가근무',period:'➕ 기간 추가',ext_end:'🕐 연장근무 (퇴근 연장)',ext_start:'🕐 연장근무 (출근 당김)',early:'⏰ 조기퇴근',late:'⚠ 지각',att_absent:'❌ 결근 처리',att_done:'✅ 출근 완료'};
-const WA_COLORS={perm:{bg:'#eff6ff',border:'#93c5fd',text:'#1d4ed8'},replace:{bg:'#f0fdf4',border:'#86efac',text:'#15803d'},period:{bg:'#fff7ed',border:'#fed7aa',text:'#c2410c'},absent:{bg:'#fef2f2',border:'#fca5a5',text:'#b91c1c'},oneday:{bg:'#fdf4ff',border:'#e9d5ff',text:'#7e22ce'},ext_end:{bg:'#ecfdf5',border:'#86efac',text:'#047857'},ext_start:{bg:'#ecfdf5',border:'#86efac',text:'#047857'},early:{bg:'#eff6ff',border:'#93c5fd',text:'#1d4ed8'},late:{bg:'#fffbeb',border:'#fcd34d',text:'#b45309'},att_absent:{bg:'#fef2f2',border:'#fca5a5',text:'#b91c1c'},att_done:{bg:'#f0fdf4',border:'#86efac',text:'#15803d'}};
+const WA_LABELS={perm:'🔄 영구 변경',replace:'🔁 기간 교체',absent:'❌ 결근 예정',oneday:'⭐ 추가근무',period:'➕ 기간 추가',ext_end:'🕐 연장근무 (퇴근 연장)',ext_start:'🕐 연장근무 (출근 당김)',early:'⏰ 조기퇴근',late:'⚠ 지각',att_absent:'❌ 결근 처리',att_done:'✅ 출근 완료',orphan_adj:'⚠ 시간조정 잔여'};
+const WA_COLORS={perm:{bg:'#eff6ff',border:'#93c5fd',text:'#1d4ed8'},replace:{bg:'#f0fdf4',border:'#86efac',text:'#15803d'},period:{bg:'#fff7ed',border:'#fed7aa',text:'#c2410c'},absent:{bg:'#fef2f2',border:'#fca5a5',text:'#b91c1c'},oneday:{bg:'#fdf4ff',border:'#e9d5ff',text:'#7e22ce'},ext_end:{bg:'#ecfdf5',border:'#86efac',text:'#047857'},ext_start:{bg:'#ecfdf5',border:'#86efac',text:'#047857'},early:{bg:'#eff6ff',border:'#93c5fd',text:'#1d4ed8'},late:{bg:'#fffbeb',border:'#fcd34d',text:'#b45309'},att_absent:{bg:'#fef2f2',border:'#fca5a5',text:'#b91c1c'},att_done:{bg:'#f0fdf4',border:'#86efac',text:'#15803d'},orphan_adj:{bg:'#f8fafc',border:'#cbd5e1',text:'#475569'}};
 
 async function waGetAllEvents(p){
   const list=[];
@@ -3925,6 +4004,9 @@ async function waGetAllEvents(p){
       // 지각
       if(ph==='지각'&&att.adjustedStart){
         list.push({type:'late',idx:dk,startDate:dk,endDate:dk,start:att.adjustedStart,memo:att.memoText||'',by:att.memoBy,at:att.memoAt});
+      }
+      if(!ph&&!att.inTime&&!att.outTime&&(att.adjustedStart||att.adjustedEnd)){
+        list.push({type:'orphan_adj',idx:dk,startDate:dk,endDate:dk,start:att.adjustedStart,end:att.adjustedEnd,memo:'표준문구 없이 남은 시간조정',by:att.memoBy,at:att.memoAt});
       }
     });
   }
@@ -4002,7 +4084,7 @@ async function waRenderList(pid){
     const isFuture=e.startDate&&e.startDate>today;
     const opacity=isPast?'opacity:0.55;':'';
     // attendance 기반 이벤트는 별도 삭제 버튼
-    const isAttEvent=['ext_end','ext_start','early','late','att_absent'].includes(e.type);
+    const isAttEvent=['ext_end','ext_start','early','late','att_absent','orphan_adj'].includes(e.type);
     // ⭐ v10.8.7-fix3: 시작된 일정도 삭제 허용 (활동 로그로 추적, 안녕님 정책: 회사 리스크 우선)
     let delBtn='';
     let editBtn='';
@@ -4050,6 +4132,8 @@ async function waDeleteAttEvent(pid,dk,type){
       delete ad.adjustedEnd;delete ad.stdPhrase;delete ad.memoText;delete ad.memoBy;delete ad.memoAt;
     }else if(type==='late'){
       delete ad.adjustedStart;delete ad.stdPhrase;delete ad.memoText;delete ad.memoBy;delete ad.memoAt;
+    }else if(type==='orphan_adj'){
+      delete ad.adjustedStart;delete ad.adjustedEnd;delete ad.memoText;delete ad.memoBy;delete ad.memoAt;
     }
     // 출근 기록도 없고 모든 필드가 비었으면 전체 삭제
     if(!ad.inTime&&!ad.outTime&&!ad.stdPhrase&&!ad.adjustedStart&&!ad.adjustedEnd){
@@ -4142,8 +4226,8 @@ async function waRenderCal(){
     if(absent)inner+=`<div style="font-size:8px;padding:1px 2px;background:#fee2e2;color:#b91c1c;border-radius:2px;font-weight:700">결근</div>`;
     else if(hasSchedule){
       // ⭐ v10.7: attendance 예약(지각/조기퇴근/연장근무) 반영
-      const reservedStart=att&&att.adjustedStart&&!att.inTime?att.adjustedStart:null;
-      const reservedEnd=att&&att.adjustedEnd&&!att.outTime?att.adjustedEnd:null;
+      const reservedStart=att&&att.adjustedStart&&!att.inTime&&toM(att.adjustedStart)!==toM(ds.start)?att.adjustedStart:null;
+      const reservedEnd=att&&att.adjustedEnd&&!att.outTime&&toM(att.adjustedEnd)!==toM(ds.end)?att.adjustedEnd:null;
       const dispStart=reservedStart||ds.start;
       const dispEnd=reservedEnd||ds.end;
       const colCl=reservedStart||reservedEnd?'#c2410c':'#4338ca'; // 예약 있으면 주황
@@ -4176,6 +4260,29 @@ window.waRenderCal=waRenderCal;
 function waChangeMonth(dir){WA_CAL_M+=dir;if(WA_CAL_M>11){WA_CAL_M=0;WA_CAL_Y++;}if(WA_CAL_M<0){WA_CAL_M=11;WA_CAL_Y--;}waRenderCal();}
 window.waChangeMonth=waChangeMonth;
 
+function waFocusCheck(kind,pid,dt){
+  const p=AP[pid];if(!p)return;
+  if(kind==='history'){openHistoryForDate(pid,dt);return;}
+  if(kind==='workman'){
+    swTab('workman');
+    setTimeout(()=>{
+      const from=document.getElementById('workman-from'),to=document.getElementById('workman-to'),name=document.getElementById('workman-name'),cat=document.getElementById('workman-cat'),role=document.getElementById('workman-role'),phrase=document.getElementById('workman-phrase'),unproc=document.getElementById('workman-unproc');
+      if(from)from.value=dt;if(to)to.value=dt;if(name)name.value=p.name||'';if(cat)cat.value=p.cat||'';if(typeof updateWorkmanRoleOptions==='function')updateWorkmanRoleOptions();if(role)role.value='';if(phrase)phrase.value='';if(unproc)unproc.checked=false;
+      if(typeof loadWorkmanData==='function')loadWorkmanData();
+    },80);
+    return;
+  }
+  if(kind==='acct'){
+    swTab('acct');
+    setTimeout(()=>{
+      const from=document.getElementById('acct-from'),to=document.getElementById('acct-to'),name=document.getElementById('acct-name'),cat=document.getElementById('acct-cat'),status=document.getElementById('acct-status');
+      if(from)from.value=dt;if(to)to.value=dt;if(name)name.value=p.name||'';if(cat)cat.value=p.cat||'';if(status)status.value='all';
+      if(typeof loadAcct==='function')loadAcct();
+    },80);
+  }
+}
+window.waFocusCheck=waFocusCheck;
+
 function waShowDayDetail(dk,dow){
   const p=AP[WA_PID];if(!p)return;
   const el=document.getElementById('wa-day-detail');if(!el)return;
@@ -4197,6 +4304,12 @@ function waShowDayDetail(dk,dow){
   if(works&&ds.start&&ds.end){
     content+=`<div style="font-size:12px;color:var(--text-primary);margin-bottom:4px">${source}: <b style="font-family:monospace">${ds.start}~${ds.end}</b></div>`;
   }
+  content+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;padding:8px;background:#f8fafc;border:1px solid var(--border-light);border-radius:6px">
+    <button type="button" class="icon-btn" style="font-size:11px;padding:4px 8px;border-color:#cbd5e1;color:#334155" onclick="waFocusCheck('history','${WA_PID}','${dk}')">이력</button>
+    <button type="button" class="icon-btn" style="font-size:11px;padding:4px 8px;border-color:#cbd5e1;color:#334155" onclick="waFocusCheck('workman','${WA_PID}','${dk}')">출결현황</button>
+    <button type="button" class="icon-btn" style="font-size:11px;padding:4px 8px;border-color:#cbd5e1;color:#334155" onclick="waFocusCheck('acct','${WA_PID}','${dk}')">시수확인</button>
+    <span style="font-size:11px;color:var(--text-muted);align-self:center">이 날짜 기준으로 바로 확인</span>
+  </div>`;
   if(att.adjustedEnd&&att.stdPhrase==='추가근무'){
     const extMin=toM(att.adjustedEnd)-toM(ds.end||p.end);
     content+=`<div style="font-size:12px;color:#c2410c;margin-bottom:4px;padding:4px 8px;background:#fff7ed;border-radius:4px">🕐 연장근무 (퇴근 연장): ${att.adjustedEnd}까지 (+${(extMin/60).toFixed(1)}h)${att.memoBy?` <span style="font-size:10px;color:var(--text-muted)">— ✍️ ${att.memoBy} ${att.memoAt||''}</span>`:''}</div>`;
@@ -4215,16 +4328,8 @@ function waShowDayDetail(dk,dow){
     content+=`<div style="font-size:12px;color:#92400e;margin-bottom:4px;padding:4px 8px;background:#fef3c7;border-radius:4px;border:1px solid #fde68a">⚠ 조기퇴근 예약: ${att.adjustedEnd}까지${att.memoBy?` <span style="font-size:10px;color:var(--text-muted)">— ✍️ ${att.memoBy} ${att.memoAt||''}</span>`:''}${att.memoText?`<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">📝 ${att.memoText}</div>`:''}</div>`;
   }
   // ⭐ v10.7: 적용 시간 (예약 반영)
-  // ⭐ v10.8.7-fix3: adjustedStart/End가 정기 시간과 같거나 의미없는 잔재면 무시
-  // 이하수 6/5 케이스: adjustedEnd=16:40 잔재 (영구변경 16:00과 다르나 의미 없는 옛 데이터)
-  // 정확한 비교: adjusted가 기간교체/영구변경 시작·종료와 같으면 무시
-  let reservedStart=att.adjustedStart&&!att.inTime?att.adjustedStart:null;
-  let reservedEnd=att.adjustedEnd&&!att.outTime?att.adjustedEnd:null;
-  // stdPhrase 없는 잔재(adjusted만 있음) → 의미 없으므로 표시 X
-  if(!att.stdPhrase){
-    reservedStart=null;
-    reservedEnd=null;
-  }
+  const reservedStart=att.adjustedStart&&!att.inTime&&toM(att.adjustedStart)!==toM(ds.start)?att.adjustedStart:null;
+  const reservedEnd=att.adjustedEnd&&!att.outTime&&toM(att.adjustedEnd)!==toM(ds.end)?att.adjustedEnd:null;
   if((reservedStart||reservedEnd)&&works&&ds.start&&ds.end){
     const dispStart=reservedStart||ds.start;
     const dispEnd=reservedEnd||ds.end;
@@ -4650,6 +4755,23 @@ function waAutoDays(){
 }
 window.waAutoDays=waAutoDays;
 
+function waIsCleanableReservation(ad){
+  if(!ad||ad.inTime||ad.outTime)return false;
+  const ph=ad.stdPhrase||'';
+  if(['추가근무','조기퇴근','지각'].includes(ph))return true;
+  return !!(ad.adjustedStart||ad.adjustedEnd);
+}
+function waReservationLabel(ad){
+  const ph=ad?.stdPhrase||'';
+  if(ph==='추가근무')return'연장근무';
+  if(ph==='조기퇴근')return'조기퇴근';
+  if(ph==='지각')return'지각';
+  return'시간조정';
+}
+function waCleanupLabel(type){
+  return type==='replace'?'기간교체':type==='perm'?'영구변경':'추가근무';
+}
+
 async function waSave(pid,type){
   const p=AP[pid];if(!p)return;
   // ⭐ v8 안전장치: 모달 안의 모든 시간선택기를 강제로 hidden input과 동기화
@@ -4833,6 +4955,13 @@ async function waSave(pid,type){
     }
   }
   // 겹침 체크
+  if(type==='replace'){
+    const overlaps=waCheckReplaceOverlap(pid,newEvent);
+    if(overlaps&&overlaps.length){
+      const list=overlaps.slice(0,5).map(o=>`• ${o.startDate}~${o.endDate||o.startDate} (${(o.days||[]).join('·')||'요일 없음'})${o.by?' / 등록자 '+o.by:''}`).join('\n');
+      if(!await CC(`이미 겹치는 기간교체가 있습니다.\n\n${list}${overlaps.length>5?`\n...외 ${overlaps.length-5}건`:''}\n\n저장하면 겹치는 날짜는 최신 기간교체가 우선 적용됩니다.\n기존 기간교체를 지우지는 않습니다. 계속 저장하시겠습니까?`,{title:'기간교체 겹침 확인',danger:true}))return;
+    }
+  }
   const conflicts=waCheckConflict(pid,type,newEvent);
   if(conflicts){
     const list=conflicts.slice(0,5).map(c=>`• ${c.date}(${c.dow}) - ${c.desc}`).join('\n');
@@ -4893,8 +5022,8 @@ async function waSave(pid,type){
       while(cur<=scanEnd&&safety<60){
         const sn=await get(ref(db,`attendance/${cur}/${pid}`));
         const ad=sn.val();
-        if(ad&&!ad.inTime&&!ad.outTime&&['추가근무','조기퇴근','지각'].includes(ad.stdPhrase)){
-          const phLbl={추가근무:'연장근무',조기퇴근:'조기퇴근',지각:'지각'}[ad.stdPhrase];
+        if(waIsCleanableReservation(ad)){
+          const phLbl=waReservationLabel(ad);
           const tInfo=ad.adjustedStart?`${ad.adjustedStart}~`:'';
           const tEnd=ad.adjustedEnd?ad.adjustedEnd:'';
           conflicts.push({date:cur,phrase:phLbl,time:tInfo+tEnd,by:ad.memoBy||'-'});
@@ -4989,18 +5118,13 @@ async function waSave(pid,type){
       const sn=await get(ar);
       const ad=sn.val();
       if(!ad)continue;
-      const isReservation=!ad.inTime&&!ad.outTime&&['추가근무','조기퇴근','지각'].includes(ad.stdPhrase);
-      // ⭐ v10.8.7-fix3: stdPhrase 없어도 adjustedStart/End 잔재만 있는 경우도 정리
-      // 이하수 6/5 케이스: stdPhrase 없이 adjustedEnd=16:40만 박혀있음 (옛 잔재)
-      // 조건: inTime/outTime 없음 (패드 X) + adjustedStart/End 둘 중 하나 있음
-      const isAdjustedOnly=!ad.inTime&&!ad.outTime&&!ad.stdPhrase&&(ad.adjustedStart||ad.adjustedEnd);
-      if(isReservation||isAdjustedOnly){
+      if(waIsCleanableReservation(ad)){
         if((ad.notes&&ad.notes.length)||(ad.history&&ad.history.length)){
           const cleaned={};
           if(ad.notes)cleaned.notes=ad.notes;
           if(ad.history){
             const h=ad.history;
-            h.push({type:'auto-cleanup',phrase:ad.stdPhrase,memo:`${type==='replace'?'기간교체':type==='perm'?'영구변경':'추가근무'} 등록으로 자동 정리`,by:CU.name,at:`${kstLabel()} ${kstNow()}`});
+            h.push({type:'auto-cleanup',phrase:ad.stdPhrase||'',adjStart:ad.adjustedStart||null,adjEnd:ad.adjustedEnd||null,memo:`${waCleanupLabel(type)} 등록으로 자동 정리`,by:CU.name,at:`${kstLabel()} ${kstNow()}`});
             cleaned.history=h;
           }
           await set(ar,cleaned);
@@ -5543,7 +5667,7 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     // ⭐ v10.8.7-fix3: d.h를 소수 1자리로 저장 → 모든 시트 자동 일관
     //   - 시수확인 화면 = 일별시수 시트 = 통합 시트 = 정산요약 = 직원별상세
     //   - 예: 2.983h → 3.0h (시수확인과 동일)
-    days.push({dt,h:Math.round(h*10)/10,attended,plnAbs:isPlnAbs,phrase:a.stdPhrase,wage:wageAt(p,dt),att:a,sched:{start:pEff.start,end:pEff.end,customBreak:pEff.customBreak}});
+    days.push({dt,h:Math.round(h*10)/10,attended,plnAbs:isPlnAbs,phrase:a.stdPhrase,wage:wageAt(p,dt),att:a,sched:{start:pEff.start,end:pEff.end,customBreak:pEff.customBreak,fromReplace:!!ds.fromReplace,fromPerm:!!ds.fromPerm,fromPeriod:!!ds.fromPeriod,_isTemp:!!ds._isTemp}});
   }
   // 주별 그룹 (일~토)
   const weeks=[];
@@ -5663,6 +5787,9 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     if(d.att&&d.att.stdPhrase==='추가근무')return true;
     return false;
   }).length;
+  const manualDays=days.filter(d=>d.att&&d.att.manual).length;
+  const adjustedDays=days.filter(d=>d.att&&(d.att.adjustedStart||d.att.adjustedEnd)).length;
+  const scheduleChangeDays=days.filter(d=>d.sched&&(d.sched.fromReplace||d.sched.fromPerm||d.sched.fromPeriod||d.sched._isTemp)).length;
   // 시급 변경 (이번 달에 wage가 바뀌었는지)
   const monthPermsWithWage=(p.permChanges||[]).filter(pc=>(pc.startDate||'').startsWith(monthPrefix)&&pc.wage!==undefined&&pc.wage!==null);
   // ⭐ v10.8.2 안녕님 정책:
@@ -5696,7 +5823,8 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     addedWorkDays,monthTempDates,
     extensionDays,
     reviewWageChanged,monthPermsWithWage,monthWageChangedPerms,
-    reviewWeekVariation,eligibleWeeks,ineligibleWeeks
+    reviewWeekVariation,eligibleWeeks,ineligibleWeeks,
+    manualDays,adjustedDays,scheduleChangeDays
   };
 }
 
@@ -5721,6 +5849,17 @@ function calcReviewReasons(r){
   // 🟡 주휴 자격 변동 (자격 주와 미달 주가 모두 있을 때 — 일반 직원만)
   if(r.reviewWeekVariation&&!r.isT){
     reasons.push({level:'mid',key:'week',icon:'📅',label:'주휴 자격 변동',detail:`자격주 ${r.eligibleWeeks}주 / 미달주 ${r.ineligibleWeeks}주`});
+  }
+  const special=[];
+  if(r.manualDays>0)special.push(`수동입력 ${r.manualDays}건`);
+  if(r.adjustedDays>0)special.push(`출결수정 ${r.adjustedDays}건`);
+  if(r.scheduleChangeDays>0)special.push(`스케줄변경 ${r.scheduleChangeDays}일`);
+  if(r.addedWorkDays>0)special.push(`추가근무 ${r.addedWorkDays}건`);
+  if(r.extensionDays>0)special.push(`연장근무 ${r.extensionDays}건`);
+  if(r.reviewWageChanged)special.push('시급변경');
+  if(r.reviewIsCasual)special.push(`단발 ${r.casualWorkDays}일`);
+  if(special.length){
+    reasons.push({level:'info',key:'special',icon:'ⓘ',label:'특이사항',detail:special.join(' · ')});
   }
   return reasons;
 }
@@ -5823,7 +5962,7 @@ function renderPayroll(){
       <div style="font-size:20px;font-weight:500;color:var(--text-primary)">${fmt(sumExtra)}<span style="font-size:12px;color:var(--text-muted);margin-left:4px;font-weight:400">원</span></div>
     </div>
     <div style="padding:18px 20px;background:#f6f7f8">
-      <div style="font-size:11px;color:var(--text-secondary);font-weight:500;letter-spacing:0.3px;margin-bottom:6px">${hasIssueRows?'송금 진행':'총 지급액'}</div>
+      <div style="font-size:11px;color:var(--text-secondary);font-weight:700;letter-spacing:0.3px;margin-bottom:6px">${hasIssueRows?'입금 진행액':'입금 총액'}</div>
       <div style="font-size:20px;font-weight:500;color:var(--text-primary)">${fmt(sumOkPay)}<span style="font-size:12px;color:var(--text-muted);margin-left:4px;font-weight:400">원</span></div>
       ${hasIssueRows?`<div style="font-size:10px;color:var(--text-muted);margin-top:6px;padding-top:6px;border-top:1px solid #e5e5e5;display:flex;justify-content:space-between;gap:6px"><span>보류 ${issueRows.length}명</span><span style="font-family:'DM Mono',monospace">${fmt(sumIssuePay)}원</span></div>`:''}
     </div>
@@ -5889,7 +6028,7 @@ function renderPayroll(){
           </div>
         </div>
         <div style="overflow-x:auto"><table class="parts-table" style="margin:0">
-          <thead><tr style="background:#fafbfc"><th style="width:24px"></th><th>이름</th><th>직무</th><th style="text-align:right">시급</th><th style="text-align:right">월 시수</th><th style="text-align:right">기본급</th><th style="text-align:right">주휴수당</th><th style="text-align:right">총 지급</th><th style="width:80px;text-align:center">명세서</th></tr></thead>
+          <thead><tr style="background:#fafbfc"><th style="width:24px"></th><th>이름</th><th>직무</th><th style="text-align:right">시급</th><th style="text-align:right;color:#047857">급여시수</th><th style="text-align:right">기본급</th><th style="text-align:right">주휴수당</th><th style="text-align:right;color:#1e3a8a">입금액</th><th style="width:80px;text-align:center">명세서</th></tr></thead>
           <tbody>${grp.map(r=>{
             const monthLbl=r.meetMonthly?'':`<span style="font-size:9px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;padding:1px 5px;border-radius:6px;margin-left:4px;font-weight:700">월&lt;60h</span>`;
             // ⭐ v10.8.7-fix3: 단발자 배지 추가 표시 (다른 화면과 일관성)
@@ -5900,10 +6039,10 @@ function renderPayroll(){
               <td style="font-weight:600">${r.name}${tkBadge(r)}${casualBadge}${joinLeaveBadge(r,year,month)}</td>
               <td><span style="color:${cof(r.role)};font-weight:600;font-size:12px">${r.role}</span></td>
               <td style="font-family:'DM Mono',monospace;text-align:right">${fmt(r.wage)}<span style="font-size:10px;color:var(--text-muted)">/${r.isT?'T':'h'}</span></td>
-              <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:500">${fmtRowMonthH(r)}${monthLbl}</td>
+              <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:800;color:#047857;background:#ecfdf5">${fmtRowMonthH(r)}${monthLbl}</td>
               <td style="font-family:'DM Mono',monospace;text-align:right">${fmt(r.basePay)}</td>
               <td style="font-family:'DM Mono',monospace;text-align:right;color:${r.totalBonusH>0?'#0369a1':'var(--text-muted)'};font-weight:600">${r.bonusPay?fmt(r.bonusPay):'-'}</td>
-              <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:700;color:#1e3a8a">${fmt(r.totalPay)}</td>
+              <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:800;color:#1e3a8a;background:#eff6ff">${fmt(r.totalPay)}</td>
               <td style="text-align:center"><button class="icon-btn" onclick="event.stopPropagation();openPayslipModal('${r.pid}')" style="font-size:10px;padding:2px 6px;border-color:#bfdbfe;color:#1d4ed8">📄</button></td>
             </tr>
             <tr id="pay-detail-${r.pid}" style="display:none;background:#fafbfc"><td colspan="9" style="padding:14px 20px">${renderPayDetail(r)}</td></tr>`;
@@ -5930,9 +6069,10 @@ function renderPayReviewCard(r,reasons,isDone){
   // 사유별 칩
   const reasonChips=reasons.map(rc=>{
     const isHigh=rc.level==='high';
-    const bg=isHigh?'#fef2f2':'#fef3c7';
-    const border=isHigh?'#fca5a5':'#fde68a';
-    const color=isHigh?'#b91c1c':'#92400e';
+    const isInfo=rc.level==='info';
+    const bg=isHigh?'#fef2f2':isInfo?'#f8fafc':'#fef3c7';
+    const border=isHigh?'#fca5a5':isInfo?'#cbd5e1':'#fde68a';
+    const color=isHigh?'#b91c1c':isInfo?'#334155':'#92400e';
     return `<span style="display:inline-flex;align-items:center;gap:5px;background:${bg};border:1px solid ${border};color:${color};padding:4px 10px;border-radius:14px;font-size:11px;font-weight:600;margin-right:5px;margin-bottom:4px">
       <span>${rc.icon}</span><b>${rc.label}</b><span style="opacity:0.85;font-weight:500">${rc.detail}</span>${rc.amount?`<span style="font-family:'DM Mono',monospace;font-weight:700">+${fmt(rc.amount)}원</span>`:''}
     </span>`;
@@ -5950,14 +6090,14 @@ function renderPayReviewCard(r,reasons,isDone){
         <div style="margin-bottom:8px">${reasonChips}</div>
         <div style="display:flex;gap:14px;font-size:12px;color:var(--text-secondary);flex-wrap:wrap;font-family:'DM Mono',monospace">
           <span>시급 ${fmt(r.wage)}원/${r.isT?'T':'h'}</span>
-          <span>시수 ${fmtRowMonthH(r)}</span>
+          <span style="color:#047857;font-weight:800">급여시수 ${fmtRowMonthH(r)}</span>
           <span>기본급 ${fmt(r.basePay)}</span>
           ${r.bonusPay>0?`<span style="color:#0369a1">주휴수당 +${fmt(r.bonusPay)}</span>`:''}
-          <span style="color:#1e3a8a;font-weight:700">총 지급 ${fmt(r.totalPay)}원</span>
+          <span style="color:#1e3a8a;font-weight:800">입금액 ${fmt(r.totalPay)}원</span>
         </div>
       </div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-        <button id="pay-rev-toggle-${r.pid}" class="btn-secondary" style="padding:7px 10px;font-size:12px" onclick="togglePayReviewExpand('${r.pid}')" title="주별 시수/급여 계산 펼치기">▶ 자세히</button>
+        <button id="pay-rev-toggle-${r.pid}" class="btn-secondary" style="padding:7px 10px;font-size:12px" onclick="togglePayReviewExpand('${r.pid}')" title="주별 급여시수/급여 계산 펼치기">▶ 자세히</button>
         <button class="btn-secondary" style="padding:7px 12px;font-size:12px;border-color:#bfdbfe;color:#1d4ed8;background:#eff6ff" onclick="openPayslipModal('${r.pid}')">📄 명세서</button>
         ${isDone?
           `<button class="btn-secondary" style="padding:7px 12px;font-size:12px;border-color:#d1d5db;color:#6b7280" onclick="togglePayReview('${r.pid}','undo')">↩ 되돌리기</button>`
@@ -6048,7 +6188,7 @@ function renderPayslip(rows,year,month){
       <div style="font-size:12px;opacity:0.85;font-weight:600;margin-bottom:10px">▣ 최종 합산</div>
       ${rows.map((r,i)=>`<div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px"><span>${i+1}. ${r.role}${r.tutorKind?` (${r.tutorKind})`:''}</span><span style="font-family:'DM Mono',monospace">${fmt(r.totalPay)}원</span></div>`).join('')}
       <div style="border-top:1px solid rgba(255,255,255,0.3);margin:10px 0;padding-top:10px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:14px;font-weight:700">총 지급액</span>
+        <span style="font-size:14px;font-weight:700">입금액</span>
         <span style="font-size:22px;font-weight:700;font-family:'DM Mono',monospace">${fmt(totPay)}<span style="font-size:13px;opacity:0.85;margin-left:4px">원</span></span>
       </div>
     </div>`;
@@ -6097,7 +6237,7 @@ function renderPayslipJob(r,year,month,idx,wrap){
         <span class="cat-badge cat-${r.cat}" style="font-size:11px">${({mgmt:'관리',tutor:'조교',etc:'기타'})[r.cat]||r.cat}</span>
         <span style="color:${cof(r.role)};font-weight:700;font-size:14px">${r.role}</span>
         ${r.tutorKind?`<span style="background:#fef9c3;color:#854d0e;border:1px solid #fde047;padding:1px 7px;border-radius:8px;font-size:10px;font-weight:600">${r.tutorKind}</span>`:''}
-        <span style="margin-left:auto;font-family:'DM Mono',monospace;font-weight:700;color:#006241">소계 ${fmt(r.totalPay)}원</span>
+        <span style="margin-left:auto;font-family:'DM Mono',monospace;font-weight:700;color:#006241">입금액 ${fmt(r.totalPay)}원</span>
       </div>
       ${inner}
     </div>`;
@@ -6283,15 +6423,15 @@ function renderPayslipIssueSection(r){
   return html;
 }
 
-// 이번달 결과 — 시수, 기본급, 가산, 주휴 → 총 지급
+// 이번달 결과 — 급여시수, 기본급, 가산, 주휴 → 입금액
 function renderPayslipResultSection(r){
   const fmt=n=>(n||0).toLocaleString();
   return `<div style="margin-bottom:18px">
     <div style="font-size:12px;font-weight:700;color:#006241;margin-bottom:8px;letter-spacing:0.3px">▣ 이번 달 결과</div>
     <div style="background:#fff;border:1px solid var(--border-light);border-radius:8px;padding:14px 18px">
       <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13px">
-        <span style="color:var(--text-secondary)">시수</span>
-        <span style="font-family:'DM Mono',monospace;font-weight:600">${fmtRowMonthH(r)}</span>
+        <span style="color:#047857;font-weight:700">급여시수</span>
+        <span style="font-family:'DM Mono',monospace;font-weight:800;color:#047857">${fmtRowMonthH(r)}</span>
       </div>
       <div style="border-top:1px dashed var(--border-light);margin:6px 0"></div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:13px">
@@ -6307,7 +6447,7 @@ function renderPayslipResultSection(r){
         <span style="font-family:'DM Mono',monospace;color:#0369a1;font-weight:600">+${fmt(r.bonusPay)}원</span>
       </div>`:''}
       <div style="border-top:2px solid #006241;margin-top:8px;padding-top:10px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:14px;font-weight:700;color:#006241">총 지급</span>
+        <span style="font-size:14px;font-weight:700;color:#006241">입금액</span>
         <span style="font-size:18px;font-weight:700;font-family:'DM Mono',monospace;color:#006241">${fmt(r.totalPay)}<span style="font-size:13px;margin-left:3px">원</span></span>
       </div>
     </div>
@@ -6336,9 +6476,9 @@ function renderPayslipWeeklySection(r){
     return rounded+'T';
   };
   const titleSuffix=isT
-    ?'<span style="font-size:10px;color:var(--text-secondary);font-weight:500;margin-left:4px">주별 시수 (조교는 주휴수당 없음)</span>'
+    ?'<span style="font-size:10px;color:var(--text-secondary);font-weight:500;margin-left:4px">주별 급여시수 (조교는 주휴수당 없음)</span>'
     :'<span style="font-size:10px;color:var(--text-secondary);font-weight:500;margin-left:4px">주별 자격 판정</span>';
-  const titleLabel=isT?'▣ 주별 시수':'▣ 주휴수당 상세';
+  const titleLabel=isT?'▣ 주별 급여시수':'▣ 주휴수당 상세';
   // tfoot — 일반은 합계 식, 조교는 빈 줄
   const tfootHtml=isT
     ?''
@@ -6353,7 +6493,7 @@ function renderPayslipWeeklySection(r){
         <thead><tr style="background:#f8fafc">
           <th style="padding:8px 12px;text-align:left;font-weight:700;color:var(--text-secondary);font-size:11px">주차</th>
           <th style="padding:8px 12px;text-align:left;font-weight:700;color:var(--text-secondary);font-size:11px">기간</th>
-          <th style="padding:8px 12px;text-align:right;font-weight:700;color:var(--text-secondary);font-size:11px">주 시수</th>
+          <th style="padding:8px 12px;text-align:right;font-weight:700;color:var(--text-secondary);font-size:11px">주 급여시수</th>
           <th style="padding:8px 12px;text-align:center;font-weight:700;color:var(--text-secondary);font-size:11px">자격</th>
           <th style="padding:8px 12px;text-align:right;font-weight:700;color:var(--text-secondary);font-size:11px">주휴 시수</th>
         </tr></thead>
@@ -6464,7 +6604,7 @@ function buildPrintablePayslip(rows,year,month){
         <span style="${css.mono}">${fmt(r.totalPay)}원</span>
       </div>`).join('')}
       <div style="border-top:1px solid rgba(255,255,255,0.35);margin:10px 0 0 0;padding-top:11px;display:flex;justify-content:space-between;align-items:center">
-        <span style="font-size:14px;font-weight:700">총 지급액</span>
+        <span style="font-size:14px;font-weight:700">입금액</span>
         <span style="font-size:22px;font-weight:700;${css.mono}">${fmt(totPay)}<span style="font-size:13px;opacity:0.85;margin-left:4px">원</span></span>
       </div>
     </div>`;
@@ -6616,7 +6756,7 @@ function buildPrintableIssues(r,css){
     html+=`<div style="padding:11px 16px;background:#f0fdf4">
       <div style="${css.rowBetween};margin-bottom:7px">
         <div style="font-size:12px;font-weight:700;color:#15803d">▶ 추가 / 연장근무</div>
-        <div style="font-size:11px;color:#6b7280">총 ${issues.extra.length}건 (시수 자동 반영)</div>
+        <div style="font-size:11px;color:#6b7280">총 ${issues.extra.length}건 (급여시수 자동 반영)</div>
       </div>
       ${issues.extra.map(e=>{const dow=['일','월','화','수','목','금','토'][new Date(e.dt+'T00:00:00+09:00').getDay()];return `<div style="font-size:11.5px;color:#4b5563;margin-bottom:3px;padding-left:8px">• ${e.dt} (${dow}) <span style="color:#15803d;font-weight:600">${e.type}</span> <span style="${css.mono}">${e.label}</span>${e.memo?`<span style="color:#6b7280;font-size:11px"> — ${e.memo}</span>`:''}</div>`;}).join('')}
     </div>`;
@@ -6636,7 +6776,7 @@ function buildPrintableResult(r,css){
       ${r.bonusSum>0?`<div style="${css.rowBetween};padding:5px 0;font-size:13px"><span style="color:#92400e">가산 (0.5 / 1.5)</span><span style="${css.mono};color:#92400e;font-weight:600">+${fmt(r.bonusSum)}원</span></div>`:''}
       ${r.bonusPay>0?`<div style="${css.rowBetween};padding:5px 0;font-size:13px"><span style="color:#0369a1">주휴수당</span><span style="${css.mono};color:#0369a1;font-weight:600">+${fmt(r.bonusPay)}원</span></div>`:''}
       <div style="border-top:2px solid #006241;margin-top:8px;padding-top:10px;${css.rowBetween}">
-        <span style="font-size:14px;font-weight:700;color:#006241">총 지급</span>
+        <span style="font-size:14px;font-weight:700;color:#006241">입금액</span>
         <span style="font-size:18px;font-weight:700;${css.mono};color:#006241">${fmt(r.totalPay)}<span style="font-size:13px;margin-left:3px">원</span></span>
       </div>
     </div>
@@ -6902,19 +7042,19 @@ function renderPayDetail(r){
   return`${monthlyNote}
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:stretch">
   <div style="display:flex;flex-direction:column">
-    <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;letter-spacing:0.3px">📅 주별 근무 시수</div>
+    <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;letter-spacing:0.3px">📅 주별 급여시수</div>
     <div style="background:#fff;border:1px solid var(--border-light);border-radius:6px;overflow:hidden;flex:1">
-      <table style="width:100%;border-collapse:collapse;height:100%"><thead><tr style="background:#f8fafc"><th style="padding:6px 10px;text-align:left;font-size:11px;color:var(--text-secondary);font-weight:600">주차</th><th style="padding:6px 10px;text-align:right;font-size:11px;color:var(--text-secondary);font-weight:600">시수</th><th style="padding:6px 10px;text-align:right;font-size:11px;color:var(--text-secondary);font-weight:600">주휴수당</th></tr></thead><tbody>${wkRows}</tbody></table>
+      <table style="width:100%;border-collapse:collapse;height:100%"><thead><tr style="background:#f8fafc"><th style="padding:6px 10px;text-align:left;font-size:11px;color:var(--text-secondary);font-weight:600">주차</th><th style="padding:6px 10px;text-align:right;font-size:11px;color:var(--text-secondary);font-weight:600">급여시수</th><th style="padding:6px 10px;text-align:right;font-size:11px;color:var(--text-secondary);font-weight:600">주휴수당</th></tr></thead><tbody>${wkRows}</tbody></table>
     </div>
   </div>
   <div style="display:flex;flex-direction:column">
     <div style="font-size:11px;font-weight:700;color:var(--text-secondary);margin-bottom:6px;letter-spacing:0.3px">💵 급여 계산</div>
     <div style="background:#fff;border:1px solid var(--border-light);border-radius:6px;padding:10px 14px;flex:1;display:flex;flex-direction:column">
-      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px"><span>월 총 시수</span><b style="font-family:'DM Mono',monospace">${fmtRowMonthH(r)}</b></div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px"><span style="color:#047857;font-weight:700">월 급여시수</span><b style="font-family:'DM Mono',monospace;color:#047857">${fmtRowMonthH(r)}</b></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px"><span>적용 시급</span><b style="font-family:'DM Mono',monospace">${fmt(r.wage)}원/${r.isT?'T':'h'}</b></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px;border-top:1px dashed var(--border-light)"><span>기본급</span><b style="font-family:'DM Mono',monospace">${fmt(r.basePay)}원</b></div>
       <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px"><span>주휴수당 (${r.totalBonusH||0}h)</span><b style="font-family:'DM Mono',monospace;color:#0369a1">${fmt(r.bonusPay)}원</b></div>
-      <div style="margin-top:auto;display:flex;justify-content:space-between;padding:8px 0 0;font-size:13px;font-weight:700;border-top:2px solid var(--border)"><span>총 지급액</span><span style="font-family:'DM Mono',monospace;color:#1e3a8a;font-size:15px">${fmt(r.totalPay)}원</span></div>
+      <div style="margin-top:auto;display:flex;justify-content:space-between;padding:8px 0 0;font-size:13px;font-weight:700;border-top:2px solid var(--border)"><span>입금액</span><span style="font-family:'DM Mono',monospace;color:#1e3a8a;font-size:15px">${fmt(r.totalPay)}원</span></div>
     </div>
   </div>
 </div>${bonusSection}`;
@@ -6934,7 +7074,7 @@ window.togglePayDetail=togglePayDetail;
 function exportPayrollCSV(){
   if(!PAY_DATA||!PAY_DATA.rows.length){ST('먼저 조회해주세요');return;}
   const{ym,rows}=PAY_DATA;
-  const h='카테고리,직무,종류,이름,시급,단위,월시수,월60h충족,주휴수당시수,기본급,주휴수당,공휴일가산건수,평일0.5가산건수,가산합계,총지급';
+  const h='카테고리,직무,종류,이름,시급,단위,급여시수,월60h충족,주휴수당시수,기본급,주휴수당,공휴일가산건수,평일0.5가산건수,가산합계,입금액';
   const catLbl={mgmt:'관리',tutor:'조교',etc:'기타'};
   const data=rows.map(r=>{
     // ⭐ v10.8.7-fix3: 단발자 [단발] 표시
@@ -7139,7 +7279,7 @@ function _xlBuildSummary(wb,ym,year,month,rows){
   _xlT(sc,{size:9,color:_XL_T.textMuted,align:'left',border:false});
   ws.getRow(2).height=18;
   // 헤더
-  ['카테고리','인원','기본급','주휴수당','가산(0.5/1.5)','총 지급'].forEach((h,i)=>{
+  ['카테고리','인원','기본급','주휴수당','가산(0.5/1.5)','입금액'].forEach((h,i)=>{
     const c=ws.getCell(4,i+1);c.value=h;
     _xlT(c,{bold:true,size:10,bg:_XL_T.headerBg,color:_XL_T.headerText,align:'center'});
   });
@@ -7200,7 +7340,7 @@ function _xlBuildDetail(wb,ym,year,month,rows){
   ws.getRow(1).height=28;
   ws.getRow(2).height=4;
   // 헤더
-  ['No','카테고리','직무','이름','단위','시급','월시수','주휴 시수','기본급','주휴수당','가산','총 지급'].forEach((h,i)=>{
+  ['No','카테고리','직무','이름','단위','시급','급여시수','주휴 시수','기본급','주휴수당','가산','입금액'].forEach((h,i)=>{
     const c=ws.getCell(3,i+1);c.value=h;
     _xlT(c,{bold:true,size:10,bg:_XL_T.headerBg,color:_XL_T.headerText,align:'center',wrap:true});
   });
@@ -7232,7 +7372,7 @@ function _xlBuildDetail(wb,ym,year,month,rows){
         else{o.align='right';o.numFmt=(i===6||i===7)?'0.##':'#,##0';}
         // 가산 강조
         if(i===10&&row.bonusSum>0){o.bg=_XL_T.bonusBg;o.color=_XL_T.bonusText;o.bold=true;}
-        // 총 지급 굵게
+        // 입금액 굵게
         if(i===11)o.bold=true;
         _xlT(c,o);
       });
@@ -7295,7 +7435,7 @@ function _xlBuildDailyHours(wb,ym,year,month,lastDay,rows){
   // 안내
   ws.mergeCells(`A2:${lastL}2`);
   const sc=ws.getCell('A2');
-  sc.value='일요일/공휴일 = 옅은 빨강, 토요일 = 옅은 파랑  /  셀 표기: 숫자=실시수, 결=결근, 연=연차, 반=반차, 빈칸=미근무';
+  sc.value='일요일/공휴일 = 옅은 빨강, 토요일 = 옅은 파랑  /  셀 표기: 숫자=급여시수, 결=결근, 연=연차, 반=반차, 빈칸=미근무';
   _xlT(sc,{size:9,color:_XL_T.textMuted,align:'left',bg:_XL_T.headerBg,border:false});
   ws.getRow(2).height=18;
   // R3-R4 헤더 2줄
@@ -7402,11 +7542,11 @@ function _xlBuildDailyHours(wb,ym,year,month,lastDay,rows){
 }
 
 // === Sheet 4: 일별 페이표 (v10.8.7-fix3) ===
-// === Sheet 4: 일별 시수·페이 통합 (v10.8.7-fix3) ===
-// 안녕님 정책: 시수 검증과 페이 검증을 한 시트에서 동시에 가능
-// 셀 구조: 위에 시수(8h), 아래에 페이(84,000원) — 줄바꿈으로 두 줄 표시
+// === Sheet 4: 일별 급여시수·페이 통합 (v10.8.7-fix3) ===
+// 안녕님 정책: 급여시수 검증과 페이 검증을 한 시트에서 동시에 가능
+// 셀 구조: 위에 급여시수(8h), 아래에 페이(84,000원) — 줄바꿈으로 두 줄 표시
 function _xlBuildDailyPay(wb,ym,year,month,lastDay,rows){
-  const ws=wb.addWorksheet('일별 시수·페이',{views:[{state:'frozen',xSplit:3,ySplit:4}]});
+  const ws=wb.addWorksheet('일별 급여시수·페이',{views:[{state:'frozen',xSplit:3,ySplit:4}]});
   const cols=[{width:7},{width:10},{width:11}];
   for(let d=1;d<=lastDay;d++)cols.push({width:11});
   cols.push({width:14});cols.push({width:14});
@@ -7416,13 +7556,13 @@ function _xlBuildDailyPay(wb,ym,year,month,lastDay,rows){
   const lastL=(()=>{let n=totC,s='';while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;})();
   ws.mergeCells(`A1:${lastL}1`);
   const tc=ws.getCell('A1');
-  tc.value=`일별 시수·페이 통합표 — ${year}년 ${month}월`;
+  tc.value=`일별 급여시수·페이 통합표 — ${year}년 ${month}월`;
   _xlT(tc,{size:13,color:_XL_T.textPrimary,align:'left',border:false});
   ws.getRow(1).height=26;
   // 안내
   ws.mergeCells(`A2:${lastL}2`);
   const sc=ws.getCell('A2');
-  sc.value='각 셀: 위=시수(h/T), 아래=페이(원). 공휴일 ×1.5 자동 적용. 일요일/공휴일=옅은 빨강, 토요일=옅은 파랑.';
+  sc.value='각 셀: 위=급여시수(h/T), 아래=페이(원). 공휴일 ×1.5 자동 적용. 일요일/공휴일=옅은 빨강, 토요일=옅은 파랑.';
   _xlT(sc,{size:9,color:_XL_T.textMuted,align:'left',bg:_XL_T.headerBg,border:false});
   ws.getRow(2).height=18;
   // R3-R4 헤더 2줄 (차분한 톤 - bold 없음)
@@ -7446,9 +7586,9 @@ function _xlBuildDailyPay(wb,ym,year,month,lastDay,rows){
     const c4=ws.getCell(4,3+d);c4.value=d;
     _xlT(c4,{size:10,bg,color,align:'center'});
   }
-  // 합계 헤더 (시수, 페이 분리) - 차분한 톤
+  // 합계 헤더 (급여시수, 페이 분리) - 차분한 톤
   ws.mergeCells(3,3+lastDay+1,4,3+lastDay+1);
-  const cTh=ws.getCell(3,3+lastDay+1);cTh.value='월 시수';
+  const cTh=ws.getCell(3,3+lastDay+1);cTh.value='급여시수';
   _xlT(cTh,{size:10,bg:_XL_T.bonusBg,color:_XL_T.bonusText,align:'center'});
   ws.mergeCells(3,3+lastDay+2,4,3+lastDay+2);
   const cTp=ws.getCell(3,3+lastDay+2);cTp.value='월 페이';
@@ -7548,7 +7688,7 @@ function _xlBuildBonusVerify(wb,ym,year,month,rows){
   ws.getRow(2).height=24;
   ws.getRow(3).height=4;
   // 헤더
-  const hd=['날짜','요일','이름','직무','유형','실시수','초과h','시급','가산액','스케줄 출근','스케줄 퇴근','실제 출근','실제 퇴근','조정','사유 메모','조정자','조정 시각'];
+  const hd=['날짜','요일','이름','직무','유형','급여시수','초과h','시급','가산액','스케줄 출근','스케줄 퇴근','실제 출근','실제 퇴근','조정','사유 메모','조정자','조정 시각'];
   hd.forEach((h,i)=>{
     const c=ws.getCell(4,i+1);c.value=h;
     _xlT(c,{bold:true,size:10,bg:_XL_T.headerBg,color:_XL_T.headerText,align:'center',wrap:true});
@@ -7610,7 +7750,7 @@ function exportBonusCSV(){
   const{ym,rows}=PAY_DATA;
   const all=_xlFlattenBonus(rows);
   if(!all.length){ST('가산 내역이 없습니다');return;}
-  const h='날짜,요일,이름,직무,가산유형,실시수,초과시수,시급,가산액,계산식,스케줄출근,스케줄퇴근,실제출근,실제퇴근,조정여부,사유메모,조정자,조정시각';
+  const h='날짜,요일,이름,직무,가산유형,급여시수,초과시수,시급,가산액,계산식,스케줄출근,스케줄퇴근,실제출근,실제퇴근,조정여부,사유메모,조정자,조정시각';
   const data=all.map(b=>[b.dt,b.dow,b.name,b.role,b.type==='holiday'?'공휴일×1.5':'평일+0.5',
     b.h,b.overH||'',b.wage,b.amount,b.calc||'',b.sched.start||'',b.sched.end||'',b.actS||'',b.actE||'',
     b.adjusted?'O':'',(b.reason+'').replace(/[\r\n,]/g,' '),b.by||'',b.at||''].map(v=>`"${v||''}"`).join(',')).join('\n');
