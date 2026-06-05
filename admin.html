@@ -1367,7 +1367,7 @@ function _isAutoUnproc(p){
 }
 function chkAlert(c,ps){const el=document.getElementById('alert-'+c);if(!el)return;const uc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule'||_isAutoUnproc(p));if(uc.length>0){el.textContent=`⚠ 처리 필요: ${uc.map(p=>p.name+(p.status==='no-schedule'?' (스케줄없는출근 '+p.actual+')':p.nc?' (퇴근미확인)':_isAutoUnproc(p)?' (지각/조기퇴근 미확정)':'')).join(', ')}`;el.classList.add('show');}else el.classList.remove('show');}
 function rStats(c,ps){const ab=ps.filter(p=>p.status.startsWith('absent')&&p.status!=='absent-unc').length;const unc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule'||_isAutoUnproc(p)).length;document.getElementById('stats-'+c).innerHTML=`<div class="stat-card danger" style="cursor:${unc>0?'pointer':'default'}" ${unc>0?`onclick="openStatsModal('${c}','unproc')"`:''}><div class="stat-label">미처리${unc>0?'<span class="stat-dot"></span>':''}</div><div class="stat-val">${unc}</div></div><div class="stat-card danger" onclick="openStatsModal('${c}','absent')"><div class="stat-label">결근</div><div class="stat-val">${ab}</div></div><div class="stat-card warning" onclick="openStatsModal('${c}','late')"><div class="stat-label">지각</div><div class="stat-val">${ps.filter(p=>p.status==='late').length}</div></div><div class="stat-card orange" onclick="openStatsModal('${c}','changed')"><div class="stat-label">변경근무</div><div class="stat-val">${ps.filter(p=>p.status==='changed').length}</div></div><div class="stat-card" style="cursor:default"><div class="stat-label">전체</div><div class="stat-val">${ps.filter(p=>p.status!=='no-schedule').length}</div></div>`;}
-function rTL(c,ps){const con=document.getElementById('tl-'+c);document.getElementById('tl-time-'+c).textContent=`기준 ${kstNow()}`;ps=ps.filter(p=>p.status!=='no-schedule');if(!ps.length){con.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">근무 인원 없음</div>';return;}const aS=ps.map(p=>toM(p.start)),aE=ps.map(p=>{const ext=p.ar&&p.ar.adjustedEnd&&p.ar.stdPhrase?toM(p.ar.adjustedEnd):0;return Math.max(toM(p.end),ext);});let am=Math.floor(Math.min(...aS)/30)*30,ax=Math.ceil(Math.max(...aE)/30)*30;if(ax-am<120)ax=am+120;const asp=ax-am;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const np=Math.max(0,Math.min(100,(nm-am)/asp*100));const ts2=asp<=240?60:asp<=480?120:180;const tk=[];for(let t=Math.ceil(am/ts2)*ts2;t<=ax;t+=ts2)tk.push(t);const ax2=`<div class="tl-axis-row"><div class="tl-colorbar" style="visibility:hidden"></div><div class="tl-axis-info-col"></div><div class="tl-axis-bar-col"><div class="tl-axis-marks">${tk.map(t=>`<div class="tl-axis-mark" style="left:${(t-am)/asp*100}%"><span>${m2hm(t)}</span><div class="tl-axis-mark-line"></div></div>`).join('')}${nm>=am&&nm<=ax?`<div style="position:absolute;top:0;bottom:0;left:${np}%;width:2px;background:rgba(220,38,38,.5);border-radius:1px"></div>`:''}</div></div></div>`;const sorted=[...ps].sort((a,b)=>{const o={'absent-unc':0,'absent-con':1,'absent-pln':2,late:3,changed:4,done:5,pending:6};const aRank=a.nc?0:(o[a.status]??5);const bRank=b.nc?0:(o[b.status]??5);return(aRank-bRank)||a.start.localeCompare(b.start);});con.innerHTML=ax2+sorted.map(e=>bTL(e,am,asp,np)).join('');}
+function rTL(c,ps){const con=document.getElementById('tl-'+c);document.getElementById('tl-time-'+c).textContent=`기준 ${kstNow()}`;ps=ps.filter(p=>p.status!=='no-schedule');if(!ps.length){con.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">근무 인원 없음</div>';return;}const aS=ps.map(p=>toM(p.start)),aE=ps.map(p=>{const ext=p.ar&&p.ar.adjustedEnd&&p.ar.stdPhrase==='추가근무'?toM(p.ar.adjustedEnd):0;return Math.max(toM(p.end),ext);});let am=Math.floor(Math.min(...aS)/30)*30,ax=Math.ceil(Math.max(...aE)/30)*30;if(ax-am<120)ax=am+120;const asp=ax-am;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const np=Math.max(0,Math.min(100,(nm-am)/asp*100));const ts2=asp<=240?60:asp<=480?120:180;const tk=[];for(let t=Math.ceil(am/ts2)*ts2;t<=ax;t+=ts2)tk.push(t);const ax2=`<div class="tl-axis-row"><div class="tl-colorbar" style="visibility:hidden"></div><div class="tl-axis-info-col"></div><div class="tl-axis-bar-col"><div class="tl-axis-marks">${tk.map(t=>`<div class="tl-axis-mark" style="left:${(t-am)/asp*100}%"><span>${m2hm(t)}</span><div class="tl-axis-mark-line"></div></div>`).join('')}${nm>=am&&nm<=ax?`<div style="position:absolute;top:0;bottom:0;left:${np}%;width:2px;background:rgba(220,38,38,.5);border-radius:1px"></div>`:''}</div></div></div>`;const sorted=[...ps].sort((a,b)=>{const o={'absent-unc':0,'absent-con':1,'absent-pln':2,late:3,changed:4,done:5,pending:6};const aRank=a.nc?0:(o[a.status]??5);const bRank=b.nc?0:(o[b.status]??5);return(aRank-bRank)||a.start.localeCompare(b.start);});con.innerHTML=ax2+sorted.map(e=>bTL(e,am,asp,np)).join('');}
 function bTL(e,am,as,np){
 const col=cof(e.role);
 const sM=toM(e.start),eM=toM(e.end);
@@ -1375,8 +1375,9 @@ const bl=Math.max(0,(sM-am)/as*100);
 const bw=Math.min(100,(eM-am)/as*100)-bl;
 const isAutoDetected=e.status==='absent-unc'&&e.ar?.inTime;
 const isAbsent=e.status.startsWith('absent')&&!isAutoDetected;
-const _validAdjStart=e.ar?.adjustedStart&&e.ar?.stdPhrase?e.ar.adjustedStart:null;
-const _validAdjEnd=e.ar?.adjustedEnd&&e.ar?.stdPhrase?e.ar.adjustedEnd:null;
+const _phrase=e.ar?.stdPhrase||'';
+const _validAdjStart=e.ar?.adjustedStart&&_phrase&&_phrase!=='정상'?e.ar.adjustedStart:null;
+const _validAdjEnd=e.ar?.adjustedEnd&&_phrase&&_phrase!=='정상'?e.ar.adjustedEnd:null;
 const realIn=_validAdjStart||e.ar?.inTime||null;
 const realOut=_validAdjEnd||e.ar?.outTime||null;
 const dispIn=realIn||e.start;
@@ -5772,6 +5773,15 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
       }
     });
   }
+  const isReviewChangeDay=d=>{
+    const schedChanged=d.sched&&(d.sched.fromReplace||d.sched.fromPeriod||d.sched._isTemp);
+    const extraPhrase=d.att&&d.att.stdPhrase==='추가근무';
+    return !!(schedChanged||extraPhrase);
+  };
+  const reviewBonusList=bonusList.filter(b=>isReviewChangeDay(b));
+  const reviewBonusSum=reviewBonusList.reduce((s,b)=>s+(b.amount||0),0);
+  const reviewHolidayCnt=reviewBonusList.filter(b=>b.type==='holiday').length;
+  const reviewOvertimeCnt=reviewBonusList.filter(b=>b.type==='overtime').length;
   // ⭐ v10: 검토 플래그 정보 (총무 검토용)
   const monthPrefix=`${year}-${String(month).padStart(2,'0')}`;
   // 단발근무 (퇴사자 일시 복귀)
@@ -5805,10 +5815,28 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     return prevWage!==cur.wage;
   });
   const reviewWageChanged=monthWageChangedPerms.length>0;
-  // 주휴 자격 변동 (자격 주와 미달/결근 주가 모두 있을 때)
+  // 주휴 추가 지급 검토:
+  // 원래 주 15h 미만일 수 있는 주가 추가근무/기간교체 등 변경 때문에 자격 주가 된 경우만 올린다.
   const eligibleWeeks=weeks.filter(w=>w.eligible).length;
   const ineligibleWeeks=weeks.filter(w=>!w.eligible&&w.totalH>0).length;
   const reviewWeekVariation=eligibleWeeks>0&&ineligibleWeeks>0;
+  const weekEntitlementGainWeeks=weeks.filter(w=>{
+    if(!w.eligible)return false;
+    const changedH=w.days.reduce((sum,d)=>{
+      if(!d.h||d.future||d.offDay)return sum;
+      const schedChanged=d.sched&&(d.sched.fromReplace||d.sched.fromPeriod||d.sched._isTemp);
+      const extraPhrase=d.att&&d.att.stdPhrase==='추가근무';
+      if(!schedChanged&&!extraPhrase)return sum;
+      if(d.sched&&d.sched._isTemp)return sum+d.h;
+      if(extraPhrase&&d.sched){
+        const baseH=schedH({start:d.sched.start,end:d.sched.end,customBreak:d.sched.customBreak},null);
+        return sum+Math.max(0,d.h-baseH);
+      }
+      return sum+d.h;
+    },0);
+    return changedH>0&&(w.totalH-changedH)<15;
+  });
+  const reviewWeekEntitlementGain=meetMonthly&&weekEntitlementGainWeeks.length>0;
   return{
     pid,name:p.name,role:p.role,cat:p.cat,tutorKind:p.tutorKind,
     isT,wage:lastWage,
@@ -5817,12 +5845,13 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     days,joinDate:p.joinDate,leaveDate:p.leaveDate,
     status:p.status,
     bonusList,bonusSum,holidayCnt,overtimeCnt,
+    reviewBonusList,reviewBonusSum,reviewHolidayCnt,reviewOvertimeCnt,
     // 검토 플래그
     reviewIsCasual,casualWorkDays,
     addedWorkDays,monthTempDates,
     extensionDays,
     reviewWageChanged,monthPermsWithWage,monthWageChangedPerms,
-    reviewWeekVariation,eligibleWeeks,ineligibleWeeks,
+    reviewWeekVariation,reviewWeekEntitlementGain,weekEntitlementGainWeeks,eligibleWeeks,ineligibleWeeks,
     manualDays,adjustedDays,scheduleChangeDays
   };
 }
@@ -5836,16 +5865,16 @@ function calcReviewReasons(r){
   // 회계 검토 대상 = 기존 기본급 외에 "추가 지급" 또는 지급 자격이 바뀌는 항목만.
   // 수동입력/출결수정/스케줄변경은 확인 참고 정보일 뿐, 자동으로 검토대상에 올리지 않는다.
   const reasons=[];
-  // 🔴 가산 (공휴일 ×1.5 / 평일 8h초과 +0.5)
-  if((r.bonusSum||0)>0){
+  // 🔴 변경/추가근무 때문에 새로 생긴 가산만 검토 대상으로 올린다.
+  if((r.reviewBonusSum||0)>0){
     const parts=[];
-    if(r.holidayCnt>0)parts.push(`공휴일 ${r.holidayCnt}건`);
-    if(r.overtimeCnt>0)parts.push(`8h초과 ${r.overtimeCnt}건`);
-    reasons.push({level:'high',key:'bonus',icon:'⚡',label:'가산',detail:parts.join(' · '),amount:r.bonusSum});
+    if(r.reviewHolidayCnt>0)parts.push(`공휴일 ${r.reviewHolidayCnt}건`);
+    if(r.reviewOvertimeCnt>0)parts.push(`8h초과 ${r.reviewOvertimeCnt}건`);
+    reasons.push({level:'high',key:'bonus',icon:'⚡',label:'변경 가산',detail:parts.join(' · '),amount:r.reviewBonusSum});
   }
-  // 🟡 주휴 자격 변동 (자격 주와 미달 주가 모두 있을 때 — 일반 직원만)
-  if(r.reviewWeekVariation&&!r.isT){
-    reasons.push({level:'mid',key:'week',icon:'📅',label:'주휴 자격 변동',detail:`자격주 ${r.eligibleWeeks}주 / 미달주 ${r.ineligibleWeeks}주`});
+  // 🟡 변경근무 때문에 없던 주휴수당이 생긴 경우 — 일반 직원만
+  if(r.reviewWeekEntitlementGain&&!r.isT){
+    reasons.push({level:'mid',key:'week',icon:'📅',label:'주휴 추가 지급',detail:`변경근무로 대상 전환 ${r.weekEntitlementGainWeeks.length}주`});
   }
   return reasons;
 }
