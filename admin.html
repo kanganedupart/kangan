@@ -688,11 +688,11 @@ function calcDayPay(p,date,realH){
     const pay=Math.ceil(wage*realHDisp*1.5);
     return{pay,basePay:Math.ceil(wage*realHDisp),overtimePay:0,holidayPay:Math.ceil(wage*realHDisp*0.5),normalH:realHDisp,overtimeH:0};
   }
-  // 평일: 8시간 초과분 0.5 가산
-  const normalH=Math.min(realHDisp,8);
+  // 평일: 기본급은 전체 급여시수 × 시급, 가산은 8시간 초과분 × 0.5만 별도 표기
+  const normalH=realHDisp;
   const overtimeH=Math.max(0,realHDisp-8);
-  const basePay=wage*normalH;
-  const overtimePay=wage*overtimeH*1.5;
+  const basePay=wage*realHDisp;
+  const overtimePay=wage*overtimeH*0.5;
   const pay=Math.ceil(basePay+overtimePay);
   return{pay,basePay:Math.ceil(basePay),overtimePay:Math.ceil(overtimePay),holidayPay:0,normalH,overtimeH};
 }
@@ -6415,7 +6415,7 @@ function renderPayslipIssueSection(r){
           <span style="margin-left:8px;color:${b.type==='holiday'?'#b91c1c':'#92400e'};font-weight:600">${b.type==='holiday'?'공휴일 ×1.5':'8h초과 +0.5'}</span>
         </div>
         <div style="display:flex;gap:10px;align-items:center">
-          <span style="font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace">${b.calc||''}</span>
+          <span style="font-size:10px;color:var(--text-muted);font-family:'DM Mono',monospace">${b.calc||''} · 기본급 제외</span>
           <span style="font-family:'DM Mono',monospace;font-weight:700;color:${b.type==='holiday'?'#b91c1c':'#92400e'}">+${fmt(b.amount)}원</span>
         </div>
       </div>`).join('')}
@@ -6761,7 +6761,7 @@ function buildPrintableIssues(r,css){
           <span style="margin-left:8px;color:${b.type==='holiday'?'#b91c1c':'#92400e'};font-weight:600">${b.type==='holiday'?'공휴일 ×1.5':'8h초과 +0.5'}</span>
         </div>
         <div style="display:flex;gap:10px;align-items:center">
-          <span style="font-size:10px;color:#6b7280;${css.mono}">${b.calc||''}</span>
+          <span style="font-size:10px;color:#6b7280;${css.mono}">${b.calc||''} · 기본급 제외</span>
           <span style="${css.mono};font-weight:700;color:${b.type==='holiday'?'#b91c1c':'#92400e'}">+${fmt(b.amount)}원</span>
         </div>
       </div>`).join('')}
@@ -7028,7 +7028,7 @@ function renderPayDetail(r){
 <td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:11px;${actStyle}">${actTxt}${adjMark}</td>
 <td style="padding:7px 10px;font-size:11px;max-width:180px;overflow:hidden;text-overflow:ellipsis" title="${(reason+'').replace(/"/g,'&quot;')}">${reason}</td>
 <td style="padding:7px 10px;font-size:10px;color:var(--text-secondary);white-space:nowrap">${byTxt}</td>
-<td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:11px;text-align:right;color:${amountColor};font-weight:700;white-space:nowrap">${b.calc}<div style="margin-top:2px">+${fmt(b.amount)}원</div></td>
+<td style="padding:7px 10px;font-family:'DM Mono',monospace;font-size:11px;text-align:right;color:${amountColor};font-weight:700;white-space:nowrap">${b.calc}<div style="margin-top:2px">+${fmt(b.amount)}원 <span style="font-size:9px;color:var(--text-muted);font-weight:500">기본급 제외</span></div></td>
 <td style="padding:7px 10px;text-align:center"><button class="icon-btn" style="font-size:10px;padding:2px 7px;border-color:#bfdbfe;color:#1d4ed8" onclick="openHistoryForDate('${r.pid}','${b.dt}')">🔍 이력</button></td>
 </tr>`);
     });
@@ -7047,7 +7047,7 @@ function renderPayDetail(r){
           <th style="padding:8px 10px;text-align:left;font-size:11px;color:#78350f;font-weight:700">실제</th>
           <th style="padding:8px 10px;text-align:left;font-size:11px;color:#78350f;font-weight:700">사유</th>
           <th style="padding:8px 10px;text-align:left;font-size:11px;color:#78350f;font-weight:700">조정자</th>
-          <th style="padding:8px 10px;text-align:right;font-size:11px;color:#78350f;font-weight:700">계산 / 가산액</th>
+          <th style="padding:8px 10px;text-align:right;font-size:11px;color:#78350f;font-weight:700">계산 / 추가가산액</th>
           <th style="padding:8px 10px;text-align:center;font-size:11px;color:#78350f;font-weight:700">확인</th>
         </tr></thead>
         <tbody>${bonusRows.join('')}</tbody>
@@ -7698,12 +7698,12 @@ function _xlBuildBonusVerify(wb,ym,year,month,rows){
   // 안내
   ws.mergeCells('A2:Q2');
   const sc=ws.getCell('A2');
-  sc.value='평일 8h 초과(+0.5) 및 공휴일(×1.5) 가산 발생 건. 스케줄과 실제가 다르면 조정 컬럼에 O. 사유와 조정자를 확인 후 정산하세요.';
+  sc.value='가산액은 기본급을 제외한 추가 지급분입니다. 평일 8h 초과는 초과시간×시급×0.5, 공휴일은 급여시수×시급×0.5로 표시합니다. 스케줄과 실제가 다르면 조정 컬럼에 O.';
   _xlT(sc,{size:9,color:_XL_T.bonusText,bg:_XL_T.bonusBg,align:'left',border:false,wrap:true});
   ws.getRow(2).height=24;
   ws.getRow(3).height=4;
   // 헤더
-  const hd=['날짜','요일','이름','직무','유형','급여시수','초과h','시급','가산액','스케줄 출근','스케줄 퇴근','실제 출근','실제 퇴근','조정','사유 메모','조정자','조정 시각'];
+  const hd=['날짜','요일','이름','직무','유형','급여시수','초과h','시급','추가가산액','스케줄 출근','스케줄 퇴근','실제 출근','실제 퇴근','조정','사유 메모','조정자','조정 시각'];
   hd.forEach((h,i)=>{
     const c=ws.getCell(4,i+1);c.value=h;
     _xlT(c,{bold:true,size:10,bg:_XL_T.headerBg,color:_XL_T.headerText,align:'center',wrap:true});
@@ -7765,7 +7765,7 @@ function exportBonusCSV(){
   const{ym,rows}=PAY_DATA;
   const all=_xlFlattenBonus(rows);
   if(!all.length){ST('가산 내역이 없습니다');return;}
-  const h='날짜,요일,이름,직무,가산유형,급여시수,초과시수,시급,가산액,계산식,스케줄출근,스케줄퇴근,실제출근,실제퇴근,조정여부,사유메모,조정자,조정시각';
+  const h='날짜,요일,이름,직무,가산유형,급여시수,초과시수,시급,추가가산액(기본급제외),계산식,스케줄출근,스케줄퇴근,실제출근,실제퇴근,조정여부,사유메모,조정자,조정시각';
   const data=all.map(b=>[b.dt,b.dow,b.name,b.role,b.type==='holiday'?'공휴일×1.5':'평일+0.5',
     b.h,b.overH||'',b.wage,b.amount,b.calc||'',b.sched.start||'',b.sched.end||'',b.actS||'',b.actE||'',
     b.adjusted?'O':'',(b.reason+'').replace(/[\r\n,]/g,' '),b.by||'',b.at||''].map(v=>`"${v||''}"`).join(',')).join('\n');
