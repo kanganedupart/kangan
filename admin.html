@@ -1350,7 +1350,7 @@ function _isAutoUnproc(p){
 }
 function chkAlert(c,ps){const el=document.getElementById('alert-'+c);if(!el)return;const uc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule'||_isAutoUnproc(p));if(uc.length>0){el.textContent=`⚠ 처리 필요: ${uc.map(p=>p.name+(p.status==='no-schedule'?' (스케줄없는출근 '+p.actual+')':p.nc?' (퇴근미확인)':_isAutoUnproc(p)?' (지각/조기퇴근 미확정)':'')).join(', ')}`;el.classList.add('show');}else el.classList.remove('show');}
 function rStats(c,ps){const ab=ps.filter(p=>p.status.startsWith('absent')&&p.status!=='absent-unc').length;const unc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule'||_isAutoUnproc(p)).length;document.getElementById('stats-'+c).innerHTML=`<div class="stat-card danger" style="cursor:${unc>0?'pointer':'default'}" ${unc>0?`onclick="openStatsModal('${c}','unproc')"`:''}><div class="stat-label">미처리${unc>0?'<span class="stat-dot"></span>':''}</div><div class="stat-val">${unc}</div></div><div class="stat-card danger" onclick="openStatsModal('${c}','absent')"><div class="stat-label">결근</div><div class="stat-val">${ab}</div></div><div class="stat-card warning" onclick="openStatsModal('${c}','late')"><div class="stat-label">지각</div><div class="stat-val">${ps.filter(p=>p.status==='late').length}</div></div><div class="stat-card orange" onclick="openStatsModal('${c}','changed')"><div class="stat-label">변경근무</div><div class="stat-val">${ps.filter(p=>p.status==='changed').length}</div></div><div class="stat-card" style="cursor:default"><div class="stat-label">전체</div><div class="stat-val">${ps.filter(p=>p.status!=='no-schedule').length}</div></div>`;}
-function rTL(c,ps){const con=document.getElementById('tl-'+c);document.getElementById('tl-time-'+c).textContent=`기준 ${kstNow()}`;ps=ps.filter(p=>p.status!=='no-schedule');if(!ps.length){con.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">근무 인원 없음</div>';return;}const aS=ps.map(p=>toM(p.start)),aE=ps.map(p=>{const ext=p.ar&&p.ar.adjustedEnd?toM(p.ar.adjustedEnd):0;return Math.max(toM(p.end),ext);});let am=Math.floor(Math.min(...aS)/30)*30,ax=Math.ceil(Math.max(...aE)/30)*30;if(ax-am<120)ax=am+120;const asp=ax-am;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const np=Math.max(0,Math.min(100,(nm-am)/asp*100));const ts2=asp<=240?60:asp<=480?120:180;const tk=[];for(let t=Math.ceil(am/ts2)*ts2;t<=ax;t+=ts2)tk.push(t);const ax2=`<div class="tl-axis-row"><div class="tl-colorbar" style="visibility:hidden"></div><div class="tl-axis-info-col"></div><div class="tl-axis-bar-col"><div class="tl-axis-marks">${tk.map(t=>`<div class="tl-axis-mark" style="left:${(t-am)/asp*100}%"><span>${m2hm(t)}</span><div class="tl-axis-mark-line"></div></div>`).join('')}${nm>=am&&nm<=ax?`<div style="position:absolute;top:0;bottom:0;left:${np}%;width:2px;background:rgba(220,38,38,.5);border-radius:1px"></div>`:''}</div></div></div>`;const sorted=[...ps].sort((a,b)=>{const o={'absent-unc':0,'absent-con':1,'absent-pln':2,late:3,changed:4,done:5,pending:6};const aRank=a.nc?0:(o[a.status]??5);const bRank=b.nc?0:(o[b.status]??5);return(aRank-bRank)||a.start.localeCompare(b.start);});con.innerHTML=ax2+sorted.map(e=>bTL(e,am,asp,np)).join('');}
+function rTL(c,ps){const con=document.getElementById('tl-'+c);document.getElementById('tl-time-'+c).textContent=`기준 ${kstNow()}`;ps=ps.filter(p=>p.status!=='no-schedule');if(!ps.length){con.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">근무 인원 없음</div>';return;}const aS=ps.map(p=>toM(p.start)),aE=ps.map(p=>{const ext=p.ar&&p.ar.adjustedEnd&&p.ar.stdPhrase?toM(p.ar.adjustedEnd):0;return Math.max(toM(p.end),ext);});let am=Math.floor(Math.min(...aS)/30)*30,ax=Math.ceil(Math.max(...aE)/30)*30;if(ax-am<120)ax=am+120;const asp=ax-am;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const np=Math.max(0,Math.min(100,(nm-am)/asp*100));const ts2=asp<=240?60:asp<=480?120:180;const tk=[];for(let t=Math.ceil(am/ts2)*ts2;t<=ax;t+=ts2)tk.push(t);const ax2=`<div class="tl-axis-row"><div class="tl-colorbar" style="visibility:hidden"></div><div class="tl-axis-info-col"></div><div class="tl-axis-bar-col"><div class="tl-axis-marks">${tk.map(t=>`<div class="tl-axis-mark" style="left:${(t-am)/asp*100}%"><span>${m2hm(t)}</span><div class="tl-axis-mark-line"></div></div>`).join('')}${nm>=am&&nm<=ax?`<div style="position:absolute;top:0;bottom:0;left:${np}%;width:2px;background:rgba(220,38,38,.5);border-radius:1px"></div>`:''}</div></div></div>`;const sorted=[...ps].sort((a,b)=>{const o={'absent-unc':0,'absent-con':1,'absent-pln':2,late:3,changed:4,done:5,pending:6};const aRank=a.nc?0:(o[a.status]??5);const bRank=b.nc?0:(o[b.status]??5);return(aRank-bRank)||a.start.localeCompare(b.start);});con.innerHTML=ax2+sorted.map(e=>bTL(e,am,asp,np)).join('');}
 function bTL(e,am,as,np){
 const col=cof(e.role);
 const sM=toM(e.start),eM=toM(e.end);
@@ -1358,8 +1358,11 @@ const bl=Math.max(0,(sM-am)/as*100);
 const bw=Math.min(100,(eM-am)/as*100)-bl;
 const isAutoDetected=e.status==='absent-unc'&&e.ar?.inTime;
 const isAbsent=e.status.startsWith('absent')&&!isAutoDetected;
-const realIn=e.ar?.adjustedStart||e.ar?.inTime||null;
-const realOut=e.ar?.adjustedEnd||e.ar?.outTime||null;
+// ⭐ v10.8.7-fix3: stdPhrase 없는 adjusted 잔재는 무시 (이하수 케이스)
+const _validAdjStart=e.ar?.adjustedStart&&e.ar?.stdPhrase?e.ar.adjustedStart:null;
+const _validAdjEnd=e.ar?.adjustedEnd&&e.ar?.stdPhrase?e.ar.adjustedEnd:null;
+const realIn=_validAdjStart||e.ar?.inTime||null;
+const realOut=_validAdjEnd||e.ar?.outTime||null;
 const dispIn=realIn||e.start;
 const dispOut=realOut||e.end;
 const ts=`${dispIn} → ${dispOut}`;
@@ -1400,7 +1403,9 @@ const tempTag=e.isTemp?`<span style="${tagStyle}color:#7e22ce;background:#fdf4ff
 // 단발근무자 배지 — 단발자에게 항상 표시 (추가와 별개)
 const casualTag=e.isCasual?`<span style="${tagStyle}color:#7e22ce;background:#fdf4ff;border:1px solid #e9d5ff">⭐ 단발</span>`:'';
 // 미래 예약 태그 (출근 전 + adjustedEnd 또는 adjustedStart 있음)
-const isPendingExt=(e.status==='pending'||!e.ar?.inTime)&&((e.ar?.adjustedEnd&&toM(e.ar.adjustedEnd)>eM)||(e.ar?.adjustedStart&&toM(e.ar.adjustedStart)<sM));
+// ⭐ v10.8.7-fix3: 연장근무 예약 표시 — stdPhrase 있을 때만 (잔재 무시)
+// 이하수 케이스: stdPhrase 없이 adjustedStart/End만 박힌 잔재 → 표시 X
+const isPendingExt=(e.status==='pending'||!e.ar?.inTime)&&e.ar?.stdPhrase==='추가근무'&&((e.ar?.adjustedEnd&&toM(e.ar.adjustedEnd)>eM)||(e.ar?.adjustedStart&&toM(e.ar.adjustedStart)<sM));
 const pendingExtTag=isPendingExt?`<span style="${tagStyle}color:#047857;background:#d1fae5">연장근무 예약</span>`:'';
 // 자동 감지 조기퇴근 (stdPhrase 없고 퇴근이 스케줄보다 10분 이상 빠름)
 const autoEarlyDash=e.ar?.outTime&&!ph&&eM-toM(e.ar.outTime)>10;
@@ -3138,9 +3143,16 @@ async function exportAcctXLSX(){
     xlS(ws2.getCell(1,1),{b:true,sz:13,c:C.brand,br:false});ws2.getRow(1).height=26;ws2.getRow(2).height=4;
     ['카테고리','직무','이름'].forEach((h,i)=>{ws2.getCell(3,i+1).value=h;xlS(ws2.getCell(3,i+1),{b:true,sz:10,bg:C.hBg,c:C.hTx,a:'center'});});
     dateHdr(ws2,4,3);
+    // ⭐ v10.8.7-fix3: 안녕님 정책 - 실시수가 가장 중요, 스케줄합/차이는 참고용
+    // 시각적 강조: 실시수 = 진녹색, 스케줄합/차이 = 회색
+    const headerStyles=[
+      {bg:'FFF1F5F9',c:'FF64748B'},  // 스케줄합: 회색
+      {bg:'FFDCFCE7',c:'FF15803D'},  // 실시수합: 진녹색 (강조)
+      {bg:'FFF1F5F9',c:'FF64748B'}   // 차이: 회색
+    ];
     ['스케줄합','실시수합','차이'].forEach((h,i)=>{
       ws2.getCell(3,4+dates.length+i).value=h;
-      xlS(ws2.getCell(3,4+dates.length+i),{b:true,sz:10,bg:'FFDCFCE7',c:'FF15803D',a:'center'});
+      xlS(ws2.getCell(3,4+dates.length+i),{b:true,sz:10,bg:headerStyles[i].bg,c:headerStyles[i].c,a:'center'});
     });
     ws2.getRow(3).height=28;
     ws2.autoFilter={from:{row:3,column:1},to:{row:3,column:tc2}};
@@ -3193,9 +3205,11 @@ async function exportAcctXLSX(){
       const diff=realSum!==null?Math.round((realSum-schSum)*100)/100:null;
       [schSum+unit, realSum!==null?realSum+unit:'-', diff!==null?(diff>=0?'+':'')+diff+unit:'-'].forEach((v,i)=>{
         const cell=ws2.getCell(rn2,4+dates.length+i);cell.value=v;
-        let bg='FFDCFCE7',c=C.doneTx;
-        if(i===2&&diff!==null&&diff>0.05){bg=C.diffPBg;c=C.diffPTx;}
-        else if(i===2&&diff!==null&&diff<-0.05){bg=C.diffMBg;c=C.diffMTx;}
+        // ⭐ v10.8.7-fix3: 안녕님 정책 - 실시수만 강조, 나머지는 회색
+        let bg='FFF1F5F9',c='FF64748B'; // 기본: 회색 (스케줄합/차이)
+        if(i===1){ // 실시수합 (강조)
+          bg='FFDCFCE7';c=C.doneTx;
+        }
         xlS(cell,{b:true,sz:10,a:'right',bg,c});
       });
       ws2.getRow(rn2).height=20;rn2++;
@@ -4201,8 +4215,16 @@ function waShowDayDetail(dk,dow){
     content+=`<div style="font-size:12px;color:#92400e;margin-bottom:4px;padding:4px 8px;background:#fef3c7;border-radius:4px;border:1px solid #fde68a">⚠ 조기퇴근 예약: ${att.adjustedEnd}까지${att.memoBy?` <span style="font-size:10px;color:var(--text-muted)">— ✍️ ${att.memoBy} ${att.memoAt||''}</span>`:''}${att.memoText?`<div style="font-size:11px;color:var(--text-secondary);margin-top:2px">📝 ${att.memoText}</div>`:''}</div>`;
   }
   // ⭐ v10.7: 적용 시간 (예약 반영)
-  const reservedStart=att.adjustedStart&&!att.inTime?att.adjustedStart:null;
-  const reservedEnd=att.adjustedEnd&&!att.outTime?att.adjustedEnd:null;
+  // ⭐ v10.8.7-fix3: adjustedStart/End가 정기 시간과 같거나 의미없는 잔재면 무시
+  // 이하수 6/5 케이스: adjustedEnd=16:40 잔재 (영구변경 16:00과 다르나 의미 없는 옛 데이터)
+  // 정확한 비교: adjusted가 기간교체/영구변경 시작·종료와 같으면 무시
+  let reservedStart=att.adjustedStart&&!att.inTime?att.adjustedStart:null;
+  let reservedEnd=att.adjustedEnd&&!att.outTime?att.adjustedEnd:null;
+  // stdPhrase 없는 잔재(adjusted만 있음) → 의미 없으므로 표시 X
+  if(!att.stdPhrase){
+    reservedStart=null;
+    reservedEnd=null;
+  }
   if((reservedStart||reservedEnd)&&works&&ds.start&&ds.end){
     const dispStart=reservedStart||ds.start;
     const dispEnd=reservedEnd||ds.end;
@@ -4968,7 +4990,11 @@ async function waSave(pid,type){
       const ad=sn.val();
       if(!ad)continue;
       const isReservation=!ad.inTime&&!ad.outTime&&['추가근무','조기퇴근','지각'].includes(ad.stdPhrase);
-      if(isReservation){
+      // ⭐ v10.8.7-fix3: stdPhrase 없어도 adjustedStart/End 잔재만 있는 경우도 정리
+      // 이하수 6/5 케이스: stdPhrase 없이 adjustedEnd=16:40만 박혀있음 (옛 잔재)
+      // 조건: inTime/outTime 없음 (패드 X) + adjustedStart/End 둘 중 하나 있음
+      const isAdjustedOnly=!ad.inTime&&!ad.outTime&&!ad.stdPhrase&&(ad.adjustedStart||ad.adjustedEnd);
+      if(isReservation||isAdjustedOnly){
         if((ad.notes&&ad.notes.length)||(ad.history&&ad.history.length)){
           const cleaned={};
           if(ad.notes)cleaned.notes=ad.notes;
