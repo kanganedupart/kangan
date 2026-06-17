@@ -793,6 +793,7 @@ function wireDrag(){
 }
 function openSheet(date,meal){
   cur={date,meal};findSlot='메인';replaceIdx=-1;expandIdx=-1;algEditIdx=-1;quickOpen=false;
+  _lastFindQ=null;_lastMealQ=null;
   document.getElementById('shTitle').textContent=fmt(date)+'('+DOW[(parse(date).getDay()+6)%7]+') '+meal;
   drawSheet();
   document.getElementById('scrim').classList.add('on');
@@ -1273,11 +1274,13 @@ function drawFind(){
   if(window._fq)list=list.filter(m=>m.name.includes(window._fq)||cho(m.name).includes(window._fq));
   // 검색 전: 추천 소수만 (오래 안 쓴 것 위주). 조식은 구분이 없어 검색 유도만.
   const noQuery=!window._fq;
+  // 정렬 키를 항목당 한 번만 계산(무거운 lastBefore 반복 호출 방지). 최근 사용일은 HIST만 사용(가벼움)
+  const lastHist=(name)=>{const a=HIST[name];if(!a||!a.length)return '0';let l='0';for(const dd of a){if(dd<date&&dd>l)l=dd}return l};
+  const dupLight=(name,last)=>{const sl=slotOf(name);if(sl!=='메인'&&sl!=='국')return 0;if(last==='0')return 0;return ((parse(date)-parse(last))/864e5)<RULE.menuWeeks*7?1:0};
+  list.forEach(m=>{m._last=lastHist(m.name); m._dup=dupLight(m.name,m._last);});
   list.sort((a,b)=>{
-    const ag=menuDup(a.name,date)?1:0, bg=menuDup(b.name,date)?1:0;
-    if(ag!==bg)return ag-bg;
-    const al=lastBefore(a.name,date)||'0', bl=lastBefore(b.name,date)||'0';
-    if(al!==bl)return al<bl?-1:1;
+    if(a._dup!==b._dup)return a._dup-b._dup;
+    if(a._last!==b._last)return a._last<b._last?-1:1;
     return (b.cnt||0)-(a.cnt||0);
   });
   const el=document.getElementById('findRes');
@@ -1290,7 +1293,7 @@ function drawFind(){
   }
   if(!list.length&&!tail){el.innerHTML='<div class="empty-note">없어요. 새 이름을 입력하면 새 메뉴로 넣을 수 있어요.</div>';const nw=document.getElementById('findNew');if(nw)nw.innerHTML='';return}
   const grid=list.map(m=>{
-    const bad=menuDup(m.name,date);
+    const bad=m._dup;
     return '<div class="li2'+(bad?' warn':'')+'" onclick="addItem(\''+jss(m.name)+'\')">'
       +'<span class="nm">'+esc(m.name)+(bad?'<span class="wflag">주의</span>':'')+'</span></div>';
   }).join('');
@@ -1299,13 +1302,27 @@ function drawFind(){
   const nw=document.getElementById('findNew');if(nw)nw.innerHTML=tail?'<div class="newmwrap">'+tail+'</div>':'';
 }
 function jss(s){return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'")}
-/* 검색 디바운스 — 타이핑 멈춘 뒤 한 번만 계산(빠른 타자에 끊김 방지) */
-let _findT=null,_mealT=null;
-function drawFindD(){clearTimeout(_findT);_findT=setTimeout(drawFind,140)}
-function drawMealFindD(){clearTimeout(_mealT);_mealT=setTimeout(drawMealFind,160)}
+/* 검색 디바운스 — 짧게(지우기 답답함 방지). 같은 검색어면 다시 안 그림 */
+function drawFindD(){
+  clearTimeout(_findT);
+  _findT=setTimeout(()=>{
+    const q=((document.getElementById('findIn')||{}).value||'').trim();
+    if(q===_lastFindQ)return;        // 결과가 같으면 건너뜀
+    _lastFindQ=q;drawFind();
+  },60);
+}
+function drawMealFindD(){
+  clearTimeout(_mealT);
+  _mealT=setTimeout(()=>{
+    const q=((document.getElementById('mealFind')||{}).value||'').trim();
+    if(q===_lastMealQ)return;
+    _lastMealQ=q;drawMealFind();
+  },70);
+}
 
 /* ===== 동작 ===== */
 let lastAct=null;
+let _findT=null,_mealT=null,_lastFindQ=null,_lastMealQ=null;  // 검색 디바운스 상태
 let _boardDirty=false;                 // 모달 작업으로 식단판이 바뀜 → 닫을 때 한 번만 render
 function markDirty(){_boardDirty=true} // 모달 안에서는 render 대신 이걸 부른다
 function toggleAlgEdit(i){algEditIdx=(algEditIdx===i?-1:i);drawSheet()}
