@@ -630,6 +630,18 @@ function wageAt(p,date){
     });
     if(futureWPerms.length)return futureWPerms[0].wage||0;
   }
+  // 데이터 보호: p.wage가 유실/0원인 경우, 이미 저장된 영구변경 시급 중 해당 날짜의 최신 값을 사용.
+  // 정상 데이터(p.wage > 0)는 기존 정책대로 직접 시급이 우선이다.
+  if((!p.wage||Number(p.wage)<=0)&&p.permChanges&&p.permChanges.length){
+    const pastWPerms=p.permChanges.filter(pc=>
+      pc.startDate<=d&&pc.wage!==undefined&&pc.wage!==null&&Number(pc.wage)>0
+    ).sort((a,b)=>{
+      const c=b.startDate.localeCompare(a.startDate);
+      if(c!==0)return c;
+      return(b.at||'').localeCompare(a.at||'');
+    });
+    if(pastWPerms.length)return pastWPerms[0].wage||0;
+  }
   return p.wage||0;
 }
 window.wageAt=wageAt;
@@ -3825,7 +3837,7 @@ ${canSeeWage()?`<div class="form-group" id="pf-wage-wrap"><label class="form-lab
   </div>
   <div style="font-size:10px;color:#0369a1;margin-top:4px">부담임 1일 = 6T 기준. 일당을 입력하면 T당 시급이 자동 계산됩니다.</div>
 </div>
-<input class="form-input" id="pf-wage" type="number" min="0" step="0.01" placeholder="${pid?'':'예: 23333.33 (필수)'}" value="${p&&p.wage!==undefined?p.wage:''}" ${pid?'disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed"':'oninput="if(this.value&&parseFloat(this.value)<0)this.value=0"'}></div>`:''}
+<input class="form-input" id="pf-wage" type="number" min="0" step="0.01" placeholder="${pid?'':'예: 23333.33 (필수)'}" value="${p?(wageAt(p,todayK)||''):''}" ${pid?'disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed"':'oninput="if(this.value&&parseFloat(this.value)<0)this.value=0"'}></div>`:''}
 ${pid?`<div class="divider-section" id="wa-section"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:6px"><div style="font-size:13px;font-weight:700;color:var(--text-primary)">🗓️ 근무 조정</div><div style="display:flex;gap:4px;align-items:center"><button type="button" class="icon-btn" id="wa-tab-cal" onclick="waSwitchTab('cal')" style="background:var(--accent-light);color:var(--accent);border-color:var(--accent)">📅 달력</button><button type="button" class="icon-btn" id="wa-tab-list" onclick="waSwitchTab('list')">📋 목록</button><button type="button" class="icon-btn" onclick="waExportMonth('${pid}')" style="border-color:#86efac;color:#15803d;background:#f0fdf4">📥 출력</button></div></div><div id="wa-cal-panel"></div><div id="wa-list-panel" style="display:none"></div>${CU.role==='관리자'?`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"><button type="button" class="icon-btn" style="border-color:#93c5fd;color:#1d4ed8;background:#eff6ff;font-weight:600" onclick="waOpenModal('${pid}','perm')">🔄 영구 변경</button><button type="button" class="icon-btn" style="border-color:#86efac;color:#15803d;background:#f0fdf4;font-weight:600" onclick="waOpenModal('${pid}','replace')">🔁 기간 교체</button><button type="button" class="icon-btn" style="border-color:#fca5a5;color:#b91c1c;background:#fef2f2;font-weight:600" onclick="waOpenModal('${pid}','absent')">❌ 결근 예정</button><button type="button" class="icon-btn" style="border-color:#e9d5ff;color:#7e22ce;background:#fdf4ff;font-weight:600" onclick="waOpenModal('${pid}','oneday')">⭐ 추가근무</button></div>`:''}</div>`:''}
 `;
 el.appendChild(schedDiv);
@@ -5328,7 +5340,13 @@ if(!pid&&bvRaw===''){
 }
 // 시급 처리 (신규 등록 시만 입력 가능, 수정은 영구변경에서)
 if(!pid){const wEl=document.getElementById('pf-wage');if(!wEl||!wEl.value||wEl.value===''){ST('시급을 입력해주세요 (필수)');return;}const wN=parseFloat(wEl.value);if(isNaN(wN)||wN<=0){ST('시급은 1원 이상이어야 합니다');return;}data.wage=Math.round(wN*100)/100;}
-else if(AP[pid]&&AP[pid].wage!==undefined)data.wage=AP[pid].wage;
+else if(AP[pid]){
+  const rawW=Number(AP[pid].wage||0);
+  const safeW=Number(wageAt(AP[pid],kstDate())||0);
+  if(rawW>0)data.wage=AP[pid].wage;
+  else if(safeW>0)data.wage=safeW;
+  else if(AP[pid].wage!==undefined)data.wage=AP[pid].wage;
+}
 // 시간대 겹침 검증: 같은 이름+PIN의 다른 활성 파트와 같은 요일·같은 시간 겹치면 차단
 // ⭐ v10.7: 근본 수정 — 양쪽 모두의 그날 적용 시간으로 정확 검사 (기간교체/영구변경 반영)
 try{
@@ -5649,7 +5667,7 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dt);
     const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
     if(p.joinDate&&dt<p.joinDate){days.push({dt,h:0,attended:false,offDay:true});continue;}
-    if(p.leaveDate&&dt>p.leaveDate){days.push({dt,h:0,attended:false,offDay:true});continue;}
+    if(p.leaveDate&&dt>p.leaveDate&&!(p.isCasual&&tempDay)){days.push({dt,h:0,attended:false,offDay:true});continue;}
     const a=attByDate[dt]?.[pid]||{};
     const isPlnAbs=isPlannedAbsent(p,dt);
     const a_in=a.adjustedStart||a.inTime;
@@ -5744,12 +5762,12 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
   // → 시간당 시급(원/h)이라면 h × wage
   // → T당 시급(원/T)이라면 T × wage = (h × 60 / 70) × wage
   // 새 calcDayPay 사용: 공휴일·연장근무 가산 자동 반영 (조교는 가산 X, 올림 적용)
-  const dailyPay=days.map(d=>{
+  const dailyCalc=days.map(d=>{
     if(!d.h)return 0;
     const dp=calcDayPay(p,d.dt,d.h);
-    return dp.pay||0;
+    return dp;
   });
-  const basePay=dailyPay.reduce((a,b)=>a+b,0);
+  const basePay=dailyCalc.reduce((s,dp)=>s+(dp.basePay||0),0);
   // 주휴수당 금액: 자격 주의 bonusH × 마지막 적용 시급. 조교는 올림.
   const lastWage=wageAt(p,`${year}-${String(month).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`)||p.wage||0;
   const bonusPay=meetMonthly?(isT?Math.ceil((totalBonusH*60/70)*lastWage):Math.ceil(totalBonusH*lastWage)):0;
@@ -5808,7 +5826,7 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
   const allPermsSorted=(p.permChanges||[]).filter(pc=>pc.wage!==undefined&&pc.wage!==null).sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||''));
   const monthWageChangedPerms=monthPermsWithWage.filter(cur=>{
     const prevPerms=allPermsSorted.filter(pc=>(pc.startDate||'')<(cur.startDate||''));
-    const prevWage=prevPerms.length>0?prevPerms[prevPerms.length-1].wage:p.wage;
+    const prevWage=prevPerms.length>0?prevPerms[prevPerms.length-1].wage:wageAtBefore(p,cur.startDate);
     // 이전 시급이 0/없음 = 최초 등록 → 변경 아님
     if(!prevWage||prevWage===0)return false;
     // 둘 다 유효한 값일 때 비교
@@ -5820,6 +5838,27 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
   const eligibleWeeks=weeks.filter(w=>w.eligible).length;
   const ineligibleWeeks=weeks.filter(w=>!w.eligible&&w.totalH>0).length;
   const reviewWeekVariation=eligibleWeeks>0&&ineligibleWeeks>0;
+  const baseSchedHForDate=dt=>{
+    const DM=['일','월','화','수','목','금','토'];
+    const dw=DM[new Date(dt+'T00:00:00+09:00').getDay()];
+    let ds=null;
+    if(p.permChanges&&p.permChanges.length){
+      const applicable=[...p.permChanges].filter(pc=>dt>=pc.startDate).sort((a,b)=>{const c=b.startDate.localeCompare(a.startDate);if(c!==0)return c;return(b.at||'').localeCompare(a.at||'');});
+      if(applicable.length){
+        const latest=applicable[0];
+        if(!(latest.days||[]).includes(dw))return 0;
+        if(latest.daySchedule&&latest.daySchedule[dw]&&latest.daySchedule[dw].start&&latest.daySchedule[dw].end)ds=latest.daySchedule[dw];
+        else if(p.daySchedule&&p.daySchedule[dw]&&p.daySchedule[dw].start&&p.daySchedule[dw].end)ds=p.daySchedule[dw];
+        else ds={start:latest.start,end:latest.end,customBreak:latest.customBreak};
+      }
+    }
+    if(!ds){
+      if(!(p.days||[]).includes(dw))return 0;
+      ds=(p.daySchedule&&p.daySchedule[dw])?p.daySchedule[dw]:{start:p.start,end:p.end,customBreak:p.customBreak};
+    }
+    if(!ds.start||!ds.end)return 0;
+    return schedH({start:ds.start,end:ds.end,customBreak:_resolveBreak(p,ds)},null);
+  };
   const weekEntitlementGainWeeks=weeks.filter(w=>{
     if(!w.eligible)return false;
     const changedH=w.days.reduce((sum,d)=>{
@@ -5828,11 +5867,8 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
       const extraPhrase=d.att&&d.att.stdPhrase==='추가근무';
       if(!schedChanged&&!extraPhrase)return sum;
       if(d.sched&&d.sched._isTemp)return sum+d.h;
-      if(extraPhrase&&d.sched){
-        const baseH=schedH({start:d.sched.start,end:d.sched.end,customBreak:d.sched.customBreak},null);
-        return sum+Math.max(0,d.h-baseH);
-      }
-      return sum+d.h;
+      const baseH=baseSchedHForDate(d.dt);
+      return sum+Math.max(0,d.h-baseH);
     },0);
     return changedH>0&&(w.totalH-changedH)<15;
   });
@@ -5841,7 +5877,7 @@ function calcPersonPayroll(pid,p,year,month,lastDay,attByDate){
     pid,name:p.name,role:p.role,cat:p.cat,tutorKind:p.tutorKind,
     isT,wage:lastWage,
     weeks,monthH,monthHDisp,meetMonthly,totalBonusH,
-    basePay,bonusPay,totalPay:basePay+bonusPay,
+    basePay,bonusPay,totalPay:basePay+bonusSum+bonusPay,
     days,joinDate:p.joinDate,leaveDate:p.leaveDate,
     status:p.status,
     bonusList,bonusSum,holidayCnt,overtimeCnt,
@@ -6039,7 +6075,7 @@ function renderPayroll(){
           <div style="display:flex;gap:14px;font-size:11px;color:var(--text-secondary);flex-wrap:wrap">
             <span>기본급 <b style="color:var(--text-primary);font-family:'DM Mono',monospace">${fmt(catSumBase)}</b>원</span>
             <span>주휴수당 <b style="color:#0369a1;font-family:'DM Mono',monospace">${fmt(catSumBonus)}</b>원</span>
-            <span>합계 <b style="color:var(--text-primary);font-family:'DM Mono',monospace">${fmt(catSumBase+catSumBonus)}</b>원</span>
+            <span>합계 <b style="color:var(--text-primary);font-family:'DM Mono',monospace">${fmt(grp.reduce((s,r)=>s+r.totalPay,0))}</b>원</span>
           </div>
         </div>
         <div style="overflow-x:auto"><table class="parts-table" style="margin:0">
@@ -6331,9 +6367,9 @@ function renderPayslipScheduleSection(p,r,ymStart,ymEnd){
 // wage 변경 직전 값 찾기
 function wageAtBefore(p,date){
   if(!p)return 0;
-  const wPerms=(p.permChanges||[]).filter(pc=>pc.startDate<date&&pc.wage!==undefined&&pc.wage!==null).sort((a,b)=>b.startDate.localeCompare(a.startDate));
+  const wPerms=(p.permChanges||[]).filter(pc=>pc.startDate<date&&pc.wage!==undefined&&pc.wage!==null&&Number(pc.wage)>0).sort((a,b)=>b.startDate.localeCompare(a.startDate));
   if(wPerms.length)return wPerms[0].wage||0;
-  return p.wage||0;
+  return wageAt(p,date)||0;
 }
 
 // 이번달 이슈 섹션 — 종류별 묶음, 금액 영향 표시
@@ -7311,7 +7347,7 @@ function _xlBuildSummary(wb,ym,year,month,rows){
     const bonus=grp.reduce((s,x)=>s+x.bonusPay,0);
     const extra=grp.reduce((s,x)=>s+(x.bonusSum||0),0);
     tCnt+=cnt;tBase+=base;tBonus+=bonus;tExtra+=extra;
-    [catLbl[cat],cnt,base,bonus,extra,base+bonus].forEach((v,i)=>{
+    [catLbl[cat],cnt,base,bonus,extra,base+bonus+extra].forEach((v,i)=>{
       const c=ws.getCell(r,i+1);c.value=v;
       const o={size:10,align:i===0?'left':'right'};
       if(i===0)o.indent=1;
@@ -7324,7 +7360,7 @@ function _xlBuildSummary(wb,ym,year,month,rows){
     r++;
   });
   // 합계 행
-  ['총 합계',tCnt,tBase,tBonus,tExtra,tBase+tBonus].forEach((v,i)=>{
+  ['총 합계',tCnt,tBase,tBonus,tExtra,tBase+tBonus+tExtra].forEach((v,i)=>{
     const c=ws.getCell(r,i+1);c.value=v;
     _xlT(c,{bold:true,size:11,bg:_XL_T.totalBg,color:_XL_T.totalText,
       align:i===0?'left':'right',numFmt:i>=2?'#,##0':undefined,indent:i===0?1:0});
@@ -7404,7 +7440,7 @@ function _xlBuildDetail(wb,ym,year,month,rows){
     const lc=ws.getCell(r,1);
     lc.value=`${catLbl[cat]} 소계 (${grp.length}명)`;
     _xlT(lc,{bold:true,size:10,bg:_XL_T.catBg,color:_XL_T.catText,align:'right',indent:1});
-    [sH,sBh,sBase,sBonus,sExtra,sBase+sBonus].forEach((v,i)=>{
+    [sH,sBh,sBase,sBonus,sExtra,sBase+sBonus+sExtra].forEach((v,i)=>{
       const c=ws.getCell(r,7+i);c.value=v;
       _xlT(c,{bold:true,size:10,bg:_XL_T.catBg,color:_XL_T.catText,align:'right',numFmt:i<2?'0.##':'#,##0'});
     });
@@ -7425,7 +7461,7 @@ function _xlBuildDetail(wb,ym,year,month,rows){
   const lc=ws.getCell(r,1);
   lc.value=`전체 합계 (${rows.length}명)`;
   _xlT(lc,{bold:true,size:11,bg:_XL_T.totalBg,color:_XL_T.totalText,align:'right',indent:1});
-  [tH,tBh,tBase,tBonus,tExtra,tBase+tBonus].forEach((v,i)=>{
+  [tH,tBh,tBase,tBonus,tExtra,tBase+tBonus+tExtra].forEach((v,i)=>{
     const c=ws.getCell(r,7+i);c.value=v;
     _xlT(c,{bold:true,size:11,bg:_XL_T.totalBg,color:_XL_T.totalText,align:'right',numFmt:i<2?'0.##':'#,##0'});
   });
