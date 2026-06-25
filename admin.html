@@ -2199,8 +2199,8 @@ async function loadHistoryList(pid){
     return(b._sortAt||'').localeCompare(a._sortAt||'');
   });
   if(!cleanItems.length){list.innerHTML='<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:13px">해당 기간에 이력이 없습니다</div>';return;}
-  const typeLabel={memo:'<span style="background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">처리메모</span>',note:'<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">일반메모</span>',history:'<span style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">처리이력</span>',change:'<span style="background:#dcfce7;color:#15803d;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">스케줄변경</span>',activity:'<span style="background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">활동로그</span>'};
-  const histBadgeStyle='font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;flex-shrink:0;';
+  const typeLabel={memo:'<span style="display:inline-flex;align-items:center;line-height:1.4;background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap">처리메모</span>',note:'<span style="display:inline-flex;align-items:center;line-height:1.4;background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap">일반메모</span>',history:'<span style="display:inline-flex;align-items:center;line-height:1.4;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap">처리이력</span>',change:'<span style="display:inline-flex;align-items:center;line-height:1.4;background:#dcfce7;color:#15803d;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap">스케줄변경</span>',activity:'<span style="display:inline-flex;align-items:center;line-height:1.4;background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700;white-space:nowrap">활동로그</span>'};
+  const histBadgeStyle='display:inline-flex;align-items:center;line-height:1.4;font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;flex-shrink:0;white-space:nowrap;';
   const eventBadge=(it)=>{
     const label=it.subType||phraseLabel(it.phrase||'')||it.action||'';
     const text=(it.text||'')+' '+label;
@@ -2217,18 +2217,20 @@ async function loadHistoryList(pid){
   list.innerHTML=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">총 ${cleanItems.length}건 (최근순)</div>`+cleanItems.map(it=>{
     const adjInfo=it.adjStart||it.adjEnd?`<div style="font-size:11px;color:#0891b2;margin-top:2px">조정: ${it.adjStart||'-'} ~ ${it.adjEnd||'-'}</div>`:'';
     const mainEventBadge=eventBadge(it);
-    const phraseInfo=it.phrase&&!mainEventBadge?`<span style="font-size:10px;background:#f3f4f6;color:#475569;border:1px solid #d1d5db;padding:1px 6px;border-radius:8px;margin-left:4px">${phraseLabel(it.phrase)}</span>`:'';
-    const subInfo=it.subType&&!mainEventBadge?`<span style="font-size:10px;background:#f3f4f6;color:#475569;border:1px solid #d1d5db;padding:1px 6px;border-radius:8px;margin-left:4px">${it.subType}</span>`:'';
-    const actionInfo=it.action?`<span style="font-size:10px;background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${it.action}</span>`:'';
+    const phraseInfo=it.phrase&&!mainEventBadge?`<span style="display:inline-flex;align-items:center;line-height:1.4;font-size:10px;background:#f3f4f6;color:#475569;border:1px solid #d1d5db;padding:1px 6px;border-radius:8px;white-space:nowrap">${phraseLabel(it.phrase)}</span>`:'';
+    const subInfo=it.subType&&!mainEventBadge?`<span style="display:inline-flex;align-items:center;line-height:1.4;font-size:10px;background:#f3f4f6;color:#475569;border:1px solid #d1d5db;padding:1px 6px;border-radius:8px;white-space:nowrap">${it.subType}</span>`:'';
+    const actionInfo=it.action?`<span style="display:inline-flex;align-items:center;line-height:1.4;font-size:10px;background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;padding:1px 6px;border-radius:8px;font-weight:700;white-space:nowrap">${it.action}</span>`:'';
     return`<div style="background:#fff;border:1px solid var(--border-light);border-radius:8px;padding:10px 12px;margin-bottom:6px">
-      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-        <span style="font-family:'Noto Sans KR','Malgun Gothic',sans-serif;font-size:12px;font-weight:800;color:var(--text-primary);letter-spacing:0">${it.date}</span>
-        ${mainEventBadge}
-        <span style="opacity:.72">${typeLabel[it.type]||''}</span>
-        ${subInfo}
-        ${phraseInfo}
-        ${actionInfo}
-        <span style="font-size:11px;color:var(--text-muted);margin-left:auto">${it.by} · ${it.at}</span>
+      <div style="display:grid;grid-template-columns:74px minmax(0,1fr) auto;column-gap:8px;align-items:start;margin-bottom:4px">
+        <span style="font-family:'Noto Sans KR','Malgun Gothic',sans-serif;font-size:12px;font-weight:800;color:var(--text-primary);letter-spacing:0;line-height:1.55;white-space:nowrap">${it.date}</span>
+        <span style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;min-width:0">
+          ${mainEventBadge}
+          <span style="opacity:.72;display:inline-flex">${typeLabel[it.type]||''}</span>
+          ${subInfo}
+          ${phraseInfo}
+          ${actionInfo}
+        </span>
+        <span style="font-size:11px;color:var(--text-muted);line-height:1.55;white-space:nowrap">${it.by} · ${it.at}</span>
       </div>
       <div style="font-size:13px;color:var(--text-primary);line-height:1.4;white-space:pre-line">${(it.text||'').replace(/</g,'&lt;')}</div>
       ${adjInfo}
