@@ -2204,7 +2204,7 @@ async function loadHistoryList(pid){
     const adjInfo=it.adjStart||it.adjEnd?`<div style="font-size:11px;color:#0891b2;margin-top:2px">조정: ${it.adjStart||'-'} ~ ${it.adjEnd||'-'}</div>`:'';
     const phraseInfo=it.phrase?`<span style="font-size:10px;background:#f3f4f6;padding:1px 6px;border-radius:8px;margin-left:4px">${phraseLabel(it.phrase)}</span>`:'';
     const subInfo=it.subType?`<span style="font-size:10px;background:${it.subType==='결근예정'?'#fff0f0':'#f3f4f6'};color:${it.subType==='결근예정'?'#b91c1c':'var(--text-primary)'};border:${it.subType==='결근예정'?'1px solid #fecaca':'0'};padding:1px 6px;border-radius:8px;margin-left:4px">${it.subType}</span>`:'';
-    const actionInfo=it.action?`<span style="font-size:10px;background:#fef2f2;color:#b91c1c;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${it.action}</span>`:'';
+    const actionInfo=it.action?`<span style="font-size:10px;background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${it.action}</span>`:'';
     return`<div style="background:#fff;border:1px solid var(--border-light);border-radius:8px;padding:10px 12px;margin-bottom:6px">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
         <span style="font-family:'Noto Sans KR','Malgun Gothic',sans-serif;font-size:12px;font-weight:800;color:var(--text-primary);letter-spacing:0">${it.date}</span>
@@ -2595,9 +2595,11 @@ function updateWorkmanRoleOptions(){
 }
 window.updateWorkmanRoleOptions=updateWorkmanRoleOptions;
 // 실시간 이름 검색 - 이미 로드된 WD 데이터에서 필터링만 (Firebase 재조회 없음)
+let workmanFilterTimer=null;
 function filterWorkmanByName(){
   if(!WD||!WD.length)return;
-  renderWorkmanList();
+  clearTimeout(workmanFilterTimer);
+  workmanFilterTimer=setTimeout(()=>renderWorkmanList(),180);
 }
 window.filterWorkmanByName=filterWorkmanByName;
 function exportWorkmanCSV(){if(!WD.length){ST('먼저 조회해주세요');return;}
