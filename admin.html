@@ -2085,6 +2085,13 @@ async function loadHistoryList(pid){
   const list=document.getElementById('hist-list');
   list.innerHTML='<div style="text-align:center;padding:20px;color:var(--text-muted);font-size:13px">조회 중...</div>';
   const items=[];
+  const histDate=s=>(s||'').slice(0,10).replace(/\./g,'-');
+  const histAtKey=it=>{
+    const raw=(it.at||'').replace(/\./g,'-');
+    const m=raw.match(/(\d{4}-\d{2}-\d{2})\s*(\d{1,2}:\d{2})?/);
+    return m?`${m[1]} ${m[2]||'00:00'}`:`${it.date||''} 00:00`;
+  };
+  const histClean=s=>(s||'').replace(/\s+/g,' ').trim();
   // 파트 자체 이력 (영구변경/기간교체/결근예정/추가근무/직원메모)
   const p=AP[pid];
   if(p){
@@ -2097,7 +2104,7 @@ async function loadHistoryList(pid){
           if(pc.customBreak!==undefined)txt+=` · 휴게 ${pc.customBreak}분`;
           if(pc.wage!==undefined&&pc.wage!==null&&canSeeWage())txt+=` · 시급 ${pc.wage.toLocaleString()}원`;
           if(pc.memo)txt+=`\n메모: ${pc.memo}`;
-          items.push({date:pc.at?pc.at.slice(0,10):pc.startDate,type:'change',subType:'영구변경',text:txt,by:pc.by||'-',at:pc.at||''});
+          items.push({date:pc.at?histDate(pc.at):pc.startDate,type:'change',subType:'영구변경',text:txt,by:pc.by||'-',at:pc.at||''});
         }
       });
       (p.scheduleReplaces||[]).forEach(r=>{
@@ -2105,14 +2112,14 @@ async function loadHistoryList(pid){
           let txt=`기간교체 ${r.startDate}~${r.endDate}`;
           if(r.start&&r.end)txt+=` · 시간 ${r.start}~${r.end}`;
           if(r.days)txt+=` · 요일 ${(r.days||[]).join('·')}`;
-          items.push({date:r.at?r.at.slice(0,10):r.startDate,type:'change',subType:'기간교체',text:txt,by:r.by||'-',at:r.at||''});
+          items.push({date:r.at?histDate(r.at):r.startDate,type:'change',subType:'기간교체',text:txt,by:r.by||'-',at:r.at||''});
         }
       });
       (p.plannedAbsent||[]).forEach(ab=>{
         if((ab.at&&ab.at.slice(0,10)>=from&&ab.at.slice(0,10)<=to)||(ab.startDate>=from&&ab.startDate<=to)){
           let txt=`결근예정 ${ab.startDate}${ab.endDate&&ab.endDate!==ab.startDate?'~'+ab.endDate:''}`;
           if(ab.memo)txt+=` · ${ab.memo}`;
-          items.push({date:ab.at?ab.at.slice(0,10):ab.startDate,type:'change',subType:'결근예정',text:txt,by:ab.by||'-',at:ab.at||''});
+          items.push({date:ab.at?histDate(ab.at):ab.startDate,type:'change',subType:'결근예정',text:txt,by:ab.by||'-',at:ab.at||''});
         }
       });
       (p.tempDates||[]).forEach(td=>{
@@ -2125,7 +2132,7 @@ async function loadHistoryList(pid){
     }
     if(!kind||kind==='memo'){
       (p.memos||[]).forEach(m=>{
-        const d=m.date?(m.date.slice(0,10).replace(/\./g,'-')):'';
+        const d=m.date?histDate(m.date):'';
         if(d&&d>=from&&d<=to){
           items.push({date:d,type:'memo',phrase:m.phrase,text:m.text||'',by:m.who||'-',at:m.date+' '+(m.time||'')});
         }
@@ -2160,24 +2167,47 @@ async function loadHistoryList(pid){
       const logs=logSn.val()||{};
       Object.entries(logs).forEach(([k,e])=>{
         if(e.targetPid!==pid)return;
-        const d=e.at?e.at.slice(0,10).replace(/\./g,'-'):'';
+        const d=e.at?histDate(e.at):'';
         if(d&&d>=from&&d<=to){
           items.push({date:d,type:'activity',action:e.action,text:e.detail||'',by:e.by||'-',at:e.at||''});
         }
       });
     }catch(e){console.warn('활동 로그 조회 실패:',e);}
   }
-  items.sort((a,b)=>{const c=b.date.localeCompare(a.date);if(c!==0)return c;return(b.at||'').localeCompare(a.at||'');});
-  if(!items.length){list.innerHTML='<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:13px">해당 기간에 이력이 없습니다</div>';return;}
+  const typePriority={history:5,change:4,memo:3,note:2,activity:1};
+  const uniq=new Map();
+  items.forEach(it=>{
+    it.date=histDate(it.date)||it.date;
+    it._sortAt=histAtKey(it);
+    const key=[
+      it.date,
+      histClean(it.text),
+      it.subType||'',
+      it.phrase||'',
+      it.action||'',
+      it.adjStart||'',
+      it.adjEnd||'',
+      it.by||'',
+      histClean(it.at)
+    ].join('|');
+    const old=uniq.get(key);
+    if(!old||(typePriority[it.type]||0)>(typePriority[old.type]||0))uniq.set(key,it);
+  });
+  const cleanItems=[...uniq.values()].sort((a,b)=>{
+    const c=(b.date||'').localeCompare(a.date||'');
+    if(c!==0)return c;
+    return(b._sortAt||'').localeCompare(a._sortAt||'');
+  });
+  if(!cleanItems.length){list.innerHTML='<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:13px">해당 기간에 이력이 없습니다</div>';return;}
   const typeLabel={memo:'<span style="background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">처리메모</span>',note:'<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">일반메모</span>',history:'<span style="background:#e9d5ff;color:#7e22ce;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">처리이력</span>',change:'<span style="background:#dcfce7;color:#15803d;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">스케줄변경</span>',activity:'<span style="background:#fee2e2;color:#b91c1c;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">활동로그</span>'};
-  list.innerHTML=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">총 ${items.length}건 (최근순)</div>`+items.map(it=>{
+  list.innerHTML=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">총 ${cleanItems.length}건 (최근순)</div>`+cleanItems.map(it=>{
     const adjInfo=it.adjStart||it.adjEnd?`<div style="font-size:11px;color:#0891b2;margin-top:2px">조정: ${it.adjStart||'-'} ~ ${it.adjEnd||'-'}</div>`:'';
     const phraseInfo=it.phrase?`<span style="font-size:10px;background:#f3f4f6;padding:1px 6px;border-radius:8px;margin-left:4px">${phraseLabel(it.phrase)}</span>`:'';
     const subInfo=it.subType?`<span style="font-size:10px;background:#f3f4f6;padding:1px 6px;border-radius:8px;margin-left:4px">${it.subType}</span>`:'';
     const actionInfo=it.action?`<span style="font-size:10px;background:#fef2f2;color:#b91c1c;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${it.action}</span>`:'';
     return`<div style="background:#fff;border:1px solid var(--border-light);border-radius:8px;padding:10px 12px;margin-bottom:6px">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-        <span style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--text-primary)">${it.date}</span>
+        <span style="font-family:'Noto Sans KR','Malgun Gothic',sans-serif;font-size:12px;font-weight:800;color:var(--text-primary);letter-spacing:0">${it.date}</span>
         ${typeLabel[it.type]||''}
         ${actionInfo}
         ${subInfo}
