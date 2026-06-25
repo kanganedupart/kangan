@@ -2200,18 +2200,34 @@ async function loadHistoryList(pid){
   });
   if(!cleanItems.length){list.innerHTML='<div style="text-align:center;padding:30px;color:var(--text-muted);font-size:13px">해당 기간에 이력이 없습니다</div>';return;}
   const typeLabel={memo:'<span style="background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">처리메모</span>',note:'<span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">일반메모</span>',history:'<span style="background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">처리이력</span>',change:'<span style="background:#dcfce7;color:#15803d;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">스케줄변경</span>',activity:'<span style="background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;padding:1px 7px;border-radius:10px;font-size:10px;font-weight:700">활동로그</span>'};
+  const histBadgeStyle='font-size:10px;font-weight:600;padding:1px 6px;border-radius:10px;flex-shrink:0;';
+  const eventBadge=(it)=>{
+    const label=it.subType||phraseLabel(it.phrase||'')||it.action||'';
+    const text=(it.text||'')+' '+label;
+    if(label==='추가근무'&&it.type==='change')return `<span style="${histBadgeStyle}color:#7e22ce;background:#fdf4ff;border:1px solid #e9d5ff">⭐ 추가근무</span>`;
+    if(label==='결근예정'||text.includes('결근예정'))return `<span style="${histBadgeStyle}color:#fca5a5;background:#fff0f0;border:1px solid #fecaca">예정결근</span>`;
+    if(label==='영구변경')return `<span style="${histBadgeStyle}color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe">영구변경</span>`;
+    if(label==='기간교체')return `<span style="${histBadgeStyle}color:#15803d;background:#f0fdf4;border:1px solid #86efac">기간교체</span>`;
+    if(label==='지각'||text.includes('지각'))return `<span style="${histBadgeStyle}color:var(--warning);background:var(--warning-light)">지각</span>`;
+    if(label==='조기퇴근'||text.includes('조기퇴근'))return `<span style="${histBadgeStyle}color:var(--accent);background:var(--accent-light)">조기퇴근</span>`;
+    if(label==='추가근무'||label==='연장근무'||text.includes('연장근무'))return `<span style="${histBadgeStyle}color:#047857;background:#d1fae5">연장근무</span>`;
+    if(label==='결근'||text.includes('결근 처리'))return `<span style="${histBadgeStyle}color:var(--danger);background:var(--danger-light)">결근</span>`;
+    return '';
+  };
   list.innerHTML=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:8px">총 ${cleanItems.length}건 (최근순)</div>`+cleanItems.map(it=>{
     const adjInfo=it.adjStart||it.adjEnd?`<div style="font-size:11px;color:#0891b2;margin-top:2px">조정: ${it.adjStart||'-'} ~ ${it.adjEnd||'-'}</div>`:'';
-    const phraseInfo=it.phrase?`<span style="font-size:10px;background:#f3f4f6;padding:1px 6px;border-radius:8px;margin-left:4px">${phraseLabel(it.phrase)}</span>`:'';
-    const subInfo=it.subType?`<span style="font-size:10px;background:${it.subType==='결근예정'?'#fff0f0':'#f3f4f6'};color:${it.subType==='결근예정'?'#b91c1c':'var(--text-primary)'};border:${it.subType==='결근예정'?'1px solid #fecaca':'0'};padding:1px 6px;border-radius:8px;margin-left:4px">${it.subType}</span>`:'';
+    const mainEventBadge=eventBadge(it);
+    const phraseInfo=it.phrase&&!mainEventBadge?`<span style="font-size:10px;background:#f3f4f6;color:#475569;border:1px solid #d1d5db;padding:1px 6px;border-radius:8px;margin-left:4px">${phraseLabel(it.phrase)}</span>`:'';
+    const subInfo=it.subType&&!mainEventBadge?`<span style="font-size:10px;background:#f3f4f6;color:#475569;border:1px solid #d1d5db;padding:1px 6px;border-radius:8px;margin-left:4px">${it.subType}</span>`:'';
     const actionInfo=it.action?`<span style="font-size:10px;background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;padding:1px 6px;border-radius:8px;margin-left:4px;font-weight:700">${it.action}</span>`:'';
     return`<div style="background:#fff;border:1px solid var(--border-light);border-radius:8px;padding:10px 12px;margin-bottom:6px">
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
         <span style="font-family:'Noto Sans KR','Malgun Gothic',sans-serif;font-size:12px;font-weight:800;color:var(--text-primary);letter-spacing:0">${it.date}</span>
-        ${typeLabel[it.type]||''}
-        ${actionInfo}
+        ${mainEventBadge}
+        <span style="opacity:.72">${typeLabel[it.type]||''}</span>
         ${subInfo}
         ${phraseInfo}
+        ${actionInfo}
         <span style="font-size:11px;color:var(--text-muted);margin-left:auto">${it.by} · ${it.at}</span>
       </div>
       <div style="font-size:13px;color:var(--text-primary);line-height:1.4;white-space:pre-line">${(it.text||'').replace(/</g,'&lt;')}</div>
