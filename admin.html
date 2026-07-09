@@ -723,6 +723,9 @@ let CU=null,AT='mgmt',AP={},TA={},AA=[],SP={},AD=[];
 let DD={mgmt:null,tutor:null,etc:null};
 let TB={mgmt:{},tutor:{},etc:{}};
 const toM=s=>{if(!s)return 0;const[h,m]=s.split(':').map(Number);return h*60+m;};
+const timeSpanM=(start,end)=>{if(!start||!end)return 0;const s=toM(start);let e=toM(end);if(e<s)e+=1440;return e-s;};
+const timeMFromStart=(start,time)=>{if(!start||!time)return 0;const s=toM(start);let m=toM(time);if(m<s)m+=1440;return m;};
+const earlyM=(start,end,out)=>timeMFromStart(start,end)-timeMFromStart(start,out);
 const m2hm=m=>`${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`;
 const cof=r=>COLORS[r]||'#6b7280';
 const SL=v=>document.getElementById('loading-bar').classList.toggle('show',v);
@@ -822,7 +825,7 @@ function _autoBreakMin(totalMin){
 function brk(p,startT,endT){
   const s=startT||p.start;
   const e=endT||p.end;
-  const totalMin=toM(e)-toM(s);
+  const totalMin=timeSpanM(s,e);
   if(totalMin<=0)return 0;
   const autoB=_autoBreakMin(totalMin);
   // customBreak 정의되어 있어도 자동 휴게보다 작으면 자동 휴게 적용
@@ -944,7 +947,7 @@ function schedH(p,a){
   if(!s||!e)return 0;
   const bm=brk(p,s,e);
   // ⭐ v10.8.7-fix2: 정밀도 1000 (소수 3자리) — fmtH 변환 시 반올림 오차 방지
-  return Math.round((toM(e)-toM(s)-bm)/60*1000)/1000;
+  return Math.round((timeSpanM(s,e)-bm)/60*1000)/1000;
 }
 function calcRealH(p,a){
   if(!a||(!a.inTime&&!a.adjustedStart))return null; // 출근 기록 전혀 없으면 계산 불가
@@ -969,9 +972,9 @@ function calcRealH(p,a){
     // 종료: 조기퇴근/추가근무 처리, 그 외는 스케줄 종료 초과는 무시
     let endT;
     if(ph2==='조기퇴근')endT=eT;
-    else if(ph2==='추가근무'&&a.adjustedEnd)endT=toM(eT)>toM(a.adjustedEnd)?a.adjustedEnd:eT;
-    else endT=toM(eT)>toM(p.end)?p.end:eT;
-    const totalM=toM(endT)-toM(sT);
+    else if(ph2==='추가근무'&&a.adjustedEnd)endT=timeMFromStart(p.start,eT)>timeMFromStart(p.start,a.adjustedEnd)?a.adjustedEnd:eT;
+    else endT=timeMFromStart(p.start,eT)>timeMFromStart(p.start,p.end)?p.end:eT;
+    const totalM=timeSpanM(sT,endT);
     if(totalM<=0)return 0;
     const bm=brk(p,sT,endT);
     return Math.max(0,Math.round((totalM-bm)/60*1000)/1000);
@@ -992,11 +995,11 @@ function calcRealH(p,a){
   if(ph==='조기퇴근'){
     endT=effOut;
   }else if(ph==='추가근무'&&a.adjustedEnd){
-    endT=toM(effOut)>toM(a.adjustedEnd)?a.adjustedEnd:effOut;
+    endT=timeMFromStart(p.start,effOut)>timeMFromStart(p.start,a.adjustedEnd)?a.adjustedEnd:effOut;
   }else{
-    endT=toM(effOut)>toM(p.end)?p.end:effOut;
+    endT=timeMFromStart(p.start,effOut)>timeMFromStart(p.start,p.end)?p.end:effOut;
   }
-  const totalM=toM(endT)-toM(startT);
+  const totalM=timeSpanM(startT,endT);
   if(totalM<=0)return 0;
   const bm=brk(p,startT,endT);
   return Math.max(0,Math.round((totalM-bm)/60*1000)/1000);
@@ -1197,10 +1200,12 @@ async function logActivity(action,target,detail,targetPid){
 window.logActivity=logActivity;
 function renderCat(cat){const ps=enrich(pfc(cat),cat);rStats(cat,ps);rTL(cat,ps);chkAlert(cat,ps);}
 function latestByStartAndAt(list){
-  return [...(list||[])].sort((a,b)=>{
+  return [...(list||[])].map((item,idx)=>({...item,_idx:idx})).sort((a,b)=>{
     const c=(b.startDate||'').localeCompare(a.startDate||'');
     if(c!==0)return c;
-    return (b.at||'').localeCompare(a.at||'');
+    const at=(b.at||'').localeCompare(a.at||'');
+    if(at!==0)return at;
+    return (b._idx||0)-(a._idx||0);
   })[0]||null;
 }
 // 날짜의 적용 스케줄 반환 (우선순위: 기간교체 > 영구변경 > 요일별 > 기본)
@@ -1309,7 +1314,7 @@ if(tempDay){
   let tst='pending';
   // ⭐ v10.7: 추가근무도 자동 감지 지각/조기퇴근 → absent-unc로 (일반 분기와 일관)
   const autoLateT=ta2.inTime&&!ph2&&toM(ta2.adjustedStart||ta2.inTime)-toM(ds.start)>10;
-  const autoEarlyT=ta2.outTime&&!ph2&&toM(ds.end)-toM(ta2.outTime)>10;
+  const autoEarlyT=ta2.outTime&&!ph2&&earlyM(ds.start,ds.end,ta2.outTime)>10;
   if(ph2==='결근')tst='absent-con';
   else if(ph2==='정상')tst='done';
   else if(autoLateT||autoEarlyT)tst='absent-unc'; // 자동 감지 → 미처리
@@ -1328,9 +1333,9 @@ if(isFuture){const preA=attData[p.id]||{};const prePh=preA.stdPhrase||'';if(preP
 let st='pending',ac=a.inTime||null;const ph=a.stdPhrase||'';
 // 예정 초과 체크 (adjustedStart/End보다 더 늦거나 이른 경우)
 const lateOverReserved=ph==='지각'&&a.adjustedStart&&a.inTime&&toM(a.inTime)>toM(a.adjustedStart)+10;
-const earlyOverReserved=ph==='조기퇴근'&&a.adjustedEnd&&a.outTime&&toM(a.outTime)<toM(a.adjustedEnd)-10;
+const earlyOverReserved=ph==='조기퇴근'&&a.adjustedEnd&&a.outTime&&timeMFromStart(ds.start,a.outTime)<timeMFromStart(ds.start,a.adjustedEnd)-10;
 // 자동 감지 조기퇴근 (stdPhrase 없고 퇴근이 스케줄보다 10분 이상 빠름)
-const autoEarlyDetect=a.outTime&&!ph&&toM(ds.end)-toM(a.outTime)>10;
+const autoEarlyDetect=a.outTime&&!ph&&earlyM(ds.start,ds.end,a.outTime)>10;
 // 자동 감지 지각 (stdPhrase 없고 출근이 스케줄보다 10분 이상 늦음)
 const autoLateDetect=a.inTime&&!ph&&toM(a.adjustedStart||a.inTime)-toM(ds.start)>10;
 if(ph==='결근')st='absent-con';
@@ -1374,15 +1379,15 @@ function _isAutoUnproc(p){
   if(!p.ar||!p.ar.inTime)return false;
   if(p.ar.stdPhrase)return false;
   const autoLate=toM(p.ar.adjustedStart||p.ar.inTime)-toM(p.start)>10;
-  const autoEarly=p.ar.outTime&&toM(p.end)-toM(p.ar.outTime)>10;
+  const autoEarly=p.ar.outTime&&earlyM(p.start,p.end,p.ar.outTime)>10;
   return autoLate||autoEarly;
 }
 function chkAlert(c,ps){const el=document.getElementById('alert-'+c);if(!el)return;const uc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule'||_isAutoUnproc(p));if(uc.length>0){el.textContent=`⚠ 처리 필요: ${uc.map(p=>p.name+(p.status==='no-schedule'?' (스케줄없는출근 '+p.actual+')':p.nc?' (퇴근미확인)':_isAutoUnproc(p)?' (지각/조기퇴근 미확정)':'')).join(', ')}`;el.classList.add('show');}else el.classList.remove('show');}
 function rStats(c,ps){const ab=ps.filter(p=>p.status.startsWith('absent')&&p.status!=='absent-unc').length;const unc=ps.filter(p=>p.status==='absent-unc'||p.nc||p.status==='no-schedule'||_isAutoUnproc(p)).length;document.getElementById('stats-'+c).innerHTML=`<div class="stat-card danger" style="cursor:${unc>0?'pointer':'default'}" ${unc>0?`onclick="openStatsModal('${c}','unproc')"`:''}><div class="stat-label">미처리${unc>0?'<span class="stat-dot"></span>':''}</div><div class="stat-val">${unc}</div></div><div class="stat-card danger" onclick="openStatsModal('${c}','absent')"><div class="stat-label">결근</div><div class="stat-val">${ab}</div></div><div class="stat-card warning" onclick="openStatsModal('${c}','late')"><div class="stat-label">지각</div><div class="stat-val">${ps.filter(p=>p.status==='late').length}</div></div><div class="stat-card orange" onclick="openStatsModal('${c}','changed')"><div class="stat-label">변경근무</div><div class="stat-val">${ps.filter(p=>p.status==='changed').length}</div></div><div class="stat-card" style="cursor:default"><div class="stat-label">전체</div><div class="stat-val">${ps.filter(p=>p.status!=='no-schedule').length}</div></div>`;}
-function rTL(c,ps){const con=document.getElementById('tl-'+c);document.getElementById('tl-time-'+c).textContent=`기준 ${kstNow()}`;ps=ps.filter(p=>p.status!=='no-schedule');if(!ps.length){con.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">근무 인원 없음</div>';return;}const aS=ps.map(p=>toM(p.start)),aE=ps.map(p=>{const ext=p.ar&&p.ar.adjustedEnd&&p.ar.stdPhrase==='추가근무'?toM(p.ar.adjustedEnd):0;return Math.max(toM(p.end),ext);});let am=Math.floor(Math.min(...aS)/30)*30,ax=Math.ceil(Math.max(...aE)/30)*30;if(ax-am<120)ax=am+120;const asp=ax-am;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const np=Math.max(0,Math.min(100,(nm-am)/asp*100));const ts2=asp<=240?60:asp<=480?120:180;const tk=[];for(let t=Math.ceil(am/ts2)*ts2;t<=ax;t+=ts2)tk.push(t);const ax2=`<div class="tl-axis-row"><div class="tl-colorbar" style="visibility:hidden"></div><div class="tl-axis-info-col"></div><div class="tl-axis-bar-col"><div class="tl-axis-marks">${tk.map(t=>`<div class="tl-axis-mark" style="left:${(t-am)/asp*100}%"><span>${m2hm(t)}</span><div class="tl-axis-mark-line"></div></div>`).join('')}${nm>=am&&nm<=ax?`<div style="position:absolute;top:0;bottom:0;left:${np}%;width:2px;background:rgba(220,38,38,.5);border-radius:1px"></div>`:''}</div></div></div>`;const sorted=[...ps].sort((a,b)=>{const o={'absent-unc':0,'absent-con':1,'absent-pln':2,late:3,changed:4,done:5,pending:6};const aRank=a.nc?0:(o[a.status]??5);const bRank=b.nc?0:(o[b.status]??5);return(aRank-bRank)||a.start.localeCompare(b.start);});con.innerHTML=ax2+sorted.map(e=>bTL(e,am,asp,np)).join('');}
+function rTL(c,ps){const con=document.getElementById('tl-'+c);document.getElementById('tl-time-'+c).textContent=`기준 ${kstNow()}`;ps=ps.filter(p=>p.status!=='no-schedule');if(!ps.length){con.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">근무 인원 없음</div>';return;}const aS=ps.map(p=>toM(p.start)),aE=ps.map(p=>{const ext=p.ar&&p.ar.adjustedEnd&&p.ar.stdPhrase==='추가근무'?timeMFromStart(p.start,p.ar.adjustedEnd):0;return Math.max(timeMFromStart(p.start,p.end),ext);});let am=Math.floor(Math.min(...aS)/30)*30,ax=Math.ceil(Math.max(...aE)/30)*30;if(ax-am<120)ax=am+120;const asp=ax-am;const k=new Date(Date.now()+9*3600000);const nm=k.getUTCHours()*60+k.getUTCMinutes();const np=Math.max(0,Math.min(100,(nm-am)/asp*100));const ts2=asp<=240?60:asp<=480?120:180;const tk=[];for(let t=Math.ceil(am/ts2)*ts2;t<=ax;t+=ts2)tk.push(t);const ax2=`<div class="tl-axis-row"><div class="tl-colorbar" style="visibility:hidden"></div><div class="tl-axis-info-col"></div><div class="tl-axis-bar-col"><div class="tl-axis-marks">${tk.map(t=>`<div class="tl-axis-mark" style="left:${(t-am)/asp*100}%"><span>${m2hm(t)}</span><div class="tl-axis-mark-line"></div></div>`).join('')}${nm>=am&&nm<=ax?`<div style="position:absolute;top:0;bottom:0;left:${np}%;width:2px;background:rgba(220,38,38,.5);border-radius:1px"></div>`:''}</div></div></div>`;const sorted=[...ps].sort((a,b)=>{const o={'absent-unc':0,'absent-con':1,'absent-pln':2,late:3,changed:4,done:5,pending:6};const aRank=a.nc?0:(o[a.status]??5);const bRank=b.nc?0:(o[b.status]??5);return(aRank-bRank)||a.start.localeCompare(b.start);});con.innerHTML=ax2+sorted.map(e=>bTL(e,am,asp,np)).join('');}
 function bTL(e,am,as,np){
 const col=cof(e.role);
-const sM=toM(e.start),eM=toM(e.end);
+const sM=toM(e.start),eM=timeMFromStart(e.start,e.end);
 const bl=Math.max(0,(sM-am)/as*100);
 const bw=Math.min(100,(eM-am)/as*100)-bl;
 const isAutoDetected=e.status==='absent-unc'&&e.ar?.inTime;
@@ -1412,10 +1417,10 @@ if(!isAbsent){
     if(extW2>0)bar+=`<div class="tl-bar-fill" style="left:${extL}%;width:${extW2}%;background:${extColor};opacity:${op}"></div>`;
   }
   let actualW=bw;
-  if(ph==='조기퇴근'&&e.ar?.adjustedEnd)actualW=Math.max(0,(toM(e.ar.adjustedEnd)-sM)/as*100);
+  if(ph==='조기퇴근'&&e.ar?.adjustedEnd)actualW=Math.max(0,(timeMFromStart(e.start,e.ar.adjustedEnd)-sM)/as*100);
   // 종료 늦춤 연장근무 (adjustedEnd > 스케줄 종료) - 기본+진녹색
-  if(ph==='추가근무'&&e.ar?.adjustedEnd&&toM(e.ar.adjustedEnd)>eM){
-    const extEnd=Math.min(100,(toM(e.ar.adjustedEnd)-am)/as*100);
+  if(ph==='추가근무'&&e.ar?.adjustedEnd&&timeMFromStart(e.start,e.ar.adjustedEnd)>eM){
+    const extEnd=Math.min(100,(timeMFromStart(e.start,e.ar.adjustedEnd)-am)/as*100);
     const baseW=bw;
     const extW=extEnd-bl-baseW;
     bar+=`<div class="tl-bar-fill" style="left:${bl}%;width:${baseW}%;background:${barColor};opacity:${op}"></div>`;
@@ -1432,10 +1437,10 @@ const tempTag=e.isTemp?`<span style="${tagStyle}color:#7e22ce;background:#fdf4ff
 // 단발근무자 배지 — 단발자에게 항상 표시 (추가와 별개)
 const casualTag=e.isCasual?`<span style="${tagStyle}color:#7e22ce;background:#fdf4ff;border:1px solid #e9d5ff">⭐ 단발</span>`:'';
 // 미래 예약 태그 (출근 전 + adjustedEnd 또는 adjustedStart 있음)
-const isPendingExt=ph==='추가근무'&&(e.status==='pending'||!e.ar?.inTime)&&((e.ar?.adjustedEnd&&toM(e.ar.adjustedEnd)>eM)||(e.ar?.adjustedStart&&toM(e.ar.adjustedStart)<sM));
+const isPendingExt=ph==='추가근무'&&(e.status==='pending'||!e.ar?.inTime)&&((e.ar?.adjustedEnd&&timeMFromStart(e.start,e.ar.adjustedEnd)>eM)||(e.ar?.adjustedStart&&toM(e.ar.adjustedStart)<sM));
 const pendingExtTag=isPendingExt?`<span style="${tagStyle}color:#047857;background:#d1fae5">연장근무 예약</span>`:'';
 // 자동 감지 조기퇴근 (stdPhrase 없고 퇴근이 스케줄보다 10분 이상 빠름)
-const autoEarlyDash=e.ar?.outTime&&!ph&&eM-toM(e.ar.outTime)>10;
+const autoEarlyDash=e.ar?.outTime&&!ph&&eM-timeMFromStart(e.start,e.ar.outTime)>10;
 const autoLateDash=e.ar?.inTime&&!ph&&toM(e.ar.adjustedStart||e.ar.inTime)-sM>10;
 // 1분 이상 지각도 태그 표시 (ph없고 출근찍힘 + 스케줄보다 늦음)
 const anyLateDash=e.ar?.inTime&&!ph&&toM(e.ar.adjustedStart||e.ar.inTime)>sM;
@@ -1515,7 +1520,7 @@ const adjustedTimeRow=(displayAdjustedStart||displayAdjustedEnd)?`<div class="mo
 if(displayAdjustedStart&&existingPhrase!=='지각')resList.push(`출근 ${a.adjustedStart}로 조정`);
 if(displayAdjustedEnd){
   if(existingPhrase==='조기퇴근')resList.push(`조기퇴근 ${a.adjustedEnd} 예약`);
-  else if(existingPhrase==='추가근무'||toM(a.adjustedEnd)>toM(pEff.end))resList.push(`연장근무 ${a.adjustedEnd}까지 예약`);
+  else if(existingPhrase==='추가근무'||timeMFromStart(pEff.start,a.adjustedEnd)>timeMFromStart(pEff.start,pEff.end))resList.push(`연장근무 ${a.adjustedEnd}까지 예약`);
   else resList.push(`퇴근 ${a.adjustedEnd}로 조정`);
 }
 if(displayAdjustedStart&&existingPhrase==='지각')resList.push(`지각 예약: ${a.adjustedStart} 출근`);
@@ -2258,7 +2263,7 @@ function calcPreview(pid,pStart,pEnd,customBreak){
     calcStart=s;
     calcEnd=pEnd;
   }
-  const totalM=toM(calcEnd)-toM(calcStart);
+  const totalM=timeSpanM(calcStart,calcEnd);
   if(totalM<=0){document.getElementById(`adj-prev-${pid}`).textContent='';return;}
   const bm=customBreak>=0?customBreak:(totalM/60>=9?60:totalM/60>4?30:0);
   const h=Math.max(0,Math.round((totalM-bm)/60*1000)/1000);
@@ -2325,7 +2330,7 @@ function openStatsModal(c,sk){
     if(!p.ar||!p.ar.inTime)return false;
     if(p.ar.stdPhrase)return false; // 이미 처리됨
     const autoLate=toM(p.ar.adjustedStart||p.ar.inTime)-toM(p.start)>10;
-    const autoEarly=p.ar.outTime&&toM(p.end)-toM(p.ar.outTime)>10;
+    const autoEarly=p.ar.outTime&&earlyM(p.start,p.end,p.ar.outTime)>10;
     return autoLate||autoEarly;
   };
   let ps;
@@ -2347,7 +2352,7 @@ function openStatsModal(c,sk){
     if(p.status==='absent-unc'){
       if(p.ar?.inTime){
         // 출근했는데 absent-unc → 자동 감지 (지각/조기퇴근)
-        const autoEarly=p.ar.outTime&&toM(p.end)-toM(p.ar.outTime)>10;
+        const autoEarly=p.ar.outTime&&earlyM(p.start,p.end,p.ar.outTime)>10;
         const autoLate=toM(p.ar.adjustedStart||p.ar.inTime)-toM(p.start)>10;
         if(autoEarly&&autoLate)reason='지각+조기퇴근';
         else if(autoEarly)reason='조기퇴근';
@@ -2359,7 +2364,7 @@ function openStatsModal(c,sk){
     else if(p.nc)reason='퇴근 미확인';
     else if(isAutoUnproc(p)){
       const autoLate=toM(p.ar.adjustedStart||p.ar.inTime)-toM(p.start)>10;
-      const autoEarly=p.ar.outTime&&toM(p.end)-toM(p.ar.outTime)>10;
+      const autoEarly=p.ar.outTime&&earlyM(p.start,p.end,p.ar.outTime)>10;
       if(autoLate&&autoEarly)reason='지각+조기퇴근 (미확정)';
       else if(autoLate)reason='지각 (미확정)';
       else if(autoEarly)reason='조기퇴근 (미확정)';
@@ -2502,14 +2507,15 @@ if(nameFilter2)filtered=filtered.filter(({p})=>p.name.toLowerCase().includes(nam
 if(unprocOnly)filtered=filtered.filter(({dt,p,a,unscheduled})=>{if(unscheduled)return !a.stdPhrase;const isToday=dt===kstDate();const isPlnAbs=isPlannedAbsent(p,dt);if(isPlnAbs&&!a.inTime)return false;const isReservationOnly=a.stdPhrase==='추가근무'&&!a.outTime;const noPhrase=!a.stdPhrase||isReservationOnly;
 // 자동 지각/조기퇴근 감지 (10분 이상)
 const autoLate=a.inTime&&!a.stdPhrase&&toM(a.adjustedStart||a.inTime)-toM(p.start)>10;
-const autoEarly=a.outTime&&!a.stdPhrase&&toM(p.end)-toM(a.outTime)>10;
+const autoEarly=a.outTime&&!a.stdPhrase&&earlyM(p.start,p.end,a.outTime)>10;
 // 비정상 패드 시간 (스케줄과 동떨어진 출근/퇴근)
 const abnormalIn=a.inTime&&!a.stdPhrase&&toM(p.start)-toM(a.inTime)>10; // 출근이 스케줄보다 10분 이상 빠름
-const abnormalOut=a.outTime&&!a.stdPhrase&&toM(a.outTime)-toM(p.end)>10; // 퇴근이 스케줄보다 10분 이상 늦음
+const abnormalOut=a.outTime&&!a.stdPhrase&&timeMFromStart(p.start,a.outTime)-timeMFromStart(p.start,p.end)>10; // 퇴근이 스케줄보다 10분 이상 늦음
 // 예정 초과 (adjustedStart/End보다 더 벗어남)
 const lateOverReserved=a.stdPhrase==='지각'&&a.adjustedStart&&a.inTime&&toM(a.inTime)>toM(a.adjustedStart)+10;
-const earlyOverReserved=a.stdPhrase==='조기퇴근'&&a.adjustedEnd&&a.outTime&&toM(a.outTime)<toM(a.adjustedEnd)-10;
-return (noPhrase&&((!a.inTime&&isToday&&nowM2>toM(p.start))||(a.inTime&&!a.outTime&&isToday&&nowM2>toM(p.end)+10)||(!a.inTime&&dt<kstDate())||(a.inTime&&!a.outTime&&dt<kstDate())))||autoLate||autoEarly||lateOverReserved||earlyOverReserved;});
+const earlyOverReserved=a.stdPhrase==='조기퇴근'&&a.adjustedEnd&&a.outTime&&timeMFromStart(p.start,a.outTime)<timeMFromStart(p.start,a.adjustedEnd)-10;
+const nowEndPassed=isToday&&nowM2>=toM(p.start)&&timeMFromStart(p.start,m2hm(nowM2))>timeMFromStart(p.start,p.end)+10;
+return (noPhrase&&((!a.inTime&&isToday&&nowM2>toM(p.start))||(a.inTime&&!a.outTime&&nowEndPassed)||(!a.inTime&&dt<kstDate())||(a.inTime&&!a.outTime&&dt<kstDate())))||autoLate||autoEarly||lateOverReserved||earlyOverReserved;});
 else if(phraseFilter==='미처리')filtered=filtered.filter(({a})=>!a.stdPhrase);
 else if(phraseFilter)filtered=filtered.filter(({a})=>a.stdPhrase===phraseFilter);
 const sorted=[...filtered].sort((x,y)=>{if(x.dt!==y.dt)return x.dt.localeCompare(y.dt);const au=!x.a.stdPhrase&&(!x.a.inTime||(x.a.inTime&&!x.a.outTime));const bu=!y.a.stdPhrase&&(!y.a.inTime||(y.a.inTime&&!y.a.outTime));return(au?0:1)-(bu?0:1)||x.p.start.localeCompare(y.p.start);});
@@ -2528,14 +2534,14 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   // 출근 시간 지났는지 (유예 없음, 즉시 미처리)
   const startPassed=isPast||(isToday2&&nowM2>toM(p.start));
   // 퇴근 시간 지났는지 (10분 유예)
-  const endPassed=isPast||(isToday2&&nowM2>toM(p.end)+10);
+  const endPassed=isPast||(isToday2&&nowM2>=toM(p.start)&&timeMFromStart(p.start,m2hm(nowM2))>timeMFromStart(p.start,p.end)+10);
   // 자동 감지: 10분 초과 지각 (출근이 스케줄보다 10분 이상 늦음)
   const autoLate=a.inTime&&(toM(a.inTime)-toM(p.start)>10);
   // 자동 감지: 10분 초과 조기퇴근 (퇴근이 스케줄보다 10분 이상 빠름)
-  const autoEarly=a.outTime&&(toM(p.end)-toM(a.outTime)>10);
+  const autoEarly=a.outTime&&(earlyM(p.start,p.end,a.outTime)>10);
   // 예정(adjustedStart/End)보다 더 벗어난 경우 미처리
   const lateThanReserved=a.stdPhrase==='지각'&&a.adjustedStart&&a.inTime&&toM(a.inTime)>toM(a.adjustedStart)+10;
-  const earlyThanReserved=a.stdPhrase==='조기퇴근'&&a.adjustedEnd&&a.outTime&&toM(a.outTime)<toM(a.adjustedEnd)-10;
+  const earlyThanReserved=a.stdPhrase==='조기퇴근'&&a.adjustedEnd&&a.outTime&&timeMFromStart(p.start,a.outTime)<timeMFromStart(p.start,a.adjustedEnd)-10;
   // 미처리 조건
   let unproc=false;
   if(!isPlnAbs&&(!a.stdPhrase||isReservationOnly)){
@@ -3005,13 +3011,13 @@ const rNow=(new Date(Date.now()+9*3600000).getUTCHours())*60+(new Date(Date.now(
 const rIsToday=r.date===rToday;
 const rIsPast=r.date<rToday;
 const rStartPassed=rIsPast||(rIsToday&&rNow>toM(r.part.start));
-const rEndPassed=rIsPast||(rIsToday&&rNow>toM(r.part.end)+10);
+const rEndPassed=rIsPast||(rIsToday&&rNow>=toM(r.part.start)&&timeMFromStart(r.part.start,m2hm(rNow))>timeMFromStart(r.part.start,r.part.end)+10);
 // 예정 초과 체크
 const rLateOverReserved=r.att.stdPhrase==='지각'&&r.att.adjustedStart&&r.att.inTime&&toM(r.att.inTime)>toM(r.att.adjustedStart)+10;
-const rEarlyOverReserved=r.att.stdPhrase==='조기퇴근'&&r.att.adjustedEnd&&r.att.outTime&&toM(r.att.outTime)<toM(r.att.adjustedEnd)-10;
+const rEarlyOverReserved=r.att.stdPhrase==='조기퇴근'&&r.att.adjustedEnd&&r.att.outTime&&timeMFromStart(r.part.start,r.att.outTime)<timeMFromStart(r.part.start,r.att.adjustedEnd)-10;
 // 자동 감지
 const rAutoLate=r.att.inTime&&!r.att.stdPhrase&&toM(r.att.inTime)-toM(r.part.start)>10;
-const rAutoEarly=r.att.outTime&&!r.att.stdPhrase&&toM(r.part.end)-toM(r.att.outTime)>10;
+const rAutoEarly=r.att.outTime&&!r.att.stdPhrase&&earlyM(r.part.start,r.part.end,r.att.outTime)>10;
 const rIsReservationOnly=r.att.stdPhrase==='추가근무'&&!r.att.outTime;
 // 예정결근은 미처리 아님
 const rIsPlnAbs=r.part.plannedAbsent&&r.part.plannedAbsent.some(x=>(typeof x==='string'&&x===r.date)||(x.date===r.date)||(x.startDate&&x.endDate&&r.date>=x.startDate&&r.date<=x.endDate));
@@ -3691,7 +3697,7 @@ function renderPT(){
       if(cb!==undefined&&cb!==null)return ` <span style="font-size:11px;color:var(--text-secondary)">휴게 ${cb}분</span><span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span>`;
       const s=curStart,e=curEnd;
       if(!s||!e||s==='-'||e==='-')return '';
-      const h=(toM(e)-toM(s))/60;
+      const h=timeSpanM(s,e)/60;
       const auto=h>=9?60:h>4?30:0;
       return ` <span style="font-size:11px;color:var(--text-muted)">휴게 ${auto}분</span>`;
     })();
@@ -3822,7 +3828,7 @@ const curDaysRPF=applicablePermRPF?(applicablePermRPF.days||[]):(p&&p.days?p.day
 const curStartRPF=applicablePermRPF?applicablePermRPF.start:(p?p.start:'-');
 const curEndRPF=applicablePermRPF?applicablePermRPF.end:(p?p.end:'-');
 const curBrkRPFnum=applicablePermRPF&&applicablePermRPF.customBreak!==undefined?applicablePermRPF.customBreak:(p&&p.customBreak!==undefined?p.customBreak:null);
-const curBrkRPFlabel=curBrkRPFnum!==null?`${curBrkRPFnum}분 (수동)`:(p?(()=>{const s=curStartRPF,e=curEndRPF;if(!s||!e||s==='-'||e==='-')return'자동';const h=(toM(e)-toM(s))/60;return h>=9?'60분 (자동)':h>4?'30분 (자동)':'0분';})():'자동');
+const curBrkRPFlabel=curBrkRPFnum!==null?`${curBrkRPFnum}분 (수동)`:(p?(()=>{const s=curStartRPF,e=curEndRPF;if(!s||!e||s==='-'||e==='-')return'자동';const h=timeSpanM(s,e)/60;return h>=9?'60분 (자동)':h>4?'30분 (자동)':'0분';})():'자동');
 const futurePermRPF=p&&p.permChanges?[...p.permChanges].filter(pc=>pc.startDate>todayK).sort((a,b)=>a.startDate.localeCompare(b.startDate))[0]:null;
 // ⭐ v8: 박스에 표시할 요일별 실제 적용 시간 계산
 // 영구변경의 daySchedule 우선, 없으면 직원 원래 daySchedule, 없으면 기본
@@ -4129,7 +4135,7 @@ async function waRenderList(pid){
     if(showBreak&&e.customBreak!==undefined&&e.customBreak!==null){
       breakStr=` <span style="font-size:10px;color:#7e22ce;background:#fff;border:1px solid #e9d5ff;padding:1px 6px;border-radius:8px;margin-left:4px">휴게 ${e.customBreak}분 (수동)</span>`;
     }else if(showBreak&&e.start&&e.end){
-      const h=(toM(e.end)-toM(e.start))/60;
+      const h=timeSpanM(e.start,e.end)/60;
       const auto=h>=9?60:h>4?30:0;
       breakStr=` <span style="font-size:10px;color:var(--text-muted);background:var(--bg);padding:1px 6px;border-radius:8px;margin-left:4px">휴게 ${auto}분 (자동)</span>`;
     }
@@ -4307,7 +4313,7 @@ async function waRenderCal(){
       }
     }
     if(hasExt){
-      const extMin=toM(att.adjustedEnd)-toM(ds.end||p.end);
+      const extMin=timeMFromStart(ds.start||p.start,att.adjustedEnd)-timeMFromStart(ds.start||p.start,ds.end||p.end);
       if(extMin>0)inner+=`<div style="font-size:8px;padding:0 2px;background:#fff7ed;color:#c2410c;border-radius:2px;font-weight:700;margin-top:1px">+${(extMin/60).toFixed(1)}h</div>`;
     }
     if(conflict)inner+=`<div style="font-size:9px;color:#854d0e">⚠</div>`;
@@ -4373,7 +4379,7 @@ function waShowDayDetail(dk,dow){
     <span style="font-size:11px;color:var(--text-muted);align-self:center">이 날짜 기준으로 바로 확인</span>
   </div>`;
   if(att.adjustedEnd&&att.stdPhrase==='추가근무'){
-    const extMin=toM(att.adjustedEnd)-toM(ds.end||p.end);
+    const extMin=timeMFromStart(ds.start||p.start,att.adjustedEnd)-timeMFromStart(ds.start||p.start,ds.end||p.end);
     content+=`<div style="font-size:12px;color:#c2410c;margin-bottom:4px;padding:4px 8px;background:#fff7ed;border-radius:4px">🕐 연장근무 (퇴근 연장): ${att.adjustedEnd}까지 (+${(extMin/60).toFixed(1)}h)${att.memoBy?` <span style="font-size:10px;color:var(--text-muted)">— ✍️ ${att.memoBy} ${att.memoAt||''}</span>`:''}</div>`;
   }
   // ⭐ v10.7: 출근 당김(연장근무 사전예약)
@@ -4962,7 +4968,7 @@ async function waSave(pid,type){
         }
       }
     }
-    newEvent.by=CU.name;newEvent.at=kstLabel();
+    newEvent.by=CU.name;newEvent.at=`${kstLabel()} ${kstNow()}`;
   }else if(type==='replace'){
     const end=document.getElementById('wa-end')?.value;
     if(!end){ST('종료일을 입력해주세요');return;}
@@ -4978,20 +4984,20 @@ async function waSave(pid,type){
       const bN=parseInt(repBrk,10);
       if(!isNaN(bN)&&bN>=0)newEvent.customBreak=bN;
     }
-    newEvent.by=CU.name;newEvent.at=kstLabel();
+    newEvent.by=CU.name;newEvent.at=`${kstLabel()} ${kstNow()}`;
   }else if(type==='absent'){
     const end=document.getElementById('wa-end')?.value;
     if(!end){ST('종료일을 입력해주세요');return;}
     if(start>end){ST('종료일이 시작일보다 빠릅니다');return;}
     newEvent.endDate=end;
     newEvent.memo=document.getElementById('wa-memo').value.trim();
-    newEvent.by=CU.name;newEvent.at=kstLabel();
+    newEvent.by=CU.name;newEvent.at=`${kstLabel()} ${kstNow()}`;
   }else if(type==='oneday'){
     newEvent.start=document.getElementById('wa-s-time').value;
     newEvent.end=document.getElementById('wa-e-time').value;
     const brkV2=document.getElementById('wa-brk')?.value;
     if(brkV2!==''&&brkV2!==undefined&&brkV2!==null)newEvent.customBreak=parseInt(brkV2);
-    newEvent.by=CU.name;newEvent.at=kstLabel();
+    newEvent.by=CU.name;newEvent.at=`${kstLabel()} ${kstNow()}`;
     if(isOnedayRange){
       // 기간 반복 모드: 시작일~종료일에서 선택된 요일에 해당하는 모든 날짜를 펼침
       const rend=document.getElementById('wa-rend')?.value;
@@ -5262,7 +5268,7 @@ async function waEditBreak(pid,type,idx){
   const item=arr[idx];
   if(!item){ST('항목을 찾을 수 없습니다');return;}
   // 자동 휴게값 계산
-  const h=item.start&&item.end?(toM(item.end)-toM(item.start))/60:0;
+  const h=item.start&&item.end?timeSpanM(item.start,item.end)/60:0;
   const autoBrk=h>=9?60:h>4?30:0;
   const curBrk=item.customBreak;
   const curBrkLabel=curBrk!==undefined&&curBrk!==null?`현재: ${curBrk}분 (수동)`:`현재: ${autoBrk}분 (자동)`;
@@ -5555,7 +5561,7 @@ window.updatePfAutoBrk=function(){
   const s=syncGetTime?syncGetTime('pf-start'):document.getElementById('pf-start')?.value;
   const e=syncGetTime?syncGetTime('pf-end'):document.getElementById('pf-end')?.value;
   if(!s||!e)return;
-  const diff=(toM(e)-toM(s))/60;
+  const diff=timeSpanM(s,e)/60;
   let auto=0;
   if(diff>=9)auto=60;
   else if(diff>4)auto=30;
@@ -5567,7 +5573,7 @@ window.updateWaAutoBrk=function(){
   const s=document.getElementById('wa-s-time')?.value;
   const e=document.getElementById('wa-e-time')?.value;
   if(!s||!e)return;
-  const diff=(toM(e)-toM(s))/60;
+  const diff=timeSpanM(s,e)/60;
   let auto=0;
   if(diff>=9)auto=60;
   else if(diff>4)auto=30;
@@ -6443,7 +6449,7 @@ function renderPayslipIssueSection(r){
       const sched=d.sched||{};
       const outT=a.adjustedEnd||a.outTime;
       if(outT&&sched.end){
-        const earlyMin=toM(sched.end)-toM(outT);
+        const earlyMin=earlyM(sched.start,sched.end,outT);
         if(earlyMin>0)issues.absence.push({dt:d.dt,type:'조기퇴근',label:`조기퇴근 ${earlyMin}분`,att:a});
       }
     }
@@ -6808,7 +6814,7 @@ function buildPrintableIssues(r,css){
       if(inT&&sched.start){const lateMin=toM(inT)-toM(sched.start);if(lateMin>0)issues.absence.push({dt:d.dt,label:`지각 ${lateMin}분`});}
     }else if(ph==='조기퇴근'){
       const sched=d.sched||{};const outT=a.adjustedEnd||a.outTime;
-      if(outT&&sched.end){const earlyMin=toM(sched.end)-toM(outT);if(earlyMin>0)issues.absence.push({dt:d.dt,label:`조기퇴근 ${earlyMin}분`});}
+      if(outT&&sched.end){const earlyMin=earlyM(sched.start,sched.end,outT);if(earlyMin>0)issues.absence.push({dt:d.dt,label:`조기퇴근 ${earlyMin}분`});}
     }
   });
   if(r.bonusList&&r.bonusList.length){
