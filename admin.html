@@ -2843,11 +2843,20 @@ async function saveMA(pid,dt){
       ST(`퇴근 시간(${otInput})은 현재 시각(${nowHHMM}) 이후로 입력할 수 없습니다`);return;
     }
   }
-  // 시간 정합성 (출근 < 퇴근)
+  // 시간 정합성: 일반 근무는 출근 < 퇴근, 자정 넘김 스케줄은 익일 퇴근 허용
   const finalIn=mode==='in-only'?itInput:(mode==='both'?itInput:(clearIn?'':curIn));
   const finalOut=mode==='out-only'?otInput:(mode==='both'?otInput:(clearOut?'':curOut));
-  if(finalIn&&finalOut&&toM(finalIn)>=toM(finalOut)){
-    ST('퇴근 시간이 출근 시간보다 빠르거나 같습니다');return;
+  if(finalIn&&finalOut){
+    const pMA=AP[pid]||{};
+    const DM_MA=['일','월','화','수','목','금','토'];
+    const dowMA=DM_MA[new Date(dt+'T00:00:00+09:00').getDay()];
+    const dsMA=typeof getDayTime==='function'?getDayTime(pMA,dowMA,dt):{};
+    const schedStartMA=dsMA.start||pMA.start;
+    const schedEndMA=dsMA.end||pMA.end;
+    const isOvernightMA=schedStartMA&&schedEndMA&&toM(schedEndMA)<toM(schedStartMA);
+    if(toM(finalIn)===toM(finalOut)||(!isOvernightMA&&toM(finalIn)>toM(finalOut))){
+      ST(isOvernightMA?'퇴근 시간이 출근 시간과 같습니다':'퇴근 시간이 출근 시간보다 빠르거나 같습니다');return;
+    }
   }
   // 확인 (덮어쓰기 / 삭제 시)
   if(mode==='clear'){
