@@ -805,22 +805,27 @@ function makeDraggable(overlayId){
 // ⭐ v10.8.5: 자동 휴게 정책 (안녕님 결정)
 // - customBreak가 자동 휴게(법정 기준)보다 작으면 자동 휴게 적용
 // - "손해는 반영, 이득은 무시" 정책에 따라 max(customBreak, 자동휴게) 적용
-// - 자동 휴게 기준 (한국 근로기준법):
-//   * 4시간 이상 → 30분
-//   * 8시간 이상 → 60분
+// - 자동 휴게 기준:
+//   * 4시간 초과 → 30분
+//   * 8시간 초과 → 60분
 // - 배정우 4/28 케이스 해결: 7~16시 (9h) + customBreak 0분 → 자동 60분 적용 → 8h
 // - 교무가 연장근무 등록 시 휴게 신경 안 써도 자동 정산
 // ⭐ v10.8.7: 자동 휴게 기준 (한국 근로기준법 + 회사 운영 정책)
 // - "정확히" 의무 시간은 회사 운영상 휴게 없음 (안녕님 정책)
 // - 4시간 정확히 = 휴게 0분 (응대 9~13시 케이스)
 // - 8시간 정확히 = 휴게 30분 (정지윤 8~16시 케이스)
-//   (8시간 정확히는 customBreak로 회사가 30분 운영 — 자동은 0분, max로 30분 적용)
+//   (8시간 정확히는 4시간 초과 구간이므로 자동 30분)
 // - 4시간 초과 ~ 8시간 이하 = 30분 자동
 // - 8시간 초과 = 60분 자동
 function _autoBreakMin(totalMin){
   if(totalMin>480)return 60;   // 8h "초과" → 60분
   if(totalMin>240)return 30;   // 4h "초과" → 30분
   return 0;                     // 4h 이하 (정확히 4h도) → 0분
+}
+function autoBreakLabel(min){return `${min}분 (자동)`;}
+function autoBreakLabelFromTimes(startT,endT){
+  if(!startT||!endT||startT==='-'||endT==='-')return'자동';
+  return autoBreakLabel(_autoBreakMin(timeSpanM(startT,endT)));
 }
 function brk(p,startT,endT){
   const s=startT||p.start;
@@ -833,6 +838,75 @@ function brk(p,startT,endT){
     return Math.max(0,Math.max(p.customBreak,autoB));
   }
   return autoB;
+}
+function attBreakMin(a){
+  if(!a||a.breakMin===undefined||a.breakMin===null||a.breakMin==='')return null;
+  const n=parseInt(a.breakMin,10);
+  return isNaN(n)||n<0?null:n;
+}
+function realBreakMin(p,a,startT,endT){
+  const totalM=timeSpanM(startT,endT);
+  const autoB=_autoBreakMin(totalM);
+  const fixed=attBreakMin(a);
+  if(a&&a.breakAuto)return autoB;
+  return fixed!==null?Math.max(fixed,autoB):brk(p,startT,endT);
+}
+function displayBreakMin(p,a){
+  const w=calcAttendanceWindow(p,a);
+  if(w&&w.startT&&w.endT)return realBreakMin(p,a,w.startT,w.endT);
+  return brk(p);
+}
+function effectivePartOn(pid,dt){
+  const p=AP[pid];if(!p)return null;
+  const DM=['일','월','화','수','목','금','토'];
+  const dw=DM[new Date(dt+'T00:00:00+09:00').getDay()];
+  const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dt);
+  const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dt);
+  return{...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
+}
+function calcAttendanceWindow(p,a){
+  if(!p||!a||(!a.inTime&&!a.adjustedStart))return null;
+  const ph=a.stdPhrase||'';
+  if(ph==='결근')return{startT:null,endT:null,totalM:0};
+  if(ph==='정상')return{startT:p.start,endT:p.end,totalM:timeSpanM(p.start,p.end)};
+  const effOut=a.adjustedEnd||a.outTime;
+  if(!effOut)return null;
+  const inSrc=a.adjustedStart||a.inTime||p.start;
+  let startT;
+  const delay=toM(inSrc)-toM(p.start);
+  if(ph==='추가근무'&&a.adjustedStart&&toM(a.adjustedStart)<toM(p.start))startT=a.adjustedStart;
+  else if(delay<=10)startT=p.start;
+  else startT=inSrc;
+  let endT;
+  if(ph==='조기퇴근')endT=effOut;
+  else if(ph==='추가근무'&&a.adjustedEnd)endT=timeMFromStart(p.start,effOut)>timeMFromStart(p.start,a.adjustedEnd)?a.adjustedEnd:effOut;
+  else endT=timeMFromStart(p.start,effOut)>timeMFromStart(p.start,p.end)?p.end:effOut;
+  return{startT,endT,totalM:timeSpanM(startT,endT)};
+}
+function settleActualBreak(p,a,breakRaw){
+  if(!a)return null;
+  const ph=a.stdPhrase||'';
+  if(ph==='조기퇴근'||ph==='지각'){
+    const w=calcAttendanceWindow(p,a);
+    if(w&&w.totalM>0){
+      const autoB=_autoBreakMin(w.totalM);
+      const raw=breakRaw===undefined||breakRaw===null?'':String(breakRaw).trim();
+      if(raw===''){
+        a.breakAuto=true;
+        a.breakMin=autoB;
+        return a.breakMin;
+      }
+      const n=parseInt(raw,10);
+      if(isNaN(n)||n<0)return null;
+      a.breakAuto=false;
+      a.breakMin=Math.max(n,autoB);
+      return a.breakMin;
+    }
+  }else{
+    delete a.breakMin;
+    delete a.breakAuto;
+  }
+  return null;
 }
 
 // ⭐ v10.8.7-fix: pEff 빌드 시 customBreak 결정 (안녕님 정책)
@@ -848,6 +922,7 @@ function _resolveBreak(p,ds){
   }
   // 영구변경 → 명시값 우선, 없으면 원본
   if(ds.fromPerm){
+    if(ds.breakAuto)return ds.customBreak; // undefined 가능 → brk()에서 자동
     return ds.customBreak!==undefined?ds.customBreak:p.customBreak;
   }
   // 기본 (요일별) → 원본
@@ -976,7 +1051,7 @@ function calcRealH(p,a){
     else endT=timeMFromStart(p.start,eT)>timeMFromStart(p.start,p.end)?p.end:eT;
     const totalM=timeSpanM(sT,endT);
     if(totalM<=0)return 0;
-    const bm=brk(p,sT,endT);
+    const bm=realBreakMin(p,a,sT,endT);
     return Math.max(0,Math.round((totalM-bm)/60*1000)/1000);
   }
   // 시작 시각 결정 (10분 양해를 adjustedStart에도 동일 적용)
@@ -1001,7 +1076,7 @@ function calcRealH(p,a){
   }
   const totalM=timeSpanM(startT,endT);
   if(totalM<=0)return 0;
-  const bm=brk(p,startT,endT);
+  const bm=realBreakMin(p,a,startT,endT);
   return Math.max(0,Math.round((totalM-bm)/60*1000)/1000);
 }
 function needsCheck(p,a,nowM,date){
@@ -1233,14 +1308,14 @@ function getDayTime(p,dayOfWeek,date){
         // 영구변경의 daySchedule이 해당 요일에 명시되어 있으면 우선 적용
         if(latest.daySchedule&&latest.daySchedule[dayOfWeek]&&latest.daySchedule[dayOfWeek].start&&latest.daySchedule[dayOfWeek].end){
           const ds=latest.daySchedule[dayOfWeek];
-          return{start:ds.start,end:ds.end,customBreak:latest.customBreak,fromPerm:true};
+          return{start:ds.start,end:ds.end,customBreak:latest.customBreak,breakAuto:!!latest.breakAuto,fromPerm:true};
         }
         // 영구변경에 daySchedule 명시 없으면 → 직원의 원래 daySchedule 우선
         // (시급만 변경하는 영구변경 등에서 시간이 09-18로 덮어씌워지는 것을 방지)
         if(p.daySchedule&&p.daySchedule[dayOfWeek]&&p.daySchedule[dayOfWeek].start&&p.daySchedule[dayOfWeek].end){
-          return{start:p.daySchedule[dayOfWeek].start,end:p.daySchedule[dayOfWeek].end,customBreak:latest.customBreak,fromPerm:true};
+          return{start:p.daySchedule[dayOfWeek].start,end:p.daySchedule[dayOfWeek].end,customBreak:latest.customBreak,breakAuto:!!latest.breakAuto,fromPerm:true};
         }
-        return{start:latest.start,end:latest.end,customBreak:latest.customBreak,fromPerm:true};
+        return{start:latest.start,end:latest.end,customBreak:latest.customBreak,breakAuto:!!latest.breakAuto,fromPerm:true};
       }
       return{start:null,end:null,permExcluded:true};
     }
@@ -1479,7 +1554,7 @@ else if(nm>toM(pEff.start))st=ph?'absent-con':'absent-unc'; // 오늘 + 출근 �
 if(ph==='조기퇴근'||ph==='추가근무')st='changed';const stL={'done':'출근완료','absent-unc':'⚠ 미확인 결근','absent-con':'결근','absent-pln':'예정결근','late':'지각','changed':'변경근무','pending':'출근 전'}[st]||'출근 전';const stC={'done':'var(--success)','absent-unc':'var(--danger)','absent-con':'var(--danger)','absent-pln':'#fca5a5','late':'var(--warning)','changed':'var(--accent)','pending':'var(--text-muted)'}[st];const sh=schedH(pEff,a);
 const isAbsentOrUnproc=st==='absent-con'||st==='absent-unc'||st==='absent-pln';
 const rh=(!isAbsentOrUnproc&&a.inTime)?calcRealH(pEff,a):null;
-const bm=brk(pEff);const nc=needsCheck(pEff,a,nm,kstDate());const ce=CU.role==='관리자';
+const bm=displayBreakMin(pEff,a);const nc=needsCheck(pEff,a,nm,kstDate());const ce=CU.role==='관리자';
 // viewDate 형식 변환: 2026-04-23 → 2026.04.23 (메모 저장 형식과 일치)
 const viewDateLabel=viewDate.replace(/-/g,'.');
 const todayMemos=(p.memos||[]).filter(m=>m.date===viewDateLabel);
@@ -1507,7 +1582,11 @@ const _confirmSection=(()=>{
   // 결근만 또는 둘 다 있는 경우 — 표준문구 영역 표시
   const phraseList=_noPad?['결근']:DASH_PHRASES;
   const noticeMsg=_noPad?'<div style="font-size:11px;color:#c2410c;margin-top:4px">⚠ 패드 기록이 없어 결근만 가능. 출근 시간이 있으면 출결현황 → <b>수동입력</b>으로 등록.</div>':'';
-  return `<div style="margin-top:12px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">표준문구 선택 (필수)</div><div class="std-phrase-row" id="spr-${pid}">${phraseList.map(ph2=>`<button class="std-btn${ph===ph2?' selected':''}" data-phrase="${ph2}" onclick="selP('${pid}','${ph2}')">${phraseLabel(ph2)}</button>`).join('')}</div>${noticeMsg}<div style="display:flex;gap:10px;margin-top:10px;${_noPad?'display:none':''}" id="adj-time-wrap-${pid}"><div style="flex:1"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">시작 시각</div>${timeSelectS}</div><div style="flex:1"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">종료 시각</div>${timeSelectE}</div></div><div id="adj-prev-${pid}" style="font-size:12px;color:var(--accent);margin-top:6px;font-weight:600;min-height:18px"></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;margin-top:10px">메모 권장 표현</div><div class="memo-quick" id="mqb-${pid}">${memoQBtns}</div><textarea class="memo-area" id="nm-${pid}" placeholder="메모 입력 (필수)"></textarea><div style="font-size:11px;color:var(--text-muted);margin-top:4px">⚠ 표준문구와 메모 모두 필수</div></div>`;
+  const breakValue=a.breakAuto?'':(attBreakMin(a)!==null?attBreakMin(a):'');
+  const breakDisplay=(ph==='지각'||ph==='조기퇴근')?'':'display:none;';
+  const adjAutoBreakText=autoBreakLabelFromTimes(a.adjustedStart||a.inTime||pEff.start,a.adjustedEnd||a.outTime||pEff.end);
+  const breakSection=`<div id="adj-break-wrap-${pid}" style="${breakDisplay}margin-top:10px"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">휴게시간(분) <span id="adj-brk-auto-${pid}" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">${adjAutoBreakText}</span> <span style="font-size:10px;color:var(--text-muted)">— 비워두면 적용</span></div><input class="form-input" id="adj-brk-${pid}" type="number" min="0" max="240" placeholder="${adjAutoBreakText} — 비워두면 적용" value="${breakValue}" oninput="calcPreview('${pid}','${pEff.start}','${pEff.end}',${pEff.customBreak??-1})"></div>`;
+  return `<div style="margin-top:12px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">표준문구 선택 (필수)</div><div class="std-phrase-row" id="spr-${pid}">${phraseList.map(ph2=>`<button class="std-btn${ph===ph2?' selected':''}" data-phrase="${ph2}" onclick="selP('${pid}','${ph2}')">${phraseLabel(ph2)}</button>`).join('')}</div>${noticeMsg}<div style="display:flex;gap:10px;margin-top:10px;${_noPad?'display:none':''}" id="adj-time-wrap-${pid}"><div style="flex:1"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">시작 시각</div>${timeSelectS}</div><div style="flex:1"><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">종료 시각</div>${timeSelectE}</div></div>${breakSection}<div id="adj-prev-${pid}" style="font-size:12px;color:var(--accent);margin-top:6px;font-weight:600;min-height:18px"></div><div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;margin-top:10px">메모 권장 표현</div><div class="memo-quick" id="mqb-${pid}">${memoQBtns}</div><textarea class="memo-area" id="nm-${pid}" placeholder="메모 입력 (필수)"></textarea><div style="font-size:11px;color:var(--text-muted);margin-top:4px">⚠ 표준문구와 메모 모두 필수</div></div>`;
 })();
 const _btnRow=_onlyIn?`<div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button></div>`:`<div class="btn-row"><button class="btn-secondary" onclick="CM('modal-staff')">닫기</button><button class="btn-primary" onclick="saveMemo('${pid}')">저장</button></div>`;
 const tempBanner=isTempToday?`<div style="background:#fdf4ff;border:1px solid #e9d5ff;border-radius:8px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:8px"><span style="font-size:18px">⭐</span><div><div style="font-size:13px;font-weight:700;color:#7e22ce">추가근무</div><div style="font-size:11px;color:#86198f">스케줄 없는 날 근무입니다</div></div></div>`:'';
@@ -2265,7 +2344,20 @@ function calcPreview(pid,pStart,pEnd,customBreak){
   }
   const totalM=timeSpanM(calcStart,calcEnd);
   if(totalM<=0){document.getElementById(`adj-prev-${pid}`).textContent='';return;}
-  const bm=customBreak>=0?customBreak:(totalM/60>=9?60:totalM/60>4?30:0);
+  const autoB=_autoBreakMin(totalM);
+  const autoTxt=autoBreakLabel(autoB);
+  const adjBreakLab=document.getElementById(`adj-brk-auto-${pid}`);
+  if(adjBreakLab)adjBreakLab.textContent=autoTxt;
+  const adjBreakInp=document.getElementById(`adj-brk-${pid}`);
+  if(adjBreakInp&&!adjBreakInp.value)adjBreakInp.placeholder=`${autoTxt} — 비워두면 적용`;
+  let bm;
+  if(ph==='조기퇴근'||ph==='지각'){
+    const raw=adjBreakInp?.value?.trim()||'';
+    const manual=raw===''?null:parseInt(raw,10);
+    bm=manual===null||isNaN(manual)?autoB:Math.max(manual,autoB);
+  }else{
+    bm=customBreak>=0?Math.max(customBreak,autoB):autoB;
+  }
   const h=Math.max(0,Math.round((totalM-bm)/60*1000)/1000);
   document.getElementById(`adj-prev-${pid}`).textContent=`→ 실시수: ${fmtH(AP[pid],h)} (총 ${calcStart}~${calcEnd}, 휴게 ${bm}분 제외)`;
 }
@@ -2300,11 +2392,13 @@ function selP(pid,ph){
   // 결근 선택 시 시간 입력 숨김
   const timeWrap=document.getElementById('adj-time-wrap-'+pid);
   const prev=document.getElementById('adj-prev-'+pid);
+  const breakWrap=document.getElementById('adj-break-wrap-'+pid);
   if(timeWrap)timeWrap.style.display=ph==='결근'?'none':'';
   if(prev)prev.style.display=ph==='결근'?'none':'';
+  if(breakWrap)breakWrap.style.display=(ph==='지각'||ph==='조기퇴근')?'':'none';
 }
 window.selP=selP;
-async function saveMemo(pid){const ta=document.getElementById('nm-'+pid);const txt=ta.value.trim();const ph=SP[pid]||document.querySelector(`#spr-${pid} .std-btn.selected`)?.dataset.phrase||'';const ae=document.getElementById(`adj-e-${pid}`)?.value||'';const as2=document.getElementById(`adj-s-${pid}`)?.value||'';if(!ph){ST('표준문구를 선택해주세요');return;}if(!txt){ST('메모를 입력해주세요');ta.classList.add('error');return;}ta.classList.remove('error');
+async function saveMemo(pid){const ta=document.getElementById('nm-'+pid);const txt=ta.value.trim();const ph=SP[pid]||document.querySelector(`#spr-${pid} .std-btn.selected`)?.dataset.phrase||'';const ae=document.getElementById(`adj-e-${pid}`)?.value||'';const as2=document.getElementById(`adj-s-${pid}`)?.value||'';const breakRaw=document.getElementById(`adj-brk-${pid}`)?.value?.trim()||'';if(!ph){ST('표준문구를 선택해주세요');return;}if((ph==='조기퇴근'||ph==='지각')&&breakRaw!==''&&(isNaN(parseInt(breakRaw,10))||parseInt(breakRaw,10)<0)){ST('휴게시간은 0 이상의 숫자이거나 빈칸(자동)이어야 합니다');return;}if(!txt){ST('메모를 입력해주세요');ta.classList.add('error');return;}ta.classList.remove('error');
 // 패드 안 찍힌 상태에서는 결근만 가능 (지각/조기퇴근/연장근무는 출결현황 → 수동기록으로)
 const ar=ref(db,`attendance/${kstDate()}/${pid}`);
 const snPre=await get(ar);
@@ -2321,7 +2415,8 @@ ta.classList.remove('error');const mo={phrase:ph,who:CU.name,date:kstLabel(),tim
 // 결근 처리 시 연장근무 흔적 삭제
 if(ph==='결근'){delete ad.adjustedEnd;delete ad.adjustedStart;}
 else{if(ae)ad.adjustedEnd=ae;if(ph==='추가근무'){delete ad.adjustedStart;}else if(as2)ad.adjustedStart=as2;}
-ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;ad.memoText=txt;const h=ad.history||[];h.push({phrase:ph,adjEnd:ae||null,adjStart:as2||null,memo:txt,by:CU.name,at:`${kstLabel()} ${kstNow()}`});ad.history=h;SL(true);await update(ref(db,`parts/${pid}`),{memos:ms});await set(ar,ad);SL(false);ST('저장 완료');CM('modal-staff');setTimeout(()=>renderAll(),100);}
+const settledBreak=settleActualBreak(effectivePartOn(pid,kstDate())||AP[pid],ad,breakRaw);
+ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;ad.memoText=txt;const h=ad.history||[];const histEntry={phrase:ph,adjEnd:ae||null,adjStart:as2||null,memo:txt,by:CU.name,at:`${kstLabel()} ${kstNow()}`};if(settledBreak!==null){histEntry.breakMin=settledBreak;histEntry.breakAuto=!!ad.breakAuto;}h.push(histEntry);ad.history=h;SL(true);await update(ref(db,`parts/${pid}`),{memos:ms});await set(ar,ad);SL(false);ST('저장 완료');CM('modal-staff');setTimeout(()=>renderAll(),100);}
 window.saveMemo=saveMemo;
 function openStatsModal(c,sk){
   const mo=document.querySelector('#modal-stats .modal');if(mo)mo.style.maxWidth='';
@@ -2719,10 +2814,14 @@ else if(hasInOnly){
   timeSection=`<div style="display:flex;gap:10px;margin-bottom:8px"><div class="form-group" style="flex:1"><label class="form-label">시작 시각</label>${mkTimeSelect5('we-as',defStartTime)}</div><div class="form-group" style="flex:1"><label class="form-label">종료 시각</label>${mkTimeSelect5('we-ae',defEndTime)}</div></div>`;
 }
 const isAdmin=CU.role==='관리자';
+const weBreakValue=ad2.breakAuto?'':(attBreakMin(ad2)!==null?attBreakMin(ad2):'');
+const weBreakDisplay=(ad2.stdPhrase==='지각'||ad2.stdPhrase==='조기퇴근')?'':'display:none;';
+const weBreakAutoText=autoBreakLabelFromTimes(defStartTime,defEndTime);
+const breakSection=`<div class="form-group" id="we-break-wrap" style="${weBreakDisplay}"><label class="form-label" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">휴게시간(분) <span id="we-break-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">${weBreakAutoText}</span> <span style="font-size:10px;color:var(--text-muted)">— 비워두면 적용</span></label><input class="form-input" id="we-break" type="number" min="0" max="240" placeholder="${weBreakAutoText} — 비워두면 적용" value="${weBreakValue}"></div>`;
 // 일반 메모 입력 영역 (모든 권한)
 const noteInputSection=`<div style="margin-top:16px;padding:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px"><div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:6px">💬 일반 메모 (사전연락 등 - 미처리 유지)</div><textarea class="memo-area" id="we-note" placeholder="예: 14시 조기퇴근 사전연락" style="margin-bottom:8px"></textarea><button class="btn-secondary" style="background:#f59e0b;color:#fff;border:none;font-size:12px;padding:6px 12px" onclick="saveNoteOnly('${pid}','${dt}','we-note')">💬 메모만 저장 (미처리 유지)</button></div>`;
 // ⭐ v10.7: 출근만 있으면 확정 영역 자체 숨김 (안녕님 정책)
-const confirmSection=(isAdmin&&!hasInOnly)?`<div style="margin-top:16px;padding-top:16px;border-top:2px solid var(--border)"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">⚙️ 확정 처리 (관리자 전용)</div><div class="form-group"><label class="form-label">표준문구 (필수)</label><select class="form-select" id="we-ph" onchange="updateWEQuick(this.value)"><option value="">선택하세요</option>${phraseOptions.map(ph=>`<option value="${ph}" ${ad2.stdPhrase===ph?'selected':''}>${phraseLabel(ph)}</option>`).join('')}</select></div>${timeSection}<div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현</div><div class="memo-quick" id="we-quick"></div><div class="form-group"><label class="form-label">처리 메모 (필수)</label><textarea class="memo-area" id="we-mo" placeholder="처리 사유를 입력하세요"></textarea></div></div>`:'';
+const confirmSection=(isAdmin&&!hasInOnly)?`<div style="margin-top:16px;padding-top:16px;border-top:2px solid var(--border)"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:8px">⚙️ 확정 처리 (관리자 전용)</div><div class="form-group"><label class="form-label">표준문구 (필수)</label><select class="form-select" id="we-ph" onchange="updateWEQuick(this.value)"><option value="">선택하세요</option>${phraseOptions.map(ph=>`<option value="${ph}" ${ad2.stdPhrase===ph?'selected':''}>${phraseLabel(ph)}</option>`).join('')}</select></div>${timeSection}${breakSection}<div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">메모 권장 표현</div><div class="memo-quick" id="we-quick"></div><div class="form-group"><label class="form-label">처리 메모 (필수)</label><textarea class="memo-area" id="we-mo" placeholder="처리 사유를 입력하세요"></textarea></div></div>`:'';
 // 버튼: 출근만 있으면 저장 버튼 X
 const btnRow=(isAdmin&&!hasInOnly)?`<div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">닫기</button><button class="btn-primary" onclick="saveWE('${pid}','${dt}')">확정 저장</button></div>`:`<div class="btn-row"><button class="btn-secondary" onclick="CM('modal-workman-edit')">닫기</button></div>`;
 document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">📌 ${dt} 패드 기록 처리</div>${schedInfo}${noPadNotice}<div style="margin-bottom:12px"><div style="font-size:12px;font-weight:600;color:#92400e;margin-bottom:6px">📝 일반 메모 (최근 5건)</div>${notesHtml}</div><div style="margin-bottom:12px"><div style="font-size:12px;font-weight:600;color:var(--text-secondary);margin-bottom:6px">🔧 처리 이력 (최근 3건)</div>${histHtml}</div>${noteInputSection}${confirmSection}${btnRow}`;
@@ -2730,9 +2829,9 @@ document.getElementById('modal-workman-body').innerHTML=`<div style="font-size:1
 if(ad2.stdPhrase)updateWEQuick(ad2.stdPhrase);
 OM('modal-workman-edit');}
 window.openWE=openWE;
-function updateWEQuick(ph){const qs=MEMO_QUICK[ph]||[];document.getElementById('we-quick').innerHTML=qs.map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('we-mo').value+=(document.getElementById('we-mo').value?' / ':'')+\'${q}\'">${q}</button>`).join('');}
+function updateWEQuick(ph){const qs=MEMO_QUICK[ph]||[];document.getElementById('we-quick').innerHTML=qs.map(q=>`<button class="memo-quick-btn" onclick="document.getElementById('we-mo').value+=(document.getElementById('we-mo').value?' / ':'')+\'${q}\'">${q}</button>`).join('');const bw=document.getElementById('we-break-wrap');if(bw)bw.style.display=(ph==='지각'||ph==='조기퇴근')?'':'none';if(window.updateWEAutoBrk)window.updateWEAutoBrk();}
 window.updateWEQuick=updateWEQuick;
-async function saveWE(pid,dt){const ph=document.getElementById('we-ph').value;const mo=document.getElementById('we-mo').value.trim();const aeEl=document.getElementById('we-ae');const asEl=document.getElementById('we-as');const ae=aeEl?(aeEl.value||syncGetTime('we-ae')):'';const as2=asEl?(asEl.value||syncGetTime('we-as')):'';if(!ph){ST('표준문구를 선택해주세요');return;}if(!mo){ST('메모를 입력해주세요');return;}
+async function saveWE(pid,dt){const ph=document.getElementById('we-ph').value;const mo=document.getElementById('we-mo').value.trim();const aeEl=document.getElementById('we-ae');const asEl=document.getElementById('we-as');const ae=aeEl?(aeEl.value||syncGetTime('we-ae')):'';const as2=asEl?(asEl.value||syncGetTime('we-as')):'';const breakRaw=document.getElementById('we-break')?.value?.trim()||'';if(!ph){ST('표준문구를 선택해주세요');return;}if((ph==='조기퇴근'||ph==='지각')&&breakRaw!==''&&(isNaN(parseInt(breakRaw,10))||parseInt(breakRaw,10)<0)){ST('휴게시간은 0 이상의 숫자이거나 빈칸(자동)이어야 합니다');return;}if(!mo){ST('메모를 입력해주세요');return;}
 const ar=ref(db,`attendance/${dt}/${pid}`);const snPre=await get(ar);const adPre=snPre.val()||{};
 if(ph==='결근'&&adPre.adjustedEnd&&adPre.stdPhrase==='추가근무'){
   if(!await CC('이 날짜에 연장근무가 등록되어 있습니다.\n결근 처리하면 연장근무도 자동 취소됩니다.\n계속하시겠습니까?',{title:'⚠ 연장근무 자동 취소',danger:true}))return;
@@ -2740,7 +2839,8 @@ if(ph==='결근'&&adPre.adjustedEnd&&adPre.stdPhrase==='추가근무'){
 SL(true);const ad=adPre;ad.stdPhrase=ph;
 if(ph==='결근'){delete ad.adjustedEnd;delete ad.adjustedStart;}
 else{if(ae)ad.adjustedEnd=ae;if(ph==='추가근무'){delete ad.adjustedStart;}else if(as2)ad.adjustedStart=as2;}
-ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;ad.memoText=mo;const h=ad.history||[];h.push({phrase:ph,adjEnd:ae||null,adjStart:ph==='추가근무'?null:(as2||null),memo:mo,by:CU.name,at:`${kstLabel()} ${kstNow()}`});ad.history=h;await set(ar,ad);SL(false);ST('수정 완료');CM('modal-workman-edit');loadWorkmanData();setTimeout(()=>renderAll(),100);}
+const settledBreak=settleActualBreak(effectivePartOn(pid,dt)||AP[pid],ad,breakRaw);
+ad.memoBy=CU.name;ad.memoAt=`${kstLabel()} ${kstNow()}`;ad.memoText=mo;const h=ad.history||[];const histEntry={phrase:ph,adjEnd:ae||null,adjStart:ph==='추가근무'?null:(as2||null),memo:mo,by:CU.name,at:`${kstLabel()} ${kstNow()}`};if(settledBreak!==null){histEntry.breakMin=settledBreak;histEntry.breakAuto=!!ad.breakAuto;}h.push(histEntry);ad.history=h;await set(ar,ad);SL(false);ST('수정 완료');CM('modal-workman-edit');loadWorkmanData();setTimeout(()=>renderAll(),100);}
 window.saveWE=saveWE;
 function openMA(pid,dt){
   const p=AP[pid];if(!p)return;
@@ -3706,8 +3806,7 @@ function renderPT(){
       if(cb!==undefined&&cb!==null)return ` <span style="font-size:11px;color:var(--text-secondary)">휴게 ${cb}분</span><span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px;border:1px solid #fcd34d">휴게수동</span>`;
       const s=curStart,e=curEnd;
       if(!s||!e||s==='-'||e==='-')return '';
-      const h=timeSpanM(s,e)/60;
-      const auto=h>=9?60:h>4?30:0;
+      const auto=_autoBreakMin(timeSpanM(s,e));
       return ` <span style="font-size:11px;color:var(--text-muted)">휴게 ${auto}분</span>`;
     })();
     // 요일별 다른 시간이면 풀어서, 같으면 한 줄로
@@ -3837,7 +3936,7 @@ const curDaysRPF=applicablePermRPF?(applicablePermRPF.days||[]):(p&&p.days?p.day
 const curStartRPF=applicablePermRPF?applicablePermRPF.start:(p?p.start:'-');
 const curEndRPF=applicablePermRPF?applicablePermRPF.end:(p?p.end:'-');
 const curBrkRPFnum=applicablePermRPF&&applicablePermRPF.customBreak!==undefined?applicablePermRPF.customBreak:(p&&p.customBreak!==undefined?p.customBreak:null);
-const curBrkRPFlabel=curBrkRPFnum!==null?`${curBrkRPFnum}분 (수동)`:(p?(()=>{const s=curStartRPF,e=curEndRPF;if(!s||!e||s==='-'||e==='-')return'자동';const h=timeSpanM(s,e)/60;return h>=9?'60분 (자동)':h>4?'30분 (자동)':'0분';})():'자동');
+const curBrkRPFlabel=curBrkRPFnum!==null?`${curBrkRPFnum}분 (수동)`:(p?(()=>{const s=curStartRPF,e=curEndRPF;if(!s||!e||s==='-'||e==='-')return'자동';return `${_autoBreakMin(timeSpanM(s,e))}분 (자동)`;})():'자동');
 const futurePermRPF=p&&p.permChanges?[...p.permChanges].filter(pc=>pc.startDate>todayK).sort((a,b)=>a.startDate.localeCompare(b.startDate))[0]:null;
 // ⭐ v8: 박스에 표시할 요일별 실제 적용 시간 계산
 // 영구변경의 daySchedule 우선, 없으면 직원 원래 daySchedule, 없으면 기본
@@ -3892,7 +3991,7 @@ ${lockNotice}
 <div class="form-group" style="flex:1"><label class="form-label">기본 출근${pid?' <span style="font-size:10px;color:var(--text-muted)">(잠금)</span>':''}</label>${pid?`<input class="form-input" id="pf-start" value="${p?p.start:''}" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed">`:mkTimeSelect5('pf-start',p?p.start:'09:00')}</div>
 <div class="form-group" style="flex:1"><label class="form-label">기본 퇴근${pid?' <span style="font-size:10px;color:var(--text-muted)">(잠금)</span>':''}</label>${pid?`<input class="form-input" id="pf-end" value="${p?p.end:''}" disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed">`:mkTimeSelect5('pf-end',p?p.end:'18:00')}</div>
 </div>
-<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">휴게시간(분)${pid?' <span style="font-size:10px;color:var(--text-muted)">(잠금)</span>':' — 비워두면 자동'}${pid?'':`<span id="pf-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">자동: 60분</span>`}<span id="brk-badge" style="${p&&p.customBreak!==undefined?'':'display:none;'}font-size:10px;font-weight:600;background:var(--warning-light);color:var(--warning);padding:1px 7px;border-radius:10px;border:1px solid #fcd34d">⚠ 수동설정</span></label><input class="form-input" id="pf-brk" type="number" placeholder="${pid?'자동':'60분 (자동) — 비워두면 적용'}" value="${p&&p.customBreak!==undefined?p.customBreak:''}" ${pid?'disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed"':'oninput="const b=document.getElementById(\'brk-badge\');if(b)b.style.display=this.value?\'inline\':\'none\'"'}></div>
+<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">휴게시간(분)${pid?' <span style="font-size:10px;color:var(--text-muted)">(잠금)</span>':' — 비워두면 자동'}${pid?'':`<span id="pf-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">${autoBreakLabelFromTimes(p?p.start:'09:00',p?p.end:'18:00')}</span>`}<span id="brk-badge" style="${p&&p.customBreak!==undefined?'':'display:none;'}font-size:10px;font-weight:600;background:var(--warning-light);color:var(--warning);padding:1px 7px;border-radius:10px;border:1px solid #fcd34d">⚠ 수동설정</span></label><input class="form-input" id="pf-brk" type="number" placeholder="${autoBreakLabelFromTimes(p?p.start:'09:00',p?p.end:'18:00')}${pid?'':' — 비워두면 적용'}" value="${p&&p.customBreak!==undefined?p.customBreak:''}" ${pid?'disabled style="background:#f3f4f6;color:#6b7280;cursor:not-allowed"':'oninput="const b=document.getElementById(\'brk-badge\');if(b)b.style.display=this.value?\'inline\':\'none\'"'}></div>
 ${canSeeWage()?`<div class="form-group" id="pf-wage-wrap"><label class="form-label" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span id="pf-wage-label">시급 (원)</span>${pid?'':' <span style="font-size:10px;color:#b91c1c;font-weight:700">(필수)</span>'} <span id="pf-wage-unit-hint" style="font-size:10px;color:var(--text-muted)">— ${(p&&p.cat==='tutor')||(!pid&&!p)?'조교는 T당, 그 외':'시간당'} (소수점 가능)</span>${pid?'<span style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">미래 변경: 스케줄관리 → 🔄 영구변경</span>':''}</label>
 <div id="pf-wage-helper" style="display:none;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:8px 12px;margin-bottom:8px">
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -4144,8 +4243,7 @@ async function waRenderList(pid){
     if(showBreak&&e.customBreak!==undefined&&e.customBreak!==null){
       breakStr=` <span style="font-size:10px;color:#7e22ce;background:#fff;border:1px solid #e9d5ff;padding:1px 6px;border-radius:8px;margin-left:4px">휴게 ${e.customBreak}분 (수동)</span>`;
     }else if(showBreak&&e.start&&e.end){
-      const h=timeSpanM(e.start,e.end)/60;
-      const auto=h>=9?60:h>4?30:0;
+      const auto=_autoBreakMin(timeSpanM(e.start,e.end));
       breakStr=` <span style="font-size:10px;color:var(--text-muted);background:var(--bg);padding:1px 6px;border-radius:8px;margin-left:4px">휴게 ${auto}분 (자동)</span>`;
     }
     // daySchedule이 있으면 '요일별' 뱃지 + 상세 표시
@@ -4481,7 +4579,8 @@ function timePromptModal(title,defaultStart,defaultEnd,opts){
       wrap.innerHTML=`<div style="margin-bottom:6px;font-size:12px;color:#6b7280">${opts.label||'시각'}</div>${mkTimeSelect5('cmodal-time1',defaultEnd||defaultStart||'18:00')}`;
     }else{
       // ⭐ v10: withBreak 옵션이 있으면 휴게시간 입력 칸 추가
-      const breakSection=opts?.withBreak?`<div style="margin-top:10px"><div style="margin-bottom:4px;font-size:12px;color:#6b7280">휴게시간(분) <span style="color:var(--text-muted);font-size:10px">— 비워두면 자동 (4h미만 0분, 4-9h 30분, 9h+ 60분)</span></div><input type="number" class="form-input" id="cmodal-break" min="0" max="240" placeholder="자동" style="font-family:'DM Mono',monospace"></div>`:'';
+      const cAutoBreakText=autoBreakLabelFromTimes(defaultStart||'09:00',defaultEnd||'18:00');
+      const breakSection=opts?.withBreak?`<div style="margin-top:10px"><div style="margin-bottom:4px;font-size:12px;color:#6b7280">휴게시간(분) <span id="cmodal-break-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">${cAutoBreakText}</span> <span style="color:var(--text-muted);font-size:10px">— 비워두면 적용</span></div><input type="number" class="form-input" id="cmodal-break" min="0" max="240" placeholder="${cAutoBreakText} — 비워두면 적용" style="font-family:'DM Mono',monospace"></div>`:'';
       wrap.innerHTML=`<div style="display:flex;gap:8px"><div style="flex:1"><div style="margin-bottom:4px;font-size:12px;color:#6b7280">출근 시각</div>${mkTimeSelect5('cmodal-time1',defaultStart||'09:00')}</div><div style="flex:1"><div style="margin-bottom:4px;font-size:12px;color:#6b7280">퇴근 시각</div>${mkTimeSelect5('cmodal-time2',defaultEnd||'18:00')}</div></div>${breakSection}`;
     }
     const btns=document.getElementById('cmodal-btns');
@@ -4515,7 +4614,10 @@ async function waQuickAddOneday(dk){
   const result=await timePromptModal('추가근무 등록',p.start||'09:00',p.end||'18:00',{msg:`${dk} 추가근무로 등록합니다.`,withBreak:true});
   if(!result)return;
   if(!result.start||!result.end){ST('시각을 입력해주세요');return;}
-  if(toM(result.end)<=toM(result.start)){ST('퇴근 시각이 출근 시각보다 늦어야 합니다');return;}
+  if(toM(result.end)===toM(result.start)){ST('퇴근 시각이 출근 시각과 같습니다');return;}
+  if(toM(result.end)<toM(result.start)){
+    if(!await CC(`${result.start}~${result.end}은 익일 퇴근으로 저장됩니다.\n계속하시겠습니까?`,{title:'자정 넘김 추가근무'}))return;
+  }
   const newEntry={date:dk,start:result.start,end:result.end,by:CU.name,at:`${kstLabel()} ${kstNow()}`};
   if(result.customBreak!==null&&result.customBreak!==undefined)newEntry.customBreak=result.customBreak;
   const newTemps=[...(p.tempDates||[]),newEntry];
@@ -4696,6 +4798,7 @@ function waReRenderPermAutofill(pid){
   // 휴게
   const brkEl=document.getElementById('wa-brk');
   if(brkEl)brkEl.value=curBrk;
+  if(window.updateWaAutoBrk)window.updateWaAutoBrk();
   // 시급 placeholder
   const wEl=document.getElementById('wa-wage');
   if(wEl)wEl.placeholder=curWage!==''?`현재 ${curWage}원`:'예: 23333.33';
@@ -4767,7 +4870,7 @@ function waOpenModal(pid,type){
 <div class="form-group" style="flex:1"><label class="form-label">기본 출근</label>${mkTimeSelect5('wa-s-time',curStart)}</div>
 <div class="form-group" style="flex:1"><label class="form-label">기본 퇴근</label>${mkTimeSelect5('wa-e-time',curEnd)}</div>
 </div>
-<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">휴게시간(분) <span style="font-size:10px;color:var(--text-muted)">— 비워두면 자동값 적용</span></label><input class="form-input" id="wa-brk" type="number" placeholder="자동" value="${curBrk}"></div>
+<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">휴게시간(분) <span id="wa-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">${autoBreakLabelFromTimes(curStart,curEnd)}</span> <span style="font-size:10px;color:var(--text-muted)">— 비워두면 적용</span></label><input class="form-input" id="wa-brk" type="number" placeholder="${autoBreakLabelFromTimes(curStart,curEnd)} — 비워두면 적용" value="${curBrk}"></div>
 ${canSeeWage()?`<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">시급 (원) <span style="font-size:10px;color:var(--text-muted)">— ${wageUnitLbl} (소수점 가능). 비워두면 기존 시급 유지</span></label>
 ${p&&p.cat==='tutor'&&p.tutorKind==='부담임'?`<div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:8px 12px;margin-bottom:8px">
   <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -4784,7 +4887,7 @@ ${p&&p.cat==='tutor'&&p.tutorKind==='부담임'?`<div style="background:#f0f9ff;
 <div style="display:flex;gap:6px;margin-bottom:10px"><div class="form-group" style="flex:1"><label class="form-label">시작일</label><input type="date" class="form-input" id="wa-start" value="${today}" onchange="waAutoDays()"></div><div class="form-group" style="flex:1"><label class="form-label">종료일</label><input type="date" class="form-input" id="wa-end" value="${today}" onchange="waAutoDays()"></div></div>
 <div class="form-group"><label class="form-label">기간 내 근무 요일</label><div class="day-btns" id="wa-days">${DAYS.map(d=>`<button type="button" class="day-btn" onclick="this.classList.toggle('selected')">${d}</button>`).join('')}</div></div>
 <div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time','09:00','width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time','18:00','width:100%')}</div></div>
-<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">휴게시간(분) <span style="font-size:10px;color:var(--text-muted)">— 비워두면 자동 (4h미만 0분 / 4-9h 30분 / 9h+ 60분)</span></label><input class="form-input" id="wa-brk" type="number" min="0" max="240" placeholder="자동"></div>`;
+<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">휴게시간(분) <span id="wa-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">${autoBreakLabelFromTimes('09:00','18:00')}</span> <span style="font-size:10px;color:var(--text-muted)">— 비워두면 적용</span></label><input class="form-input" id="wa-brk" type="number" min="0" max="240" placeholder="${autoBreakLabelFromTimes('09:00','18:00')} — 비워두면 적용"></div>`;
   }else if(type==='absent'){
     body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 하루 또는 연속 날짜 결근을 사전 등록합니다.</div>
 <div style="display:flex;gap:6px;margin-bottom:10px"><div class="form-group" style="flex:1"><label class="form-label">시작일</label><input type="date" class="form-input" id="wa-start" value="${today}"></div><div class="form-group" style="flex:1"><label class="form-label">종료일</label><input type="date" class="form-input" id="wa-end" value="${today}"></div></div>
@@ -4807,7 +4910,7 @@ ${p&&p.cat==='tutor'&&p.tutorKind==='부담임'?`<div style="background:#f0f9ff;
 <div class="form-group"><label class="form-label">반복 요일 (선택한 요일에만 적용)</label><div class="day-btns" id="wa-rdays">${DAYS.map(d=>`<button type="button" class="day-btn" onclick="this.classList.toggle('selected')">${d}</button>`).join('')}</div></div>
 </div>
 <div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time','09:00','width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time','18:00','width:100%')}</div></div>
-<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px">휴게시간(분) <span id="wa-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">자동: 60분</span> <span style="font-size:10px;color:var(--text-muted)">— 비워두면 자동값 적용</span></label><input class="form-input" id="wa-brk" type="number" placeholder="60분 (자동) — 비워두면 적용"></div>`;
+<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">휴게시간(분) <span id="wa-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">${autoBreakLabelFromTimes('09:00','18:00')}</span> <span style="font-size:10px;color:var(--text-muted)">— 비워두면 적용</span></label><input class="form-input" id="wa-brk" type="number" placeholder="${autoBreakLabelFromTimes('09:00','18:00')} — 비워두면 적용"></div>`;
   }
   body+=`<div class="btn-row"><button type="button" class="btn-secondary" onclick="CM('modal-workman-edit')">취소</button><button type="button" class="btn-primary" onclick="waSave('${pid}','${type}')">저장</button></div>`;
   document.getElementById('modal-workman-body').innerHTML=body;
@@ -4894,6 +4997,7 @@ async function waSave(pid,type){
     if(Object.keys(daySchedule).length>0)newEvent.daySchedule=daySchedule;
     const brkV=document.getElementById('wa-brk')?.value;
     if(brkV!==''&&brkV!==undefined&&brkV!==null)newEvent.customBreak=parseInt(brkV);
+    else newEvent.breakAuto=true;
     // 시급 변경
     const wEl=document.getElementById('wa-wage');
     if(wEl){const wv=wEl.value;if(wv!==''&&wv!==undefined&&wv!==null){const wN=parseFloat(wv);if(isNaN(wN)||wN<0){ST('시급은 0 이상이어야 합니다');return;}newEvent.wage=Math.round(wN*100)/100;}}
@@ -5278,7 +5382,7 @@ async function waEditBreak(pid,type,idx){
   if(!item){ST('항목을 찾을 수 없습니다');return;}
   // 자동 휴게값 계산
   const h=item.start&&item.end?timeSpanM(item.start,item.end)/60:0;
-  const autoBrk=h>=9?60:h>4?30:0;
+  const autoBrk=_autoBreakMin(timeSpanM(item.start,item.end));
   const curBrk=item.customBreak;
   const curBrkLabel=curBrk!==undefined&&curBrk!==null?`현재: ${curBrk}분 (수동)`:`현재: ${autoBrk}분 (자동)`;
   // 작은 모달
@@ -5287,7 +5391,7 @@ async function waEditBreak(pid,type,idx){
   document.getElementById('cmodal-msg').innerHTML=`${item.start}~${item.end} (${h.toFixed(1)}h 근무)<br><span style="font-size:11px;color:var(--text-muted)">${curBrkLabel}</span>`;
   const wrap=document.getElementById('cmodal-input-wrap');
   wrap.style.display='block';
-  wrap.innerHTML=`<div style="margin-bottom:4px;font-size:12px;color:#6b7280">휴게시간(분) <span style="color:var(--text-muted);font-size:10px">— 비워두면 자동 (${autoBrk}분)</span></div><input type="number" class="form-input" id="cmodal-edit-break" min="0" max="240" placeholder="자동 ${autoBrk}분" value="${curBrk!==undefined&&curBrk!==null?curBrk:''}" style="font-family:'DM Mono',monospace">`;
+  wrap.innerHTML=`<div style="margin-bottom:4px;font-size:12px;color:#6b7280">휴게시간(분) <span style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">${autoBreakLabel(autoBrk)}</span> <span style="color:var(--text-muted);font-size:10px">— 비워두면 적용</span></div><input type="number" class="form-input" id="cmodal-edit-break" min="0" max="240" placeholder="${autoBreakLabel(autoBrk)} — 비워두면 적용" value="${curBrk!==undefined&&curBrk!==null?curBrk:''}" style="font-family:'DM Mono',monospace">`;
   const btns=document.getElementById('cmodal-btns');
   btns.innerHTML='';
   const cancelBtn=document.createElement('button');cancelBtn.className='btn-secondary';cancelBtn.textContent='취소';
@@ -5570,26 +5674,42 @@ window.updatePfAutoBrk=function(){
   const s=syncGetTime?syncGetTime('pf-start'):document.getElementById('pf-start')?.value;
   const e=syncGetTime?syncGetTime('pf-end'):document.getElementById('pf-end')?.value;
   if(!s||!e)return;
-  const diff=timeSpanM(s,e)/60;
-  let auto=0;
-  if(diff>=9)auto=60;
-  else if(diff>4)auto=30;
-  lab.textContent=`자동: ${auto}분`;
+  const auto=_autoBreakMin(timeSpanM(s,e));
+  const txt=autoBreakLabel(auto);
+  lab.textContent=txt;
   const inp=document.getElementById('pf-brk');
-  if(inp&&!inp.value)inp.placeholder=`${auto}분 (자동) — 비워두면 적용`;
+  if(inp&&!inp.value)inp.placeholder=`${txt} — 비워두면 적용`;
 };
 window.updateWaAutoBrk=function(){
   const s=document.getElementById('wa-s-time')?.value;
   const e=document.getElementById('wa-e-time')?.value;
   if(!s||!e)return;
-  const diff=timeSpanM(s,e)/60;
-  let auto=0;
-  if(diff>=9)auto=60;
-  else if(diff>4)auto=30;
+  const auto=_autoBreakMin(timeSpanM(s,e));
+  const txt=autoBreakLabel(auto);
   const lab=document.getElementById('wa-brk-auto');
-  if(lab)lab.textContent=`자동: ${auto}분`;
+  if(lab)lab.textContent=txt;
   const inp=document.getElementById('wa-brk');
-  if(inp)inp.placeholder=`${auto}분 (자동) — 비워두면 적용`;
+  if(inp&&!inp.value)inp.placeholder=`${txt} — 비워두면 적용`;
+};
+window.updateWEAutoBrk=function(){
+  const s=syncGetTime?syncGetTime('we-as'):document.getElementById('we-as')?.value;
+  const e=syncGetTime?syncGetTime('we-ae'):document.getElementById('we-ae')?.value;
+  if(!s||!e)return;
+  const txt=autoBreakLabel(_autoBreakMin(timeSpanM(s,e)));
+  const lab=document.getElementById('we-break-auto');
+  if(lab)lab.textContent=txt;
+  const inp=document.getElementById('we-break');
+  if(inp&&!inp.value)inp.placeholder=`${txt} — 비워두면 적용`;
+};
+window.updateCModalAutoBrk=function(){
+  const s=syncGetTime?syncGetTime('cmodal-time1'):document.getElementById('cmodal-time1')?.value;
+  const e=syncGetTime?syncGetTime('cmodal-time2'):document.getElementById('cmodal-time2')?.value;
+  if(!s||!e)return;
+  const txt=autoBreakLabel(_autoBreakMin(timeSpanM(s,e)));
+  const lab=document.getElementById('cmodal-break-auto');
+  if(lab)lab.textContent=txt;
+  const inp=document.getElementById('cmodal-break');
+  if(inp&&!inp.value)inp.placeholder=`${txt} — 비워두면 적용`;
 };
 function mkTimeSelect5(id,val){
   let h12='',min='00',ampm='오전';
@@ -5624,6 +5744,12 @@ function syncTimeVal(id){
   // 영구변경/추가근무 시각 변경 시 자동 휴게 라벨 갱신
   if(id==='wa-s-time'||id==='wa-e-time'){
     if(window.updateWaAutoBrk)window.updateWaAutoBrk();
+  }
+  if(id==='we-as'||id==='we-ae'){
+    if(window.updateWEAutoBrk)window.updateWEAutoBrk();
+  }
+  if(id==='cmodal-time1'||id==='cmodal-time2'){
+    if(window.updateCModalAutoBrk)window.updateCModalAutoBrk();
   }
   calcPreviewSel();
 }
