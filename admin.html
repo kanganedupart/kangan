@@ -150,6 +150,45 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 /* 관리 컬럼 (마지막) — 한 줄 유지 + 작게 */
 .parts-table td:last-child{white-space:nowrap;text-align:right;}
 .parts-table td:last-child .icon-btn{padding:3px 7px;font-size:11px;margin-left:2px;}
+.part-doc-btn{padding:9px 16px;background:var(--bg);color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--rs);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;}
+.part-doc-btn:hover{background:var(--accent-light);border-color:var(--accent);color:var(--accent);}
+.doc-folder-btn{display:inline-flex;gap:4px;align-items:center;border:0;background:transparent;padding:0;cursor:pointer;vertical-align:middle;}
+.doc-mark{width:27px;height:22px;border-radius:7px;border:1px solid #e5e7eb;background:#f7f8fa;color:#9aa3af;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:500;letter-spacing:0;font-family:'Noto Sans KR',sans-serif;}
+.doc-mark.missing{background:#fff9f9;border-color:#fecaca;color:#ef8d8d;}
+.doc-folder-btn:hover .doc-mark{border-color:var(--accent);color:var(--accent);}
+.doc-folder-btn:hover .doc-mark.missing{border-color:#fca5a5;color:#dc6b6b;}
+.doc-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;align-items:start;}
+.doc-toolbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.doc-list{border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--surface);max-height:62vh;overflow-y:auto;}
+.doc-list-row{width:100%;border:0;border-bottom:1px solid var(--border-light);background:var(--surface);display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;font-family:inherit;text-align:left;}
+.doc-list-row:hover,.doc-list-row.active{background:var(--accent-light);}
+.doc-list-row:last-child{border-bottom:0;}
+.doc-name{font-size:13px;font-weight:700;color:var(--text-primary);}
+.doc-sub{font-size:11px;color:var(--text-muted);margin-top:2px;}
+.doc-detail{border:1px solid var(--border);border-radius:var(--r);background:var(--surface);padding:14px;}
+.doc-detail-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border-light);}
+.doc-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.doc-panel{border:1px solid var(--border);border-radius:var(--r);background:var(--bg);overflow:hidden;}
+.doc-panel-head{height:42px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:13px;font-weight:700;}
+.doc-preview{height:190px;display:flex;align-items:center;justify-content:center;padding:10px;background:#fafafa;}
+.doc-preview img{max-width:100%;max-height:100%;border-radius:6px;border:1px solid var(--border);background:#fff;}
+.doc-missing{width:100%;height:100%;min-height:150px;border:1px dashed #fecaca;border-radius:8px;background:var(--danger-light);color:var(--danger);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;}
+.doc-file-link{color:var(--accent);font-size:12px;font-weight:700;text-decoration:none;}
+.doc-file-meta{padding:9px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.doc-upload{padding:10px 12px;border-top:1px solid var(--border);background:var(--surface);}
+.doc-upload-row{display:flex;gap:6px;align-items:center;}
+.doc-upload-row input{min-width:0;flex:1;font-size:12px;}
+.doc-empty{padding:24px;text-align:center;color:var(--text-muted);font-size:13px;}
+.doc-pay-cell{text-align:center;width:64px;}
+.payroll-doc-col{text-align:center!important;width:64px!important;}
+.doc-viewer{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:99998;display:none;align-items:center;justify-content:center;padding:20px;}
+.doc-viewer.open{display:flex;}
+.doc-viewer-box{background:#fff;border-radius:14px;max-width:min(96vw,1100px);max-height:94vh;width:100%;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 18px 60px rgba(0,0,0,.35);}
+.doc-viewer-head{height:48px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 14px;border-bottom:1px solid var(--border);}
+.doc-viewer-title{font-size:14px;font-weight:700;color:var(--text-primary);}
+.doc-viewer-body{padding:14px;background:#111;display:flex;align-items:center;justify-content:center;overflow:auto;min-height:240px;}
+.doc-viewer-body img{width:auto;height:auto;min-width:min(92vw,900px);max-width:none;max-height:none;object-fit:contain;background:#fff;image-rendering:auto;}
+.doc-viewer-body iframe{width:100%;height:calc(94vh - 84px);border:0;background:#fff;}
 .sbadge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
 .s-active{background:var(--success-light);color:var(--success);}
 .s-inactive{background:#f3f4f6;color:var(--text-muted);}
@@ -271,6 +310,14 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   .parts-table td{padding:7px 8px;font-size:12px;}
   .acct-table th{padding:6px 8px;font-size:10px;}
   .acct-table td{padding:6px 8px;font-size:11px;}
+  .parts-export-mobile-hide{display:none!important;}
+  #tab-parts>div:first-child{gap:10px;align-items:flex-start!important;}
+  #tab-parts>div:first-child>div:last-child{margin-left:auto;}
+  .part-doc-btn{flex:1;min-width:80px;text-align:center;}
+  .doc-layout{grid-template-columns:1fr;}
+  .doc-panels{grid-template-columns:1fr;}
+  .doc-list{max-height:32vh;}
+  .doc-preview{height:160px;}
 }
 </style>
 </head>
@@ -370,7 +417,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <div style="font-size:16px;font-weight:700">파트 관리</div>
         <div style="display:flex;gap:8px">
-          <button class="btn-secondary" onclick="exportPartsCSV()">📤 엑셀 다운로드</button>
+          <button class="btn-secondary parts-export-mobile-hide" onclick="exportPartsCSV()">📤 엑셀 다운로드</button>
+          <button class="part-doc-btn" onclick="openDocsManager()">서류</button>
           <button class="btn-primary" id="btn-add-part" onclick="openAP()">+ 파트 등록</button>
         </div>
       </div>
@@ -567,6 +615,8 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 <div class="modal-overlay" id="modal-workman-edit"><div class="modal" onclick="event.stopPropagation()" style="max-width:480px"><div class="modal-header"><div class="modal-title" id="modal-workman-title">수정</div><button class="modal-close" onclick="CM('modal-workman-edit')">✕</button></div><div id="modal-workman-body"></div></div></div>
 <div class="modal-overlay" id="modal-account"><div class="modal" onclick="event.stopPropagation()" style="max-width:400px"><div class="modal-header"><div class="modal-title">계정 추가</div><button class="modal-close" onclick="CM('modal-account')">✕</button></div><div id="modal-account-body"></div></div></div>
 <div class="modal-overlay" id="modal-payslip"><div class="modal" onclick="event.stopPropagation()" style="max-width:780px"><div class="modal-header"><div class="modal-title" id="modal-payslip-title">급여 명세서</div><button class="modal-close" onclick="CM('modal-payslip')">✕</button></div><div id="modal-payslip-body" style="max-height:75vh;overflow-y:auto"></div></div></div>
+<div class="modal-overlay" id="modal-part-docs"><div class="modal" onclick="event.stopPropagation()" style="max-width:920px"><div class="modal-header"><div class="modal-title" id="modal-part-docs-title">서류 관리</div><button class="modal-close" onclick="CM('modal-part-docs')">✕</button></div><div id="modal-part-docs-body" style="max-height:75vh;overflow-y:auto"></div></div></div>
+<div class="doc-viewer" id="doc-viewer" onclick="closeDocViewer()"><div class="doc-viewer-box" onclick="event.stopPropagation()"><div class="doc-viewer-head"><div class="doc-viewer-title" id="doc-viewer-title">서류 보기</div><button class="modal-close" onclick="closeDocViewer()">✕</button></div><div class="doc-viewer-body" id="doc-viewer-body"></div></div></div>
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getDatabase,ref,set,get,update,onValue,push,remove}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
@@ -715,11 +765,294 @@ window.wageUnit=wageUnit;
 // 권한 체크 (관리자 또는 총무만 시급 보임)
 function canSeeWage(){return CU&&(CU.role==='관리자'||CU.role==='총무');}
 window.canSeeWage=canSeeWage;
+const DOC_TYPES={idCard:{short:'신',label:'신분증'},bank:{short:'통',label:'통장사본'}};
+let DOC_ACTIVE_PID=null,DOC_DEFAULT_FILTER='missing';
+function escHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function escAttr(v){return escHtml(v).replace(/`/g,'&#96;');}
+function jsStr(v){return String(v??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r?\n/g,' ');}
+function safeFileName(name){return String(name||'file').replace(/[^\w.\-가-힣]/g,'_').slice(-90)||'file';}
+function docData(pid,type){return (PDS&&PDS[pid]&&PDS[pid][type])||null;}
+function hasPartDoc(pid,type){const d=docData(pid,type);return !!(d&&(d.url||d.path||d.dataUrl));}
+function hasAllPartDocs(pid){return hasPartDoc(pid,'idCard')&&hasPartDoc(pid,'bank');}
+function docStatusButton(pid){
+  if(!pid)return '';
+  const id=jsStr(pid);
+  const idMiss=!hasPartDoc(pid,'idCard');
+  const bankMiss=!hasPartDoc(pid,'bank');
+  return `<button type="button" class="doc-folder-btn" onclick="event.stopPropagation();openDocsManager('${id}')" title="서류함 열기" aria-label="서류함 열기"><span class="doc-mark${idMiss?' missing':''}">신</span><span class="doc-mark${bankMiss?' missing':''}">통</span></button>`;
+}
+window.docStatusButton=docStatusButton;
+function listenPartDocs(){
+  onValue(ref(db,'partDocs'),s=>{
+    PDS=s.val()||{};
+    if(typeof renderPT==='function')renderPT();
+    if(PAY_DATA&&typeof renderPayroll==='function')renderPayroll();
+    if(document.getElementById('modal-part-docs')?.classList.contains('open'))renderDocsManager();
+  });
+}
+function openDocsManager(pid){
+  if(pid){DOC_ACTIVE_PID=pid;DOC_DEFAULT_FILTER='';}
+  else{DOC_DEFAULT_FILTER='missing';}
+  renderDocsManager();
+  OM('modal-part-docs');
+}
+window.openDocsManager=openDocsManager;
+function selectDocsPart(pid){
+  DOC_ACTIVE_PID=pid;
+  renderDocsList();
+  const detail=document.querySelector('#modal-part-docs .doc-detail');
+  if(detail)detail.innerHTML=renderDocsDetail(pid);
+}
+window.selectDocsPart=selectDocsPart;
+function docsStatusText(pid){
+  const miss=[];
+  if(!hasPartDoc(pid,'idCard'))miss.push('신분증');
+  if(!hasPartDoc(pid,'bank'))miss.push('통장사본');
+  return miss.length?`미제출: ${miss.join(', ')}`:'제출 완료';
+}
+function renderDocsManager(){
+  const body=document.getElementById('modal-part-docs-body');
+  if(!body)return;
+  const oldSearch=document.getElementById('doc-search')?.value??'';
+  const oldFilter=document.getElementById('doc-filter')?.value??DOC_DEFAULT_FILTER;
+  body.innerHTML=`
+    <div class="doc-toolbar">
+      <input id="doc-search" class="form-input" placeholder="이름/직무/휴대폰 검색" value="${escAttr(oldSearch)}" oninput="filterDocsList()" style="min-width:180px;flex:1">
+      <select id="doc-filter" class="form-select" onchange="filterDocsList()" style="width:150px">
+        <option value="" ${oldFilter===''?'selected':''}>전체</option>
+        <option value="missing" ${oldFilter==='missing'?'selected':''}>미제출만</option>
+        <option value="done" ${oldFilter==='done'?'selected':''}>제출완료</option>
+      </select>
+    </div>
+    <div class="doc-layout">
+      <div class="doc-list"></div>
+      <div class="doc-detail"></div>
+    </div>`;
+  renderDocsList();
+}
+window.renderDocsManager=renderDocsManager;
+function filteredDocsParts(){
+  const search=document.getElementById('doc-search')?.value??'';
+  const filter=document.getElementById('doc-filter')?.value??DOC_DEFAULT_FILTER;
+  let ps=Object.entries(AP||{}).map(([id,p])=>({...p,id}));
+  const today=kstDate();
+  const isResigned=p=>p.status==='inactive'||(p.leaveDate&&p.leaveDate<today);
+  ps=ps.sort((a,b)=>{
+    const ar=isResigned(a)?1:0,br=isResigned(b)?1:0;
+    if(ar!==br)return ar-br;
+    return (a.name||'').localeCompare(b.name||'','ko');
+  });
+  const q=search.trim().toLowerCase();
+  if(q)ps=ps.filter(p=>(p.name||'').toLowerCase().includes(q)||(p.role||'').toLowerCase().includes(q)||(p.phone||'').includes(q));
+  if(filter==='missing')ps=ps.filter(p=>!hasAllPartDocs(p.id));
+  else if(filter==='done')ps=ps.filter(p=>hasAllPartDocs(p.id));
+  if(!DOC_ACTIVE_PID||!AP[DOC_ACTIVE_PID]||!ps.some(p=>p.id===DOC_ACTIVE_PID))DOC_ACTIVE_PID=ps[0]?.id||null;
+  return ps;
+}
+function renderDocsList(){
+  const list=document.querySelector('#modal-part-docs .doc-list');
+  const detail=document.querySelector('#modal-part-docs .doc-detail');
+  if(!list||!detail)return;
+  const ps=filteredDocsParts();
+  const listHtml=ps.length?ps.map(p=>`
+    <div class="doc-list-row${p.id===DOC_ACTIVE_PID?' active':''}" onclick="selectDocsPart('${jsStr(p.id)}')">
+      <span>
+        <div class="doc-name">${escHtml(p.name||'-')}</div>
+        <div class="doc-sub">${escHtml(CATL[p.cat]||p.cat||'-')} · ${escHtml(p.role||'-')} · ${escHtml(docsStatusText(p.id))}</div>
+      </span>
+      ${docStatusButton(p.id)}
+    </div>`).join(''):'<div class="doc-empty">조건에 맞는 직원 없음</div>';
+  list.innerHTML=listHtml;
+  detail.innerHTML=DOC_ACTIVE_PID?renderDocsDetail(DOC_ACTIVE_PID):'<div class="doc-empty">직원을 선택하세요</div>';
+}
+function filterDocsList(){renderDocsList();}
+window.filterDocsList=filterDocsList;
+function renderDocsDetail(pid){
+  const p=AP[pid];
+  if(!p)return '<div class="doc-empty">직원 정보 없음</div>';
+  return `
+    <div class="doc-detail-head">
+      <div>
+        <div style="font-size:15px;font-weight:700">${escHtml(p.name||'-')}</div>
+        <div class="doc-sub">${escHtml(CATL[p.cat]||p.cat||'-')} · ${escHtml(p.role||'-')} · ${escHtml(p.phone||'-')}</div>
+      </div>
+      ${docStatusButton(pid)}
+    </div>
+    <div class="doc-panels">
+      ${renderDocPanel(pid,'idCard')}
+      ${renderDocPanel(pid,'bank')}
+    </div>`;
+}
+function renderDocPanel(pid,type){
+  const info=DOC_TYPES[type];
+  const d=docData(pid,type);
+  const done=!!(d&&(d.url||d.path||d.dataUrl));
+  const fileUrl=d&&(d.url||d.dataUrl)?escAttr(d.url||d.dataUrl):'';
+  const isImg=done&&((d.type||'').startsWith('image/')||/\.(png|jpe?g|gif|webp|bmp)$/i.test(d.name||d.url||''));
+  const preview=done
+    ?(isImg?`<img src="${fileUrl}" alt="${escAttr(info.label)}">`:`<button type="button" class="doc-file-link" onclick="openDocFile('${jsStr(pid)}','${type}')">파일 열기</button>`)
+    :'<div class="doc-missing">미제출</div>';
+  const meta=done?`${escHtml(d.name||'파일')} · ${escHtml(d.uploadedAt||'')}`:'파일 없음';
+  return `<div class="doc-panel">
+    <div class="doc-panel-head"><span>${info.label}</span><span class="doc-mark${done?'':' missing'}">${info.short}</span></div>
+    <div class="doc-preview">${preview}</div>
+    <div class="doc-file-meta">
+      <span>${meta}</span>
+      ${done?`<span style="display:inline-flex;gap:4px;align-items:center"><button type="button" class="icon-btn" onclick="openDocFile('${jsStr(pid)}','${type}')">보기</button><button type="button" class="icon-btn del" onclick="deletePartDoc('${jsStr(pid)}','${type}')">삭제</button></span>`:''}
+    </div>
+    <div class="doc-upload">
+      <div class="doc-upload-row">
+        <input type="file" id="doc-file-${type}" accept="image/*,.pdf" class="form-input">
+        <button type="button" class="btn-primary" onclick="uploadPartDoc('${jsStr(pid)}','${type}')" style="padding:8px 12px;font-size:12px">${done?'교체':'업로드'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+function openDocFile(pid,type){
+  const d=docData(pid,type);
+  if(!d||!(d.url||d.dataUrl)){ST('미제출 상태입니다');return;}
+  const viewer=document.getElementById('doc-viewer');
+  const titleEl=document.getElementById('doc-viewer-title');
+  const body=document.getElementById('doc-viewer-body');
+  if(!viewer||!titleEl||!body){ST('보기 창을 열 수 없습니다');return;}
+  const title=`${AP[pid]?.name||''} ${DOC_TYPES[type]?.label||'서류'}`.trim();
+  const src=d.url||d.dataUrl;
+  const isImg=(d.type||'').startsWith('image/')||/^data:image\//.test(src)||/\.(png|jpe?g|gif|webp|bmp)$/i.test(d.name||src||'');
+  titleEl.textContent=title;
+  body.innerHTML=isImg
+    ?`<img src="${escAttr(src)}" alt="${escAttr(title)}">`
+    :`<iframe src="${escAttr(src)}" title="${escAttr(title)}"></iframe>`;
+  viewer.classList.add('open');
+}
+window.openDocFile=openDocFile;
+function closeDocViewer(){
+  const viewer=document.getElementById('doc-viewer');
+  const body=document.getElementById('doc-viewer-body');
+  if(body)body.innerHTML='';
+  if(viewer)viewer.classList.remove('open');
+}
+window.closeDocViewer=closeDocViewer;
+function readFileDataURL(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=()=>reject(reader.error||new Error('파일 읽기 실패'));
+    reader.readAsDataURL(file);
+  });
+}
+function blobToDataURL(blob){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(reader.result);
+    reader.onerror=()=>reject(reader.error||new Error('이미지 변환 실패'));
+    reader.readAsDataURL(blob);
+  });
+}
+function loadImageForCompress(file){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{URL.revokeObjectURL(url);resolve(img);};
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('이미지 파일을 읽을 수 없습니다'));};
+    img.src=url;
+  });
+}
+async function makeDocPayload(file){
+  let dataUrl=file.type&&file.type.startsWith('image/')?null:await readFileDataURL(file);
+  let outType=file.type||'application/octet-stream';
+  let storedSize=file.size||0;
+  if(file.type&&file.type.startsWith('image/')){
+    try{
+      const img=await loadImageForCompress(file);
+      const maxSide=1600;
+      const scale=Math.min(1,maxSide/Math.max(img.naturalWidth||img.width,img.naturalHeight||img.height));
+      const w=Math.max(1,Math.round((img.naturalWidth||img.width)*scale));
+      const h=Math.max(1,Math.round((img.naturalHeight||img.height)*scale));
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      const ctx=canvas.getContext('2d');
+      ctx.fillStyle='#fff';
+      ctx.fillRect(0,0,w,h);
+      ctx.drawImage(img,0,0,w,h);
+      const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.82));
+      if(blob){
+        dataUrl=await blobToDataURL(blob);
+        outType='image/jpeg';
+        storedSize=blob.size||dataUrl.length;
+      }else{
+        dataUrl=await readFileDataURL(file);
+      }
+    }catch(e){
+      dataUrl=await readFileDataURL(file);
+    }
+  }
+  if(!dataUrl)throw new Error('파일을 읽지 못했습니다');
+  if(dataUrl.length>7000000)throw new Error('파일이 너무 큽니다. 사진을 조금 작게 찍거나 잘라서 올려주세요.');
+  return{dataUrl,type:outType,storedSize};
+}
+async function uploadPartDoc(pid,type){
+  const p=AP[pid];
+  const info=DOC_TYPES[type];
+  const input=document.getElementById(`doc-file-${type}`);
+  const file=input&&input.files&&input.files[0];
+  if(!p||!info){ST('직원 정보 없음');return;}
+  if(!file){ST('파일을 선택해주세요');return;}
+  SL(true);
+  try{
+    const payload=await makeDocPayload(file);
+    const savedDoc={
+      name:file.name,
+      type:payload.type,
+      originalType:file.type||'',
+      size:file.size||0,
+      storedSize:payload.storedSize||0,
+      dataUrl:payload.dataUrl,
+      uploadedAt:`${kstLabel()} ${kstNow()}`,
+      uploadedBy:CU?.name||''
+    };
+    await set(ref(db,`partDocs/${pid}/${type}`),savedDoc);
+    if(!PDS[pid])PDS[pid]={};
+    PDS[pid][type]=savedDoc;
+    ST(`${p.name} ${info.label} 저장완료`);
+    renderDocsManager();
+  }catch(e){
+    console.error(e);
+    ST('서류 업로드 실패: '+(e.message||e));
+  }finally{
+    SL(false);
+  }
+}
+window.uploadPartDoc=uploadPartDoc;
+async function deletePartDoc(pid,type){
+  const p=AP[pid];
+  const info=DOC_TYPES[type];
+  const d=docData(pid,type);
+  if(!p||!info){ST('직원 정보 없음');return;}
+  if(!d){ST('삭제할 서류가 없습니다');return;}
+  if(!await CC(`${p.name} ${info.label}을(를) 삭제할까요?`,{title:'서류 삭제',danger:true}))return;
+  SL(true);
+  try{
+    await remove(ref(db,`partDocs/${pid}/${type}`));
+    if(PDS[pid]){
+      delete PDS[pid][type];
+      if(!PDS[pid].idCard&&!PDS[pid].bank)delete PDS[pid];
+    }
+    ST(`${p.name} ${info.label} 삭제완료`);
+    renderDocsManager();
+    if(PAY_DATA&&typeof renderPayroll==='function')renderPayroll();
+  }catch(e){
+    console.error(e);
+    ST('서류 삭제 실패: '+(e.message||e));
+  }finally{
+    SL(false);
+  }
+}
+window.deletePartDoc=deletePartDoc;
 const COLORS={순찰:'#0ea5e9','1층':'#8b5cf6',식관:'#f59e0b',응대:'#10b981',등원:'#f97316',국어:'#e11d48',수학:'#3b82f6',영어:'#ec4899',지리:'#f59e0b',물리:'#f97316',화학:'#14b8a6',생명:'#16a34a',지학:'#8b5cf6',사문:'#0ea5e9',생윤:'#6366f1',스타터:'#6366f1',디자인:'#e11d48'};
 const CAT={mgmt:{label:'관리',icon:'📊'},tutor:{label:'조교',icon:'🎓'},etc:{label:'기타',icon:'🏢'}};
 const CATL={mgmt:'관리',tutor:'조교',etc:'기타'};
 const TABS=[{key:'mgmt',label:'관리',icon:'📊',roles:['관리자','총무','일반직원']},{key:'tutor',label:'조교',icon:'🎓',roles:['관리자','총무','일반직원']},{key:'etc',label:'기타',icon:'🏢',roles:['관리자','총무','일반직원']},{key:'workman',label:'출근 현황',icon:'📋',roles:['관리자','총무','일반직원']},{key:'parts',label:'파트 관리',icon:'👥',roles:['관리자','총무','일반직원']},{key:'acct',label:'시수 확인',icon:'📊',roles:['관리자','총무','일반직원']},{key:'roleCal',label:'직무 캘린더',icon:'📅',roles:['관리자','총무','일반직원']},{key:'payroll',label:'급여 정산',icon:'💰',roles:['관리자','총무']},{key:'settings',label:'설정',icon:'⚙️',roles:['관리자']}];
-let CU=null,AT='mgmt',AP={},TA={},AA=[],SP={},AD=[];
+let CU=null,AT='mgmt',AP={},PDS={},TA={},AA=[],SP={},AD=[];
 let DD={mgmt:null,tutor:null,etc:null};
 let TB={mgmt:{},tutor:{},etc:{}};
 const toM=s=>{if(!s)return 0;const[h,m]=s.split(':').map(Number);return h*60+m;};
@@ -800,7 +1133,7 @@ function makeDraggable(overlayId){
   });
   observer.observe(overlay,{attributes:true,attributeFilter:['class']});
 }
-['modal-staff','modal-stats','modal-part','modal-workman-edit','modal-account'].forEach(makeDraggable);
+['modal-staff','modal-stats','modal-part','modal-workman-edit','modal-account','modal-part-docs'].forEach(makeDraggable);
 
 // ⭐ v10.8.5: 자동 휴게 정책 (안녕님 결정)
 // - customBreak가 자동 휴게(법정 기준)보다 작으면 자동 휴게 적용
@@ -1132,7 +1465,7 @@ window.doLogin=doLogin;window.doLogout=doLogout;
 if('serviceWorker' in navigator){navigator.serviceWorker.getRegistrations().then(regs=>{regs.forEach(r=>r.unregister());});}
 // 자동 로그인 시도
 setTimeout(()=>{tryAutoLogin();},50);
-function init(){document.getElementById('user-badge').textContent=CU.role;document.getElementById('user-badge').className='ubadge '+CU.role;document.getElementById('user-name-label').textContent=CU.name;const t=kstDate();['acct-from','acct-to'].forEach(id=>{const e=document.getElementById(id);if(e)e.value=t;});const wf=document.getElementById('workman-from');const wt=document.getElementById('workman-to');if(wf)wf.value=t;if(wt)wt.value=t;['mgmt','tutor','etc'].forEach(c=>{DD[c]=t;const el=document.getElementById('dash-date'+(c==='mgmt'?'':'-'+c));if(el)el.value=t;updateDL(c,t);});clk();setInterval(clk,30000);buildTabs();listenP();listenA();loadAcc();loadRoles();loadExtraHolidays();}
+function init(){document.getElementById('user-badge').textContent=CU.role;document.getElementById('user-badge').className='ubadge '+CU.role;document.getElementById('user-name-label').textContent=CU.name;const t=kstDate();['acct-from','acct-to'].forEach(id=>{const e=document.getElementById(id);if(e)e.value=t;});const wf=document.getElementById('workman-from');const wt=document.getElementById('workman-to');if(wf)wf.value=t;if(wt)wt.value=t;['mgmt','tutor','etc'].forEach(c=>{DD[c]=t;const el=document.getElementById('dash-date'+(c==='mgmt'?'':'-'+c));if(el)el.value=t;updateDL(c,t);});clk();setInterval(clk,30000);buildTabs();listenP();listenPartDocs();listenA();loadAcc();loadRoles();loadExtraHolidays();}
 function updateDL(cat,date){const today=kstDate();const el=document.getElementById('dash-date-label'+(cat==='mgmt'?'':'-'+cat));if(!el)return;const tl=document.getElementById('tl-title-'+cat);if(date===today){el.textContent='오늘';el.style.color='var(--success)';if(tl)tl.textContent='오늘 근무 현황';}else if(date>today){el.textContent='미래 (스케줄 예정)';el.style.color='var(--accent)';if(tl)tl.textContent=date+' 예정';}else{el.textContent='과거 기록';el.style.color='var(--text-muted)';if(tl)tl.textContent=date+' 기록';}}
 async function changeDashDate(cat){const el=document.getElementById('dash-date'+(cat==='mgmt'?'':'-'+cat));if(!el)return;const date=el.value;if(!date)return;DD[cat]=date;updateDL(cat,date);const sn=await get(ref(db,`attendance/${date}`));TB[cat]=sn.val()||{};renderCat(cat);}
 window.changeDashDate=changeDashDate;
@@ -6325,7 +6658,7 @@ function renderPayroll(){
           </div>
         </div>
         <div style="overflow-x:auto"><table class="parts-table" style="margin:0">
-          <thead><tr style="background:#fafbfc"><th style="width:24px"></th><th>이름</th><th>직무</th><th style="text-align:right">시급</th><th style="text-align:right;color:#047857">급여시수</th><th style="text-align:right">기본급</th><th style="text-align:right">주휴수당</th><th style="text-align:right;color:#1e3a8a">입금액</th><th style="width:80px;text-align:center">명세서</th></tr></thead>
+          <thead><tr style="background:#fafbfc"><th style="width:24px"></th><th>이름</th><th class="payroll-doc-col">서류</th><th>직무</th><th style="text-align:right">시급</th><th style="text-align:right;color:#047857">급여시수</th><th style="text-align:right">기본급</th><th style="text-align:right">주휴수당</th><th style="text-align:right;color:#1e3a8a">입금액</th><th style="width:80px;text-align:center">명세서</th></tr></thead>
           <tbody>${grp.map(r=>{
             const monthLbl=r.meetMonthly?'':`<span style="font-size:9px;color:#b91c1c;background:#fef2f2;border:1px solid #fecaca;padding:1px 5px;border-radius:6px;margin-left:4px;font-weight:700">월&lt;60h</span>`;
             // ⭐ v10.8.7-fix3: 단발자 배지 추가 표시 (다른 화면과 일관성)
@@ -6334,6 +6667,7 @@ function renderPayroll(){
             return`<tr id="pay-row-${r.pid}" style="cursor:pointer" onclick="togglePayDetail('${r.pid}')">
               <td style="text-align:center;color:var(--text-muted);font-size:10px">▶</td>
               <td style="font-weight:600">${r.name}${tkBadge(r)}${casualBadge}${joinLeaveBadge(r,year,month)}</td>
+              <td class="doc-pay-cell">${docStatusButton(r.pid)}</td>
               <td><span style="color:${cof(r.role)};font-weight:600;font-size:12px">${r.role}</span></td>
               <td style="font-family:'DM Mono',monospace;text-align:right">${fmt(r.wage)}<span style="font-size:10px;color:var(--text-muted)">/${r.isT?'T':'h'}</span></td>
               <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:800;color:#047857;background:#ecfdf5">${fmtRowMonthH(r)}${monthLbl}</td>
@@ -6342,7 +6676,7 @@ function renderPayroll(){
               <td style="font-family:'DM Mono',monospace;text-align:right;font-weight:800;color:#1e3a8a;background:#eff6ff">${fmt(r.totalPay)}</td>
               <td style="text-align:center"><button class="icon-btn" onclick="event.stopPropagation();openPayslipModal('${r.pid}')" style="font-size:10px;padding:2px 6px;border-color:#bfdbfe;color:#1d4ed8">📄</button></td>
             </tr>
-            <tr id="pay-detail-${r.pid}" style="display:none;background:#fafbfc"><td colspan="9" style="padding:14px 20px">${renderPayDetail(r)}</td></tr>`;
+            <tr id="pay-detail-${r.pid}" style="display:none;background:#fafbfc"><td colspan="10" style="padding:14px 20px">${renderPayDetail(r)}</td></tr>`;
           }).join('')}</tbody>
         </table></div>
       </div>`;
@@ -6381,6 +6715,7 @@ function renderPayReviewCard(r,reasons,isDone){
           <span class="cat-badge cat-${r.cat}" style="font-size:10px">${({mgmt:'관리',tutor:'조교',etc:'기타'})[r.cat]||r.cat}</span>
           <span style="color:${cof(r.role)};font-weight:700;font-size:13px">${r.role}</span>
           <span style="font-size:14px;font-weight:700;color:var(--text-primary)">${r.name}</span>
+          ${docStatusButton(r.pid)}
           ${tkBadge(r)}${jlBadge}
           ${isDone?(hasIssue?'<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">⚠ 문제 있음</span>':'<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">✓ 검토 완료</span>'):''}
         </div>
