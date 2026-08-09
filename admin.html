@@ -780,7 +780,35 @@ function escHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<'
 function escAttr(v){return escHtml(v).replace(/`/g,'&#96;');}
 function jsStr(v){return String(v??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r?\n/g,' ');}
 function safeFileName(name){return String(name||'file').replace(/[^\w.\-가-힣]/g,'_').slice(-90)||'file';}
-function docData(pid,type){return (PDS&&PDS[pid]&&PDS[pid][type])||null;}
+function docKeyPart(v){return String(v||'').replace(/[.#$/\[\]\/]/g,'_').replace(/\s+/g,'_').slice(0,80)||'unknown';}
+function docPersonKey(pid,p=AP?.[pid]){
+  const phone=String(p?.phone||'').replace(/\D/g,'');
+  if(phone)return `phone_${phone}`;
+  const name=String(p?.name||'').trim();
+  const pin=String(p?.pin||'').replace(/\D/g,'');
+  if(name&&pin)return `namepin_${docKeyPart(name)}_${pin}`;
+  return pid;
+}
+function docSource(pid,type){
+  const p=AP?.[pid]||{};
+  const key=docPersonKey(pid,p);
+  if(PDS?.[key]?.[type])return{doc:PDS[key][type],key};
+  if(PDS?.[pid]?.[type])return{doc:PDS[pid][type],key:pid};
+  for(const[otherId,other]of Object.entries(AP||{})){
+    if(otherId===pid)continue;
+    if(docPersonKey(otherId,other)===key&&PDS?.[otherId]?.[type])return{doc:PDS[otherId][type],key:otherId};
+  }
+  return{doc:null,key};
+}
+function docStorageKeys(pid,p=AP?.[pid]){
+  const personKey=docPersonKey(pid,p);
+  const keys=new Set([personKey,pid]);
+  for(const[otherId,other]of Object.entries(AP||{})){
+    if(docPersonKey(otherId,other)===personKey)keys.add(otherId);
+  }
+  return Array.from(keys).filter(Boolean);
+}
+function docData(pid,type){return docSource(pid,type).doc;}
 function hasPartDoc(pid,type){const d=docData(pid,type);return !!(d&&(d.url||d.path||d.dataUrl));}
 function hasAllPartDocs(pid){return hasPartDoc(pid,'idCard')&&hasPartDoc(pid,'bank');}
 function docStatusButton(pid){
@@ -819,9 +847,23 @@ function docsStatusText(pid){
   if(!hasPartDoc(pid,'bank'))miss.push('통장사본');
   return miss.length?`미제출: ${miss.join(', ')}`:'제출 완료';
 }
+function docsListSubText(p){
+  const bits=[CATL[p.cat]||p.cat||'-',p.role||'-'];
+  if(p.phone)bits.push(p.phone);
+  bits.push(docsStatusText(p.id));
+  return bits.join(' · ');
+}
 function docSearchMatch(p,q){
   if(!q)return true;
   return (p.name||'').toLowerCase().includes(q)||(p.role||'').toLowerCase().includes(q)||(p.phone||'').includes(q);
+}
+function uniqueDocsParts(ps){
+  const byKey=new Map();
+  ps.forEach(p=>{
+    const key=docPersonKey(p.id,p);
+    if(!byKey.has(key)||p.id===DOC_ACTIVE_PID)byKey.set(key,p);
+  });
+  return Array.from(byKey.values());
 }
 function renderDocsManager(){
   const body=document.getElementById('modal-part-docs-body');
@@ -857,7 +899,7 @@ function filteredDocsParts(){
   });
   const q=search.trim().toLowerCase();
   const searched=q?ps.filter(p=>docSearchMatch(p,q)):ps;
-  ps=searched;
+  ps=uniqueDocsParts(searched);
   if(filter==='missing')ps=ps.filter(p=>!hasAllPartDocs(p.id));
   else if(filter==='done')ps=ps.filter(p=>hasAllPartDocs(p.id));
   const activeInFiltered=ps.some(p=>p.id===DOC_ACTIVE_PID);
@@ -875,7 +917,7 @@ function renderDocsList(){
     <div class="doc-list-row${p.id===DOC_ACTIVE_PID?' active':''}" onclick="selectDocsPart('${jsStr(p.id)}')">
       <span>
         <div class="doc-name">${escHtml(p.name||'-')}</div>
-        <div class="doc-sub">${escHtml(CATL[p.cat]||p.cat||'-')} · ${escHtml(p.role||'-')} · ${escHtml(docsStatusText(p.id))}</div>
+        <div class="doc-sub">${escHtml(docsListSubText(p))}</div>
       </span>
       ${docStatusButton(p.id)}
     </div>`).join(''):'<div class="doc-empty">조건에 맞는 직원 없음</div>';
@@ -1045,9 +1087,12 @@ async function uploadPartDoc(pid,type,btn){
       uploadedAt:`${kstLabel()} ${kstNow()}`,
       uploadedBy:CU?.name||''
     };
-    await set(ref(db,`partDocs/${pid}/${type}`),savedDoc);
-    if(!PDS[pid])PDS[pid]={};
-    PDS[pid][type]=savedDoc;
+    const storeKeys=docStorageKeys(pid,p);
+    await Promise.all(storeKeys.map(k=>set(ref(db,`partDocs/${k}/${type}`),savedDoc)));
+    storeKeys.forEach(k=>{
+      if(!PDS[k])PDS[k]={};
+      PDS[k][type]=savedDoc;
+    });
     delete DOC_UPLOADING[key];
     DOC_UPLOAD_MSG[key]=`${info.label} 저장완료`;
     ST(`${p.name} ${info.label} 저장완료`);
@@ -1072,17 +1117,22 @@ window.uploadPartDoc=uploadPartDoc;
 async function deletePartDoc(pid,type){
   const p=AP[pid];
   const info=DOC_TYPES[type];
-  const d=docData(pid,type);
+  const src=docSource(pid,type);
+  const d=src.doc;
   if(!p||!info){ST('직원 정보 없음');return;}
   if(!d){ST('삭제할 서류가 없습니다');return;}
-  if(!await CC(`${p.name} (${p.role||'-'})\n${info.label} 1장을 삭제합니다.\n\n선택한 직원의 해당 서류만 삭제됩니다.`,{title:'서류 삭제',danger:true}))return;
+  if(!await CC(`${p.name} (${p.role||'-'})\n${info.label} 1장을 삭제합니다.\n\n같은 휴대폰으로 등록된 동일 직원에게도 함께 반영됩니다.`,{title:'서류 삭제',danger:true}))return;
   SL(true);
   try{
-    await remove(ref(db,`partDocs/${pid}/${type}`));
-    if(PDS[pid]){
-      delete PDS[pid][type];
-      if(!PDS[pid].idCard&&!PDS[pid].bank)delete PDS[pid];
-    }
+    const removeKeys=new Set(docStorageKeys(pid,p));
+    if(src.key)removeKeys.add(src.key);
+    await Promise.all(Array.from(removeKeys).map(k=>remove(ref(db,`partDocs/${k}/${type}`))));
+    removeKeys.forEach(k=>{
+      if(PDS[k]){
+        delete PDS[k][type];
+        if(!PDS[k].idCard&&!PDS[k].bank)delete PDS[k];
+      }
+    });
     ST(`${p.name} ${info.label} 삭제완료`);
     renderDocsList();
     if(PAY_DATA&&typeof renderPayroll==='function')renderPayroll();
