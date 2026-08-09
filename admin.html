@@ -774,6 +774,7 @@ window.canSeeWage=canSeeWage;
 const DOC_TYPES={idCard:{short:'신',label:'신분증'},bank:{short:'통',label:'통장사본'}};
 let DOC_ACTIVE_PID=null,DOC_DEFAULT_FILTER='missing';
 let DOC_UPLOADING={},DOC_UPLOAD_MSG={};
+let DOC_FILTER_RESETTING=false;
 function isDocPartUploading(pid){return Object.keys(DOC_UPLOADING).some(k=>k.startsWith(`${pid}:`));}
 function escHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
 function escAttr(v){return escHtml(v).replace(/`/g,'&#96;');}
@@ -830,7 +831,7 @@ function renderDocsManager(){
   body.innerHTML=`
     <div class="doc-toolbar">
       <input id="doc-search" class="form-input" placeholder="이름/직무/휴대폰 검색" value="${escAttr(oldSearch)}" oninput="filterDocsList()" style="min-width:180px;flex:1">
-      <select id="doc-filter" class="form-select" onchange="filterDocsList()" style="width:150px">
+      <select id="doc-filter" class="form-select" onchange="filterDocsList(true)" style="width:150px">
         <option value="" ${oldFilter===''?'selected':''}>전체</option>
         <option value="missing" ${oldFilter==='missing'?'selected':''}>미제출만</option>
         <option value="done" ${oldFilter==='done'?'selected':''}>제출완료</option>
@@ -861,7 +862,7 @@ function filteredDocsParts(){
   else if(filter==='done')ps=ps.filter(p=>hasAllPartDocs(p.id));
   const activeInFiltered=ps.some(p=>p.id===DOC_ACTIVE_PID);
   const activeInSearch=searched.some(p=>p.id===DOC_ACTIVE_PID);
-  if(!DOC_ACTIVE_PID||!AP[DOC_ACTIVE_PID]||(q&&!activeInSearch))DOC_ACTIVE_PID=ps[0]?.id||searched[0]?.id||null;
+  if(!DOC_ACTIVE_PID||!AP[DOC_ACTIVE_PID]||(q&&!activeInSearch))DOC_ACTIVE_PID=ps[0]?.id||(DOC_FILTER_RESETTING?null:searched[0]?.id)||null;
   return ps;
 }
 function renderDocsList(){
@@ -869,22 +870,24 @@ function renderDocsList(){
   const detail=document.querySelector('#modal-part-docs .doc-detail');
   if(!list||!detail)return;
   const filtered=filteredDocsParts();
-  const searchNow=(document.getElementById('doc-search')?.value??'').trim();
-  const activeMatchesSearch=!searchNow||docSearchMatch(AP[DOC_ACTIVE_PID]||{},searchNow.toLowerCase());
-  const activeOutsideFilter=activeMatchesSearch&&DOC_ACTIVE_PID&&AP[DOC_ACTIVE_PID]&&!filtered.some(p=>p.id===DOC_ACTIVE_PID);
-  const ps=activeOutsideFilter?[{...AP[DOC_ACTIVE_PID],id:DOC_ACTIVE_PID,_docPinned:true},...filtered]:filtered;
+  const ps=filtered;
   const listHtml=ps.length?ps.map(p=>`
     <div class="doc-list-row${p.id===DOC_ACTIVE_PID?' active':''}" onclick="selectDocsPart('${jsStr(p.id)}')">
       <span>
         <div class="doc-name">${escHtml(p.name||'-')}</div>
-        <div class="doc-sub">${escHtml(CATL[p.cat]||p.cat||'-')} · ${escHtml(p.role||'-')} · ${escHtml(docsStatusText(p.id))}${p._docPinned?' · 현재 선택':''}</div>
+        <div class="doc-sub">${escHtml(CATL[p.cat]||p.cat||'-')} · ${escHtml(p.role||'-')} · ${escHtml(docsStatusText(p.id))}</div>
       </span>
       ${docStatusButton(p.id)}
     </div>`).join(''):'<div class="doc-empty">조건에 맞는 직원 없음</div>';
   list.innerHTML=listHtml;
   detail.innerHTML=DOC_ACTIVE_PID?renderDocsDetail(DOC_ACTIVE_PID):'<div class="doc-empty">직원을 선택하세요</div>';
 }
-function filterDocsList(){renderDocsList();}
+function filterDocsList(resetActive=false){
+  if(resetActive)DOC_ACTIVE_PID=null;
+  DOC_FILTER_RESETTING=!!resetActive;
+  renderDocsList();
+  DOC_FILTER_RESETTING=false;
+}
 window.filterDocsList=filterDocsList;
 function renderDocsDetail(pid){
   const p=AP[pid];
