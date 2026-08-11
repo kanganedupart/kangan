@@ -350,8 +350,10 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   .doc-panels{grid-template-columns:1fr;}
   .doc-pay-info-grid{grid-template-columns:1fr;}
   .doc-pay-info-resident{max-width:none;}
-  .doc-list{height:32vh;max-height:32vh;}
-  .doc-detail{min-height:260px;}
+  .doc-list{height:auto;max-height:28vh;}
+  .doc-layout.docs-has-selection{gap:0;}
+  .doc-layout.docs-has-selection .doc-list{display:none;}
+  .doc-detail{min-height:0;overflow:visible;padding:12px;}
   .doc-empty{min-height:220px;}
   .doc-preview{height:160px;}
 }
@@ -883,6 +885,9 @@ function openDocsManager(pid){
 window.openDocsManager=openDocsManager;
 function selectDocsPart(pid){
   DOC_ACTIVE_PID=pid;
+  const p=AP?.[pid];
+  const search=document.getElementById('doc-search');
+  if(search&&p?.name)search.value=p.name;
   renderDocsList(true);
 }
 window.selectDocsPart=selectDocsPart;
@@ -955,6 +960,8 @@ function renderDocsList(forceDetail=false){
   if(!list||!detail)return;
   const filtered=filteredDocsParts();
   const ps=filtered;
+  const layout=document.querySelector('#modal-part-docs .doc-layout');
+  if(layout)layout.classList.toggle('docs-has-selection',!!DOC_ACTIVE_PID);
   const listHtml=ps.length?ps.map(p=>`
     <div class="doc-list-row${p.id===DOC_ACTIVE_PID?' active':''}" onclick="selectDocsPart('${jsStr(p.id)}')">
       <span>
