@@ -171,15 +171,19 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .doc-mark.missing{background:#fff9f9;border-color:#fecaca;color:#ef8d8d;}
 .doc-folder-btn:hover .doc-mark{border-color:var(--accent);color:var(--accent);}
 .doc-folder-btn:hover .doc-mark.missing{border-color:#fca5a5;color:#dc6b6b;}
+#modal-part-docs .modal{width:min(920px,calc(100vw - 40px));height:min(75vh,720px);max-height:75vh;display:flex;flex-direction:column;}
+#modal-part-docs .modal-header{flex:0 0 auto;}
+#modal-part-docs-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto!important;}
 .doc-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;align-items:start;}
 .doc-toolbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
-.doc-list{border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--surface);max-height:62vh;overflow-y:auto;}
+.doc-layout{flex:1;min-height:0;align-items:stretch;}
+.doc-list{border:1px solid var(--border);border-radius:var(--r);overflow:hidden;background:var(--surface);height:100%;max-height:none;overflow-y:auto;}
 .doc-list-row{width:100%;border:0;border-bottom:1px solid var(--border-light);background:var(--surface);display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;font-family:inherit;text-align:left;}
 .doc-list-row:hover,.doc-list-row.active{background:var(--accent-light);}
 .doc-list-row:last-child{border-bottom:0;}
 .doc-name{font-size:13px;font-weight:700;color:var(--text-primary);}
 .doc-sub{font-size:11px;color:var(--text-muted);margin-top:2px;}
-.doc-detail{border:1px solid var(--border);border-radius:var(--r);background:var(--surface);padding:14px;}
+.doc-detail{border:1px solid var(--border);border-radius:var(--r);background:var(--surface);padding:14px;min-height:100%;overflow:auto;}
 .doc-detail-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--border-light);}
 .doc-panels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
 .doc-panel{border:1px solid var(--border);border-radius:var(--r);background:var(--bg);overflow:hidden;}
@@ -198,11 +202,12 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .doc-upload-row input{min-width:0;flex:1;font-size:12px;}
 .doc-upload-row .btn-primary:disabled{opacity:.7;cursor:wait;}
 .doc-save-state{font-size:11px;color:#2563eb;margin-top:6px;min-height:15px;}
-.doc-empty{padding:24px;text-align:center;color:var(--text-muted);font-size:13px;}
+.doc-empty{padding:24px;text-align:center;color:var(--text-muted);font-size:13px;min-height:100%;display:flex;align-items:center;justify-content:center;}
 .doc-pay-cell{text-align:center;width:64px;}
 .doc-pay-info-grid{padding:12px;display:grid;grid-template-columns:1fr 1.2fr 1fr auto;gap:8px;align-items:end;}
 .doc-pay-info-resident{grid-column:1/-1;max-width:430px;}
 .doc-resident-input.masked{-webkit-text-security:disc;text-security:disc;}
+.doc-resident-input[readonly]{background:#fff;cursor:text;}
 .doc-pay-info-msg{grid-column:1/-1;min-height:16px;font-size:11px;color:var(--text-muted);}
 .doc-pay-info-msg.error{color:var(--danger);font-weight:600;}
 .doc-pay-info-msg.ok{color:var(--success);font-weight:600;}
@@ -340,11 +345,14 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
   #tab-parts>div:first-child{gap:10px;align-items:flex-start!important;}
   #tab-parts>div:first-child>div:last-child{margin-left:auto;}
   .part-doc-btn{flex:1;min-width:80px;text-align:center;}
+  #modal-part-docs .modal{width:100%;height:85vh;max-height:85vh;}
   .doc-layout{grid-template-columns:1fr;}
   .doc-panels{grid-template-columns:1fr;}
   .doc-pay-info-grid{grid-template-columns:1fr;}
   .doc-pay-info-resident{max-width:none;}
-  .doc-list{max-height:32vh;}
+  .doc-list{height:32vh;max-height:32vh;}
+  .doc-detail{min-height:260px;}
+  .doc-empty{min-height:220px;}
   .doc-preview{height:160px;}
 }
 </style>
@@ -859,12 +867,16 @@ function listenPartDocs(){
     PDS=s.val()||{};
     if(typeof renderPT==='function')renderPT();
     if(PAY_DATA&&typeof renderPayroll==='function')renderPayroll();
-    if(document.getElementById('modal-part-docs')?.classList.contains('open'))renderDocsList(true);
+    if(document.getElementById('modal-part-docs')?.classList.contains('open')){
+      const draft=currentDocPayInfoForm();
+      renderDocsList(true);
+      restoreDocPayInfoForm(draft);
+    }
   });
 }
 function openDocsManager(pid){
   if(pid){DOC_ACTIVE_PID=pid;DOC_DEFAULT_FILTER='';}
-  else{DOC_DEFAULT_FILTER='missing';}
+  else{DOC_ACTIVE_PID=null;DOC_DEFAULT_FILTER='missing';}
   renderDocsManager();
   OM('modal-part-docs');
 }
@@ -903,7 +915,7 @@ function renderDocsManager(){
   const oldFilter=document.getElementById('doc-filter')?.value??DOC_DEFAULT_FILTER;
   body.innerHTML=`
     <div class="doc-toolbar">
-      <input id="doc-search" class="form-input" placeholder="이름/직무/휴대폰 검색" value="${escAttr(oldSearch)}" oninput="filterDocsList()" style="min-width:180px;flex:1">
+      <input id="doc-search" class="form-input" placeholder="이름/직무/휴대폰 검색" value="${escAttr(oldSearch)}" oninput="filterDocsList('search')" style="min-width:180px;flex:1">
       <select id="doc-filter" class="form-select" onchange="filterDocsList(true)" style="width:150px">
         <option value="" ${oldFilter===''?'selected':''}>전체</option>
         <option value="missing" ${oldFilter==='missing'?'selected':''}>미제출만</option>
@@ -934,8 +946,7 @@ function filteredDocsParts(){
   if(filter==='missing')ps=ps.filter(p=>!hasAllPartDocs(p.id));
   else if(filter==='done')ps=ps.filter(p=>hasAllPartDocs(p.id));
   const activeInFiltered=ps.some(p=>p.id===DOC_ACTIVE_PID);
-  const activeInSearch=searched.some(p=>p.id===DOC_ACTIVE_PID);
-  if(!DOC_ACTIVE_PID||!AP[DOC_ACTIVE_PID]||(q&&!activeInSearch))DOC_ACTIVE_PID=ps[0]?.id||(DOC_FILTER_RESETTING?null:searched[0]?.id)||null;
+  if(!DOC_ACTIVE_PID||!AP[DOC_ACTIVE_PID]||!activeInFiltered)DOC_ACTIVE_PID=null;
   return ps;
 }
 function renderDocsList(forceDetail=false){
@@ -957,6 +968,7 @@ function renderDocsList(forceDetail=false){
   if(forceDetail||detail.dataset.pid!==String(nextPid)){
     detail.innerHTML=DOC_ACTIVE_PID?renderDocsDetail(DOC_ACTIVE_PID):'<div class="doc-empty">직원을 선택하세요</div>';
     detail.dataset.pid=String(nextPid);
+    prepareDocResidentNo(nextPid);
   }
 }
 function filterDocsList(resetActive=false){
@@ -984,11 +996,12 @@ function renderDocsDetail(pid){
 }
 function renderDocPayrollInfo(pid){
   if(!canSeeWage())return '';
+  const p=AP?.[pid]||{};
   const info=docPayrollInfo(pid);
   return `<div style="margin-top:12px;border:1px solid var(--border);border-radius:8px;background:#fbfcfd;overflow:hidden">
     <div style="padding:10px 12px;border-bottom:1px solid var(--border-light);font-size:13px;font-weight:700">급여 입금 정보</div>
     <div class="doc-pay-info-grid">
-      <div class="doc-pay-info-resident"><label class="form-label">주민번호</label><div style="display:flex;gap:6px"><input class="form-input doc-resident-input masked" id="doc-resident-no" type="text" name="kangan-resident-no-${escAttr(pid)}" autocomplete="one-time-code" inputmode="numeric" maxlength="14" value="${escAttr(formatResidentNoValue(info.residentNo||''))}" placeholder="예: 900101-1234567" oninput="formatDocResidentNo(this);setDocPayInfoMsg('')"><button type="button" class="icon-btn" onclick="toggleDocResidentNo(this)" style="flex:0 0 auto;margin:0;padding:0 9px">보기</button></div></div>
+      <div class="doc-pay-info-resident"><label class="form-label">주민번호</label><div style="display:flex;gap:6px"><input class="form-input doc-resident-input masked" id="doc-resident-no" type="text" name="doc-field-${escAttr(docPersonKey(pid,p))}" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" data-form-type="other" inputmode="numeric" maxlength="14" readonly value="${escAttr(formatResidentNoValue(info.residentNo||''))}" placeholder="예: 900101-1234567" onpointerdown="unlockDocResidentNo(this)" onfocus="unlockDocResidentNo(this)" oninput="unlockDocResidentNo(this);formatDocResidentNo(this);setDocPayInfoMsg('')"><button type="button" class="icon-btn" onclick="toggleDocResidentNo(this)" style="flex:0 0 auto;margin:0;padding:0 9px">보기</button></div></div>
       <div><label class="form-label">은행명</label><input class="form-input" id="doc-bank-name" value="${escAttr(info.bankName||'')}" placeholder="예: 국민은행" oninput="setDocPayInfoMsg('')"></div>
       <div><label class="form-label">계좌번호</label><input class="form-input" id="doc-account-no" value="${escAttr(info.accountNo||'')}" placeholder="숫자/하이픈 가능" oninput="setDocPayInfoMsg('')"></div>
       <div><label class="form-label">예금주명</label><input class="form-input" id="doc-account-holder" value="${escAttr(info.accountHolder||'')}" placeholder="예: ${escAttr(AP[pid]?.name||'')}" oninput="setDocPayInfoMsg('')"></div>
@@ -1004,12 +1017,78 @@ function setDocPayInfoMsg(msg,type=''){
   el.textContent=msg||'';
 }
 window.setDocPayInfoMsg=setDocPayInfoMsg;
+function trustedDocResidentNoInputValue(){
+  const inp=document.getElementById('doc-resident-no');
+  if(!inp)return '';
+  const saved=inp.dataset.savedResident||formatResidentNoValue(docPayrollInfo(DOC_ACTIVE_PID||'').residentNo||'');
+  if(inp.dataset.userEdited!=='1'&&!saved)return '';
+  return inp.value||'';
+}
+function currentDocPayInfoForm(){
+  if(!document.getElementById('modal-part-docs')?.classList.contains('open'))return null;
+  return{
+    pid:String(DOC_ACTIVE_PID||''),
+    residentNo:trustedDocResidentNoInputValue(),
+    bankName:document.getElementById('doc-bank-name')?.value||'',
+    accountNo:document.getElementById('doc-account-no')?.value||'',
+    accountHolder:document.getElementById('doc-account-holder')?.value||''
+  };
+}
+function restoreDocPayInfoForm(draft){
+  if(!draft||String(draft.pid||'')!==String(DOC_ACTIVE_PID||''))return;
+  const r=document.getElementById('doc-resident-no');
+  const b=document.getElementById('doc-bank-name');
+  const a=document.getElementById('doc-account-no');
+  const h=document.getElementById('doc-account-holder');
+  if(r)r.value=draft.residentNo||'';
+  if(b)b.value=draft.bankName||'';
+  if(a)a.value=draft.accountNo||'';
+  if(h)h.value=draft.accountHolder||'';
+  prepareDocResidentNo(DOC_ACTIVE_PID);
+  if(r&&draft.residentNo){
+    r.value=draft.residentNo;
+    r.dataset.userEdited='1';
+  }
+}
+function clearDocResidentAutofill(pid){
+  const inp=document.getElementById('doc-resident-no');
+  if(!inp||String(pid||'')!==String(DOC_ACTIVE_PID||''))return;
+  if(document.activeElement===inp||inp.dataset.userEdited==='1')return;
+  const saved=inp.dataset.savedResident||formatResidentNoValue(docPayrollInfo(pid||'').residentNo||'');
+  if(saved){
+    if(inp.value!==saved)inp.value=saved;
+  }else if(inp.value){
+    inp.value='';
+  }
+}
+function prepareDocResidentNo(pid){
+  const inp=document.getElementById('doc-resident-no');
+  if(!inp||!pid)return;
+  const saved=formatResidentNoValue(docPayrollInfo(pid).residentNo||'');
+  inp.dataset.savedResident=saved;
+  inp.dataset.userEdited='';
+  inp.readOnly=true;
+  inp.setAttribute('readonly','readonly');
+  inp.setAttribute('autocomplete','off');
+  inp.setAttribute('data-lpignore','true');
+  inp.setAttribute('data-1p-ignore','true');
+  inp.setAttribute('data-form-type','other');
+  [50,250,700,1400].forEach(ms=>setTimeout(()=>clearDocResidentAutofill(pid),ms));
+}
+function unlockDocResidentNo(inp){
+  if(!inp)return;
+  inp.dataset.userEdited='1';
+  inp.readOnly=false;
+  inp.removeAttribute('readonly');
+}
+window.unlockDocResidentNo=unlockDocResidentNo;
 function formatResidentNoValue(v){
   const digits=String(v||'').replace(/\D/g,'').slice(0,13);
   return digits.length>6?`${digits.slice(0,6)}-${digits.slice(6)}`:digits;
 }
 function formatDocResidentNo(inp){
   if(!inp)return;
+  inp.dataset.userEdited='1';
   const pos=inp.selectionStart;
   const before=inp.value;
   inp.value=formatResidentNoValue(inp.value);
@@ -1031,7 +1110,12 @@ async function saveDocPayrollInfo(pid){
   const p=AP[pid];
   if(!p){ST('직원 정보 없음');return;}
   if(!canSeeWage()){ST('관리자/총무만 저장할 수 있습니다');return;}
-  const residentNo=formatResidentNoValue(document.getElementById('doc-resident-no')?.value||'');
+  const residentInput=document.getElementById('doc-resident-no');
+  let residentNo=formatResidentNoValue(residentInput?.value||'');
+  if(residentInput&&residentInput.dataset.userEdited!=='1'&&!docPayrollInfo(pid).residentNo&&residentNo){
+    residentNo='';
+    residentInput.value='';
+  }
   const residentDigits=residentNo.replace(/\D/g,'');
   if(residentNo&&residentDigits.length!==13){setDocPayInfoMsg('주민번호는 13자리로 입력해주세요.','error');ST('주민번호는 13자리로 입력해주세요');return;}
   const bankName=(document.getElementById('doc-bank-name')?.value||'').trim();
@@ -1179,11 +1263,13 @@ async function uploadPartDoc(pid,type,btn){
   if(!file){ST('파일을 선택해주세요');return;}
   if(DOC_UPLOADING[key]){ST('이미 저장 중입니다');return;}
   if(isDocPartUploading(pid)){ST('다른 서류 저장이 끝난 뒤 올려주세요');return;}
+  const payDraft=currentDocPayInfoForm();
   DOC_ACTIVE_PID=pid;
   DOC_UPLOADING[key]=true;
   DOC_UPLOAD_MSG[key]=`${info.label} 저장중...`;
   if(btn){btn.disabled=true;btn.textContent='저장중...';}
   renderDocsList(true);
+  restoreDocPayInfoForm(payDraft);
   SL(true);
   try{
     const payload=await makeDocPayload(file);
@@ -1207,10 +1293,15 @@ async function uploadPartDoc(pid,type,btn){
     DOC_UPLOAD_MSG[key]=`${info.label} 저장완료`;
     ST(`${p.name} ${info.label} 저장완료`);
     renderDocsList(true);
+    restoreDocPayInfoForm(payDraft);
     setTimeout(()=>{
       if(DOC_UPLOAD_MSG[key]===`${info.label} 저장완료`){
         delete DOC_UPLOAD_MSG[key];
-        if(document.getElementById('modal-part-docs')?.classList.contains('open'))renderDocsList(true);
+        if(document.getElementById('modal-part-docs')?.classList.contains('open')){
+          const laterDraft=currentDocPayInfoForm();
+          renderDocsList(true);
+          restoreDocPayInfoForm(laterDraft);
+        }
       }
     },2500);
   }catch(e){
@@ -1219,6 +1310,7 @@ async function uploadPartDoc(pid,type,btn){
     DOC_UPLOAD_MSG[key]=`${info.label} 저장실패`;
     ST('서류 업로드 실패: '+(e.message||e));
     renderDocsList(true);
+    restoreDocPayInfoForm(payDraft);
   }finally{
     SL(false);
   }
