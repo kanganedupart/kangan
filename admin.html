@@ -792,7 +792,7 @@ window.wageUnit=wageUnit;
 // 권한 체크 (관리자 또는 총무만 시급 보임)
 function canSeeWage(){return CU&&(CU.role==='관리자'||CU.role==='총무');}
 window.canSeeWage=canSeeWage;
-const DOC_TYPES={idCard:{short:'신',label:'신분증'},bank:{short:'통',label:'통장사본'}};
+const DOC_TYPES={idCard:{short:'신',label:'신분증'},bank:{short:'통',label:'통장사본'},crime:{short:'범',label:'범죄신고서'}};
 const DOC_INFO_KEY='_payrollInfo';
 let DOC_ACTIVE_PID=null,DOC_DEFAULT_FILTER='missing';
 let DOC_UPLOADING={},DOC_UPLOAD_MSG={};
@@ -832,7 +832,11 @@ function docStorageKeys(pid,p=AP?.[pid]){
 }
 function docData(pid,type){return docSource(pid,type).doc;}
 function hasPartDoc(pid,type){const d=docData(pid,type);return !!(d&&(d.url||d.path||d.dataUrl));}
-function hasAllPartDocs(pid){return hasPartDoc(pid,'idCard')&&hasPartDoc(pid,'bank');}
+function requiredDocTypes(pidOrPart){
+  const p=typeof pidOrPart==='string'?(AP?.[pidOrPart]||{}):(pidOrPart||{});
+  return p.cat==='mgmt'?['idCard','bank','crime']:['idCard','bank'];
+}
+function hasAllPartDocs(pid){return requiredDocTypes(pid).every(type=>hasPartDoc(pid,type));}
 function docPayrollInfo(pid){
   const p=AP?.[pid]||{};
   const key=docPersonKey(pid,p);
@@ -841,9 +845,12 @@ function docPayrollInfo(pid){
 function docStatusButton(pid){
   if(!pid)return '';
   const id=jsStr(pid);
-  const idMiss=!hasPartDoc(pid,'idCard');
-  const bankMiss=!hasPartDoc(pid,'bank');
-  return `<button type="button" class="doc-folder-btn" onclick="event.stopPropagation();openDocsManager('${id}')" title="서류함 열기" aria-label="서류함 열기"><span class="doc-mark${idMiss?' missing':''}">신</span><span class="doc-mark${bankMiss?' missing':''}">통</span></button>`;
+  const marks=requiredDocTypes(pid).map(type=>{
+    const info=DOC_TYPES[type];
+    const miss=!hasPartDoc(pid,type);
+    return `<span class="doc-mark${miss?' missing':''}">${info.short}</span>`;
+  }).join('');
+  return `<button type="button" class="doc-folder-btn" onclick="event.stopPropagation();openDocsManager('${id}')" title="서류함 열기" aria-label="서류함 열기">${marks}</button>`;
 }
 window.docStatusButton=docStatusButton;
 function listenPartDocs(){
@@ -869,9 +876,7 @@ function selectDocsPart(pid){
 }
 window.selectDocsPart=selectDocsPart;
 function docsStatusText(pid){
-  const miss=[];
-  if(!hasPartDoc(pid,'idCard'))miss.push('신분증');
-  if(!hasPartDoc(pid,'bank'))miss.push('통장사본');
+  const miss=requiredDocTypes(pid).filter(type=>!hasPartDoc(pid,type)).map(type=>DOC_TYPES[type].label);
   return miss.length?`미제출: ${miss.join(', ')}`:'제출 완료';
 }
 function docsListSubText(p){
@@ -970,8 +975,7 @@ function renderDocsDetail(pid){
       ${docStatusButton(pid)}
     </div>
     <div class="doc-panels">
-      ${renderDocPanel(pid,'idCard')}
-      ${renderDocPanel(pid,'bank')}
+      ${requiredDocTypes(pid).map(type=>renderDocPanel(pid,type)).join('')}
     </div>
     ${renderDocPayrollInfo(pid)}`;
 }
@@ -1233,7 +1237,7 @@ async function deletePartDoc(pid,type){
     removeKeys.forEach(k=>{
       if(PDS[k]){
         delete PDS[k][type];
-        if(!PDS[k].idCard&&!PDS[k].bank)delete PDS[k];
+        if(!PDS[k].idCard&&!PDS[k].bank&&!PDS[k].crime&&!PDS[k][DOC_INFO_KEY])delete PDS[k];
       }
     });
     ST(`${p.name} ${info.label} 삭제완료`);
