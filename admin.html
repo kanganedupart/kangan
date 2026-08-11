@@ -202,6 +202,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .doc-pay-cell{text-align:center;width:64px;}
 .doc-pay-info-grid{padding:12px;display:grid;grid-template-columns:1fr 1.2fr 1fr auto;gap:8px;align-items:end;}
 .doc-pay-info-resident{grid-column:1/-1;max-width:430px;}
+.doc-resident-input.masked{-webkit-text-security:disc;text-security:disc;}
 .doc-pay-info-msg{grid-column:1/-1;min-height:16px;font-size:11px;color:var(--text-muted);}
 .doc-pay-info-msg.error{color:var(--danger);font-weight:600;}
 .doc-pay-info-msg.ok{color:var(--success);font-weight:600;}
@@ -858,7 +859,7 @@ function listenPartDocs(){
     PDS=s.val()||{};
     if(typeof renderPT==='function')renderPT();
     if(PAY_DATA&&typeof renderPayroll==='function')renderPayroll();
-    if(document.getElementById('modal-part-docs')?.classList.contains('open'))renderDocsList();
+    if(document.getElementById('modal-part-docs')?.classList.contains('open'))renderDocsList(true);
   });
 }
 function openDocsManager(pid){
@@ -870,9 +871,7 @@ function openDocsManager(pid){
 window.openDocsManager=openDocsManager;
 function selectDocsPart(pid){
   DOC_ACTIVE_PID=pid;
-  renderDocsList();
-  const detail=document.querySelector('#modal-part-docs .doc-detail');
-  if(detail)detail.innerHTML=renderDocsDetail(pid);
+  renderDocsList(true);
 }
 window.selectDocsPart=selectDocsPart;
 function docsStatusText(pid){
@@ -915,7 +914,7 @@ function renderDocsManager(){
       <div class="doc-list"></div>
       <div class="doc-detail"></div>
     </div>`;
-  renderDocsList();
+  renderDocsList(true);
 }
 window.renderDocsManager=renderDocsManager;
 function filteredDocsParts(){
@@ -939,7 +938,7 @@ function filteredDocsParts(){
   if(!DOC_ACTIVE_PID||!AP[DOC_ACTIVE_PID]||(q&&!activeInSearch))DOC_ACTIVE_PID=ps[0]?.id||(DOC_FILTER_RESETTING?null:searched[0]?.id)||null;
   return ps;
 }
-function renderDocsList(){
+function renderDocsList(forceDetail=false){
   const list=document.querySelector('#modal-part-docs .doc-list');
   const detail=document.querySelector('#modal-part-docs .doc-detail');
   if(!list||!detail)return;
@@ -954,7 +953,11 @@ function renderDocsList(){
       ${docStatusButton(p.id)}
     </div>`).join(''):'<div class="doc-empty">조건에 맞는 직원 없음</div>';
   list.innerHTML=listHtml;
-  detail.innerHTML=DOC_ACTIVE_PID?renderDocsDetail(DOC_ACTIVE_PID):'<div class="doc-empty">직원을 선택하세요</div>';
+  const nextPid=DOC_ACTIVE_PID||'';
+  if(forceDetail||detail.dataset.pid!==String(nextPid)){
+    detail.innerHTML=DOC_ACTIVE_PID?renderDocsDetail(DOC_ACTIVE_PID):'<div class="doc-empty">직원을 선택하세요</div>';
+    detail.dataset.pid=String(nextPid);
+  }
 }
 function filterDocsList(resetActive=false){
   if(resetActive)DOC_ACTIVE_PID=null;
@@ -985,7 +988,7 @@ function renderDocPayrollInfo(pid){
   return `<div style="margin-top:12px;border:1px solid var(--border);border-radius:8px;background:#fbfcfd;overflow:hidden">
     <div style="padding:10px 12px;border-bottom:1px solid var(--border-light);font-size:13px;font-weight:700">급여 입금 정보</div>
     <div class="doc-pay-info-grid">
-      <div class="doc-pay-info-resident"><label class="form-label">주민번호</label><div style="display:flex;gap:6px"><input class="form-input" id="doc-resident-no" type="password" autocomplete="off" maxlength="14" value="${escAttr(formatResidentNoValue(info.residentNo||''))}" placeholder="예: 900101-1234567" oninput="formatDocResidentNo(this);setDocPayInfoMsg('')"><button type="button" class="icon-btn" onclick="toggleDocResidentNo(this)" style="flex:0 0 auto;margin:0;padding:0 9px">보기</button></div></div>
+      <div class="doc-pay-info-resident"><label class="form-label">주민번호</label><div style="display:flex;gap:6px"><input class="form-input doc-resident-input masked" id="doc-resident-no" type="text" name="kangan-resident-no-${escAttr(pid)}" autocomplete="one-time-code" inputmode="numeric" maxlength="14" value="${escAttr(formatResidentNoValue(info.residentNo||''))}" placeholder="예: 900101-1234567" oninput="formatDocResidentNo(this);setDocPayInfoMsg('')"><button type="button" class="icon-btn" onclick="toggleDocResidentNo(this)" style="flex:0 0 auto;margin:0;padding:0 9px">보기</button></div></div>
       <div><label class="form-label">은행명</label><input class="form-input" id="doc-bank-name" value="${escAttr(info.bankName||'')}" placeholder="예: 국민은행" oninput="setDocPayInfoMsg('')"></div>
       <div><label class="form-label">계좌번호</label><input class="form-input" id="doc-account-no" value="${escAttr(info.accountNo||'')}" placeholder="숫자/하이픈 가능" oninput="setDocPayInfoMsg('')"></div>
       <div><label class="form-label">예금주명</label><input class="form-input" id="doc-account-holder" value="${escAttr(info.accountHolder||'')}" placeholder="예: ${escAttr(AP[pid]?.name||'')}" oninput="setDocPayInfoMsg('')"></div>
@@ -1020,8 +1023,8 @@ window.formatDocResidentNo=formatDocResidentNo;
 function toggleDocResidentNo(btn){
   const inp=document.getElementById('doc-resident-no');
   if(!inp)return;
-  inp.type=inp.type==='password'?'text':'password';
-  if(btn)btn.textContent=inp.type==='password'?'보기':'숨김';
+  const masked=inp.classList.toggle('masked');
+  if(btn)btn.textContent=masked?'보기':'숨김';
 }
 window.toggleDocResidentNo=toggleDocResidentNo;
 async function saveDocPayrollInfo(pid){
@@ -1043,7 +1046,7 @@ async function saveDocPayrollInfo(pid){
     await Promise.all(keys.map(k=>set(ref(db,`partDocs/${k}/${DOC_INFO_KEY}`),info)));
     keys.forEach(k=>{if(!PDS[k])PDS[k]={};PDS[k][DOC_INFO_KEY]=info;});
     ST(`${p.name} 급여 입금 정보 저장완료`);
-    renderDocsList();
+    renderDocsList(false);
     setDocPayInfoMsg('저장완료','ok');
   }catch(e){
     console.error(e);
@@ -1180,7 +1183,7 @@ async function uploadPartDoc(pid,type,btn){
   DOC_UPLOADING[key]=true;
   DOC_UPLOAD_MSG[key]=`${info.label} 저장중...`;
   if(btn){btn.disabled=true;btn.textContent='저장중...';}
-  renderDocsList();
+  renderDocsList(true);
   SL(true);
   try{
     const payload=await makeDocPayload(file);
@@ -1203,11 +1206,11 @@ async function uploadPartDoc(pid,type,btn){
     delete DOC_UPLOADING[key];
     DOC_UPLOAD_MSG[key]=`${info.label} 저장완료`;
     ST(`${p.name} ${info.label} 저장완료`);
-    renderDocsList();
+    renderDocsList(true);
     setTimeout(()=>{
       if(DOC_UPLOAD_MSG[key]===`${info.label} 저장완료`){
         delete DOC_UPLOAD_MSG[key];
-        if(document.getElementById('modal-part-docs')?.classList.contains('open'))renderDocsList();
+        if(document.getElementById('modal-part-docs')?.classList.contains('open'))renderDocsList(true);
       }
     },2500);
   }catch(e){
@@ -1215,7 +1218,7 @@ async function uploadPartDoc(pid,type,btn){
     delete DOC_UPLOADING[key];
     DOC_UPLOAD_MSG[key]=`${info.label} 저장실패`;
     ST('서류 업로드 실패: '+(e.message||e));
-    renderDocsList();
+    renderDocsList(true);
   }finally{
     SL(false);
   }
@@ -1241,7 +1244,7 @@ async function deletePartDoc(pid,type){
       }
     });
     ST(`${p.name} ${info.label} 삭제완료`);
-    renderDocsList();
+    renderDocsList(true);
     if(PAY_DATA&&typeof renderPayroll==='function')renderPayroll();
   }catch(e){
     console.error(e);
