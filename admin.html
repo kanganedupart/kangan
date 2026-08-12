@@ -8786,6 +8786,29 @@ function isEducationTarget(p){
   return !!p&&(p.cat==='mgmt'||(p.cat==='tutor'&&String(p.tutorKind||'').includes('부담임')));
 }
 window.isEducationTarget=isEducationTarget;
+function educationPayFor(p,hours,wage){
+  const h=Math.max(0,Number(hours||0)||0),w=Math.max(0,Number(wage||0)||0);
+  if(!h)return 0;
+  if(p&&p.cat==='tutor'&&String(p.tutorKind||'').includes('부담임')){
+    const raw=22000*(h*60/70);
+    return Math.abs(raw-Math.round(raw))<0.05?Math.round(raw):Math.ceil(raw);
+  }
+  if(!w)return 0;
+  return Math.ceil(h*w);
+}
+window.educationPayFor=educationPayFor;
+function educationPayrollDetailNote(row){
+  if(!row||row.cat!=='tutor'||!String(row.tutorKind||'').includes('부담임'))return'';
+  return listVals(row.days).filter(d=>Number(d?.educationH||0)>0).map(d=>{
+    const hours=Math.round(Number(d.educationH||0)*100)/100;
+    const minutes=Math.round(hours*60);
+    const tValue=(minutes/70).toFixed(3).replace(/0+$/,'').replace(/\.$/,'');
+    const educationWage=22000;
+    const pay=Number(d.educationPay||educationPayFor(row,hours,educationWage))||0;
+    return `교육 ${formatEducationHours(hours)}h(${minutes}분) → ${tValue}T × ${educationWage.toLocaleString()}원 = ${pay.toLocaleString()}원`;
+  }).join('\n');
+}
+window.educationPayrollDetailNote=educationPayrollDetailNote;
 function educationEntries(p){
   return listVals(p?.educationDates).filter(e=>e&&e.date&&Number(e.hours)>0).sort(educationDateTimeCompare);
 }
@@ -9187,7 +9210,7 @@ calcPersonPayroll=function(pid,p,year,month,lastDay,attByDate){
     let educationH=0,educationPay=0,extraEducationPay=0,weekH=payH;
     if(eduHours>0){
       educationH=eduHours;
-      extraEducationPay=Math.ceil(educationH*effWage);
+      extraEducationPay=educationPayFor(pEff,educationH,effWage);
       educationPay=extraEducationPay;
     }
     days.push({dt,h:payH,rawH,weekH,educationH,educationPay,extraEducationPay,educationMode:eduMode,educationMemo:edu?.memo||'',attended,plnAbs:isPlnAbs,phrase:a.stdPhrase,wage:effWage,role:pEff.role,tutorKind:pEff.tutorKind,att:a,sched:{start:pEff.start,end:pEff.end,customBreak:pEff.customBreak,wage:effWage,role:pEff.role,tutorKind:pEff.tutorKind,fromReplace:!!ds.fromReplace,fromPerm:!!ds.fromPerm,fromPeriod:!!ds.fromPeriod,_isTemp:!!ds._isTemp}});
@@ -9632,6 +9655,7 @@ _xlBuildDetail=function(wb,ym,year,month,rows){
       const noteParts=[];
       if(row._mergedNote)noteParts.push(`여러 직무 합산: ${row._mergedNote}`);
       if((row.totalEducationH||0)>0)noteParts.push(`교육시수 ${row.totalEducationH}h`);
+      const educationCalcNote=educationPayrollDetailNote(row);if(educationCalcNote)noteParts.push(educationCalcNote);
       (row.changeNotes||[]).forEach(x=>noteParts.push(x));
       const noteText=noteParts.join('\n');
       const monthHForDisp=row.monthHDisp!==undefined?row.monthHDisp:row.monthH;
@@ -9699,7 +9723,7 @@ _xlBuildDailyHours=function(wb,ym,year,month,lastDay,rows){
     grp.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
     grp.forEach(row=>{
       ws.getCell(r,1).value=catLbl[cat];ws.getCell(r,2).value=row.role;ws.getCell(r,3).value=payrollExportName(row)+(row.tutorKind?` (${row.tutorKind})`:'');
-      const note=[];if(row._mergedNote)note.push('여러 직무 합산');if((row.totalEducationH||0)>0)note.push(`교육 ${row.totalEducationH}h`);(row.changeNotes||[]).forEach(x=>note.push(x));if(isEducationTarget(AP[row.pid]||row)&&String(row.joinDate||'').startsWith(ym)&&!row.hasPriorWorkBeforeJoin&&!(row.totalEducationH>0))note.push('신규 교육시수 확인 필요');ws.getCell(r,4).value=note.join('\n');
+      const note=[];if(row._mergedNote)note.push('여러 직무 합산');if((row.totalEducationH||0)>0)note.push(`교육 ${row.totalEducationH}h`);const educationCalcNote=educationPayrollDetailNote(row);if(educationCalcNote)note.push(educationCalcNote);(row.changeNotes||[]).forEach(x=>note.push(x));if(isEducationTarget(AP[row.pid]||row)&&String(row.joinDate||'').startsWith(ym)&&!row.hasPriorWorkBeforeJoin&&!(row.totalEducationH>0))note.push('신규 교육시수 확인 필요');ws.getCell(r,4).value=note.join('\n');
       _xlT(ws.getCell(r,1),{size:10,align:'center'});_xlT(ws.getCell(r,2),{size:10,align:'center'});_xlT(ws.getCell(r,3),{size:10,align:'left',indent:1});_xlT(ws.getCell(r,4),{size:10,align:'center',wrap:true,color:note.length?_XL_T.weekText:_XL_T.textMuted,bg:note.length?_XL_T.weekBg:undefined});
       row.days.forEach(d=>{const day=parseInt(d.dt.slice(8,10));const c=ws.getCell(r,dayToCol[day]);const dt=new Date(d.dt+'T00:00:00+09:00');const isHol=isHoliday(d.dt),isSun=dt.getDay()===0,isSat=dt.getDay()===6;let bg=undefined;if(isHol||isSun)bg=_XL_T.holidayBg;else if(isSat)bg=_XL_T.weekBg;if(d.h>0){c.value=payrollDayDisplayValue(row,d);_xlT(c,{size:10,align:'center',numFmt:'0.##',bg});}else if(d.phrase==='결근'){c.value='결';_xlT(c,{bold:true,size:10,align:'center',color:_XL_T.absentText,bg:_XL_T.absentBg});}else if(d.plnAbs){c.value=d.dt<kstDate()?'결':'예';_xlT(c,{bold:true,size:10,align:'center',color:_XL_T.absentText,bg:_XL_T.absentBg});}else if(d.phrase==='연차'){c.value='연';_xlT(c,{bold:true,size:10,align:'center',color:_XL_T.bonusText,bg:_XL_T.bonusBg});}else if(d.phrase==='반차'){c.value='반';_xlT(c,{bold:true,size:10,align:'center',color:_XL_T.bonusText,bg:_XL_T.bonusBg});}else{_xlT(c,{size:10,align:'center',bg});}const memo=[];const a=d.att||{};if(a.stdPhrase)memo.push(`처리: ${a.stdPhrase}`);if(a.memoText)memo.push(`처리메모: ${a.memoText}`);listVals(a.notes).forEach(n=>memo.push(`일반메모: ${typeof n==='string'?n:(n.text||n.memo||'')}`));listVals(a.history).forEach(h=>{const t=h.memo||h.text||'';if(t)memo.push(`이력: ${t}`);});if(d.educationH)memo.push(`교육: ${d.educationH}h${d.educationMemo?' / '+d.educationMemo:''}`);const uniq=[...new Set(memo.filter(Boolean))];const vice=row.cat==='tutor'&&String(row.tutorKind||'').includes('부담임'),nonSix=payrollDayDisplayValue(row,d)!==6,marked=d.h>0||d.phrase==='결근'||d.plnAbs||d.phrase==='연차'||d.phrase==='반차';if(vice&&marked&&nonSix){_xlT(c,{bold:true,size:10,align:'center',numFmt:'0.##',bg:_XL_T.bonusBg,color:_XL_T.bonusText});if(uniq.length)c.note=uniq.join('\n');}});
       weekBonusCols.forEach(wc=>{const c=ws.getCell(r,wc.col);const w=(row.weeks||[]).find(x=>x.start===wc.weekStart);c.value=row.isT?'':(w&&w.bonusH?Math.round(w.bonusH*100)/100:0);_xlT(c,{bold:true,size:10,bg:_XL_T.weekBg,color:_XL_T.weekText,align:'right',numFmt:'0.##'});});
