@@ -171,9 +171,11 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 .doc-mark.missing{background:#fff9f9;border-color:#fecaca;color:#ef8d8d;}
 .doc-folder-btn:hover .doc-mark{border-color:var(--accent);color:var(--accent);}
 .doc-folder-btn:hover .doc-mark.missing{border-color:#fca5a5;color:#dc6b6b;}
-#modal-part-docs .modal{width:min(920px,calc(100vw - 40px));height:min(75vh,720px);max-height:75vh;display:flex;flex-direction:column;}
+#modal-part-docs .modal{width:min(920px,calc(100vw - 40px));height:min(75vh,720px);max-height:75vh;display:flex;flex-direction:column;overflow:hidden;}
 #modal-part-docs .modal-header{flex:0 0 auto;}
-#modal-part-docs-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto!important;}
+body.docs-modal-open{overflow:hidden!important;}
+#modal-part-docs.open{overscroll-behavior:contain;}
+#modal-part-docs-body{flex:1;min-height:0;display:flex;flex-direction:column;overflow-y:auto!important;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;}
 .doc-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:14px;align-items:start;}
 .doc-toolbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
 .doc-layout{flex:1;min-height:0;align-items:stretch;}
@@ -653,7 +655,7 @@ body{font-family:'Noto Sans KR',sans-serif;background:var(--bg);color:var(--text
 <div class="modal-overlay" id="modal-workman-edit"><div class="modal" onclick="event.stopPropagation()" style="max-width:480px"><div class="modal-header"><div class="modal-title" id="modal-workman-title">수정</div><button class="modal-close" onclick="CM('modal-workman-edit')">✕</button></div><div id="modal-workman-body"></div></div></div>
 <div class="modal-overlay" id="modal-account"><div class="modal" onclick="event.stopPropagation()" style="max-width:400px"><div class="modal-header"><div class="modal-title">계정 추가</div><button class="modal-close" onclick="CM('modal-account')">✕</button></div><div id="modal-account-body"></div></div></div>
 <div class="modal-overlay" id="modal-payslip"><div class="modal" onclick="event.stopPropagation()" style="max-width:780px"><div class="modal-header"><div class="modal-title" id="modal-payslip-title">급여 명세서</div><button class="modal-close" onclick="CM('modal-payslip')">✕</button></div><div id="modal-payslip-body" style="max-height:75vh;overflow-y:auto"></div></div></div>
-<div class="modal-overlay" id="modal-part-docs"><div class="modal" onclick="event.stopPropagation()" style="max-width:920px"><div class="modal-header"><div class="modal-title" id="modal-part-docs-title">서류 관리</div><button class="modal-close" onclick="CM('modal-part-docs')">✕</button></div><div id="modal-part-docs-body" style="max-height:75vh;overflow-y:auto"></div></div></div>
+<div class="modal-overlay" id="modal-part-docs"><div class="modal" onclick="event.stopPropagation()" style="max-width:920px"><div class="modal-header"><div class="modal-title" id="modal-part-docs-title">서류 관리</div><button class="modal-close" onclick="closeDocsManager()">✕</button></div><div id="modal-part-docs-body" style="max-height:75vh;overflow-y:auto"></div></div></div>
 <div class="doc-viewer" id="doc-viewer" onclick="closeDocViewer()"><div class="doc-viewer-box" onclick="event.stopPropagation()"><div class="doc-viewer-head"><div class="doc-viewer-title" id="doc-viewer-title">서류 보기</div><button class="modal-close" onclick="closeDocViewer()">✕</button></div><div class="doc-viewer-body" id="doc-viewer-body"></div></div></div>
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -845,7 +847,7 @@ function docData(pid,type){return docSource(pid,type).doc;}
 function hasPartDoc(pid,type){const d=docData(pid,type);return !!(d&&(d.url||d.path||d.dataUrl));}
 function requiredDocTypes(pidOrPart){
   const p=typeof pidOrPart==='string'?(AP?.[pidOrPart]||{}):(pidOrPart||{});
-  return p.cat==='mgmt'?['idCard','bank','crime']:['idCard','bank'];
+  return (p.cat==='mgmt'||p.cat==='etc')?['idCard','bank','crime']:['idCard','bank'];
 }
 function hasAllPartDocs(pid){return requiredDocTypes(pid).every(type=>hasPartDoc(pid,type));}
 function docPayrollInfo(pid){
@@ -881,8 +883,14 @@ function openDocsManager(pid){
   else{DOC_ACTIVE_PID=null;DOC_DEFAULT_FILTER='missing';}
   renderDocsManager();
   OM('modal-part-docs');
+  document.body.classList.add('docs-modal-open');
 }
 window.openDocsManager=openDocsManager;
+function closeDocsManager(){
+  CM('modal-part-docs');
+  document.body.classList.remove('docs-modal-open');
+}
+window.closeDocsManager=closeDocsManager;
 function selectDocsPart(pid){
   DOC_ACTIVE_PID=pid;
   const p=AP?.[pid];
@@ -950,8 +958,7 @@ function filteredDocsParts(){
   ps=uniqueDocsParts(searched);
   if(filter==='missing')ps=ps.filter(p=>!hasAllPartDocs(p.id));
   else if(filter==='done')ps=ps.filter(p=>hasAllPartDocs(p.id));
-  const activeInFiltered=ps.some(p=>p.id===DOC_ACTIVE_PID);
-  if(!DOC_ACTIVE_PID||!AP[DOC_ACTIVE_PID]||!activeInFiltered)DOC_ACTIVE_PID=null;
+  if(!DOC_ACTIVE_PID||!AP[DOC_ACTIVE_PID])DOC_ACTIVE_PID=null;
   return ps;
 }
 function renderDocsList(forceDetail=false){
