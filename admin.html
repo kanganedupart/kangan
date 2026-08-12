@@ -295,6 +295,8 @@ body.docs-modal-open{overflow:hidden!important;}
 .rc-cat-row.rc-cat-mgmt td{background:linear-gradient(90deg,#eff6ff,#f8fafc);color:#1e40af;border-color:#bfdbfe}
 .rc-cat-row.rc-cat-tutor td{background:linear-gradient(90deg,#f5f3ff,#f8fafc);color:#7c3aed;border-color:#ddd6fe}
 .rc-cat-row.rc-cat-etc td{background:linear-gradient(90deg,#f0fdf4,#f8fafc);color:#15803d;border-color:#86efac}
+/* 숫자 0에 빗금이 생기는 모노 글꼴 사용 금지 */
+#app,#app *,#modal-education,#modal-education *{font-family:'Noto Sans KR','Malgun Gothic',Arial,sans-serif!important;font-variant-numeric:normal!important;font-feature-settings:'zero' 0!important}
 @media(max-width:640px){
   .main{padding:10px;}
   .lc{width:92%;padding:28px 16px;}
@@ -459,6 +461,7 @@ body.docs-modal-open{overflow:hidden!important;}
         <div style="display:flex;gap:8px">
           <button class="btn-secondary parts-export-mobile-hide" onclick="exportPartsCSV()">📤 엑셀 다운로드</button>
           <button class="part-doc-btn" onclick="openDocsManager()">서류</button>
+          <button class="part-doc-btn" onclick="openEducationManager()">교육</button>
           <button class="btn-primary" id="btn-add-part" onclick="openAP()">+ 파트 등록</button>
         </div>
       </div>
@@ -539,7 +542,7 @@ body.docs-modal-open{overflow:hidden!important;}
           <div>
             <div style="font-size:13px;color:var(--text-secondary);font-weight:600;margin-bottom:4px">급여 정산</div>
             <div style="font-size:21px;font-weight:700">월별 급여와 주휴수당 계산</div>
-            <div style="font-size:12px;color:var(--text-muted);margin-top:6px">급여시수 기준 급여 반영 · 일~토 주 단위 · 주 15h 이상 및 월 60h 이상 지급 룰 적용</div>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:6px">급여시수 기준 · 일~토 주 단위 · 월 60h 이상은 근무 주 전체, 60h 미만은 주 15h 이상 지급</div>
           </div>
           <div style="text-align:right">
             <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px">정산 월</div>
@@ -656,6 +659,7 @@ body.docs-modal-open{overflow:hidden!important;}
 <div class="modal-overlay" id="modal-account"><div class="modal" onclick="event.stopPropagation()" style="max-width:400px"><div class="modal-header"><div class="modal-title">계정 추가</div><button class="modal-close" onclick="CM('modal-account')">✕</button></div><div id="modal-account-body"></div></div></div>
 <div class="modal-overlay" id="modal-payslip"><div class="modal" onclick="event.stopPropagation()" style="max-width:780px"><div class="modal-header"><div class="modal-title" id="modal-payslip-title">급여 명세서</div><button class="modal-close" onclick="CM('modal-payslip')">✕</button></div><div id="modal-payslip-body" style="max-height:75vh;overflow-y:auto"></div></div></div>
 <div class="modal-overlay" id="modal-part-docs"><div class="modal" onclick="event.stopPropagation()" style="max-width:920px"><div class="modal-header"><div class="modal-title" id="modal-part-docs-title">서류 관리</div><button class="modal-close" onclick="closeDocsManager()">✕</button></div><div id="modal-part-docs-body" style="max-height:75vh;overflow-y:auto"></div></div></div>
+<div class="modal-overlay" id="modal-education"><div class="modal" onclick="event.stopPropagation()" style="max-width:920px"><div class="modal-header"><div class="modal-title">교육시수 관리</div><button class="modal-close" onclick="CM('modal-education')">✕</button></div><div id="modal-education-body" style="max-height:75vh;overflow-y:auto"></div></div></div>
 <div class="doc-viewer" id="doc-viewer" onclick="closeDocViewer()"><div class="doc-viewer-box" onclick="event.stopPropagation()"><div class="doc-viewer-head"><div class="doc-viewer-title" id="doc-viewer-title">서류 보기</div><button class="modal-close" onclick="closeDocViewer()">✕</button></div><div class="doc-viewer-body" id="doc-viewer-body"></div></div></div>
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -706,31 +710,18 @@ window.joinLeaveBadge=joinLeaveBadge;
 function wageAt(p,date){
   if(!p)return 0;
   const d=date||kstDate();
-  const today=kstDate();
   if(p.permChanges&&p.permChanges.length){
-    // 오늘 이후 시작 + d 날짜 이전/같은 영구변경만 우선 (미래 변경 적용)
-    // 과거 영구변경은 안녕님 정책에 따라 무시 (직접 시급이 우선)
-    const futureWPerms=p.permChanges.filter(pc=>
-      pc.startDate<=d&&pc.startDate>=today&&
-      pc.wage!==undefined&&pc.wage!==null
+    // 정산월을 다시 내려받아도 변경 시작일 기준 시급 이력을 그대로 적용한다.
+    // 하루 변경은 그 날짜에만, 일반 영구변경은 시작일 이후에 적용한다.
+    const applicable=p.permChanges.filter(pc=>
+      pc.startDate<=d&&(!isOneDayPermChange(pc)||pc.startDate===d)&&
+      pc.wage!==undefined&&pc.wage!==null&&Number(pc.wage)>0
     ).sort((a,b)=>{
       const c=b.startDate.localeCompare(a.startDate);
       if(c!==0)return c;
       return(b.at||'').localeCompare(a.at||'');
     });
-    if(futureWPerms.length)return futureWPerms[0].wage||0;
-  }
-  // 데이터 보호: p.wage가 유실/0원인 경우, 이미 저장된 영구변경 시급 중 해당 날짜의 최신 값을 사용.
-  // 정상 데이터(p.wage > 0)는 기존 정책대로 직접 시급이 우선이다.
-  if((!p.wage||Number(p.wage)<=0)&&p.permChanges&&p.permChanges.length){
-    const pastWPerms=p.permChanges.filter(pc=>
-      pc.startDate<=d&&pc.wage!==undefined&&pc.wage!==null&&Number(pc.wage)>0
-    ).sort((a,b)=>{
-      const c=b.startDate.localeCompare(a.startDate);
-      if(c!==0)return c;
-      return(b.at||'').localeCompare(a.at||'');
-    });
-    if(pastWPerms.length)return pastWPerms[0].wage||0;
+    if(applicable.length)return Number(applicable[0].wage)||0;
   }
   return p.wage||0;
 }
@@ -1445,7 +1436,7 @@ function makeDraggable(overlayId){
   });
   observer.observe(overlay,{attributes:true,attributeFilter:['class']});
 }
-['modal-staff','modal-stats','modal-part','modal-workman-edit','modal-account','modal-part-docs'].forEach(makeDraggable);
+['modal-staff','modal-stats','modal-part','modal-workman-edit','modal-account','modal-part-docs','modal-education'].forEach(makeDraggable);
 
 // ⭐ v10.8.5: 자동 휴게 정책 (안녕님 결정)
 // - customBreak가 자동 휴게(법정 기준)보다 작으면 자동 휴게 적용
@@ -1509,11 +1500,21 @@ function effectivePartOn(pid,dt){
   const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dt);
   return{...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds)};
 }
+function hasNormalAdjustedWindow(p,a){
+  if(!p||!a||a.stdPhrase!=='정상')return false;
+  return !!((a.adjustedStart&&a.adjustedStart!==p.start)||(a.adjustedEnd&&a.adjustedEnd!==p.end));
+}
 function calcAttendanceWindow(p,a){
   if(!p||!a||(!a.inTime&&!a.adjustedStart))return null;
   const ph=a.stdPhrase||'';
   if(ph==='결근')return{startT:null,endT:null,totalM:0};
-  if(ph==='정상')return{startT:p.start,endT:p.end,totalM:timeSpanM(p.start,p.end)};
+  if(ph==='정상'){
+    if(!hasNormalAdjustedWindow(p,a))return{startT:p.start,endT:p.end,totalM:timeSpanM(p.start,p.end)};
+    const startT=a.adjustedStart||p.start;
+    const adjustedEnd=a.adjustedEnd||p.end;
+    const endT=timeMFromStart(p.start,adjustedEnd)>timeMFromStart(p.start,p.end)?p.end:adjustedEnd;
+    return{startT,endT,totalM:timeSpanM(startT,endT)};
+  }
   const effOut=a.adjustedEnd||a.outTime;
   if(!effOut)return null;
   const inSrc=a.adjustedStart||a.inTime||p.start;
@@ -1531,7 +1532,7 @@ function calcAttendanceWindow(p,a){
 function settleActualBreak(p,a,breakRaw){
   if(!a)return null;
   const ph=a.stdPhrase||'';
-  if(ph==='조기퇴근'||ph==='지각'){
+  if(ph==='조기퇴근'||ph==='지각'||hasNormalAdjustedWindow(p,a)){
     const w=calcAttendanceWindow(p,a);
     if(w&&w.totalM>0){
       const autoB=_autoBreakMin(w.totalM);
@@ -1673,7 +1674,16 @@ function calcRealH(p,a){
   if(!a||(!a.inTime&&!a.adjustedStart))return null; // 출근 기록 전혀 없으면 계산 불가
   const ph=a.stdPhrase||'';
   if(ph==='결근')return 0;
-  if(ph==='정상')return schedH(p,null);
+  if(ph==='정상'){
+    if(!hasNormalAdjustedWindow(p,a))return schedH(p,null);
+    const startT=a.adjustedStart||p.start;
+    const adjustedEnd=a.adjustedEnd||p.end;
+    const endT=timeMFromStart(p.start,adjustedEnd)>timeMFromStart(p.start,p.end)?p.end:adjustedEnd;
+    const totalM=timeSpanM(startT,endT);
+    if(totalM<=0)return 0;
+    const bm=realBreakMin(p,a,startT,endT);
+    return Math.max(0,Math.round((totalM-bm)/60*1000)/1000);
+  }
   // 퇴근 시각: outTime 또는 adjustedEnd 중 하나라도 있어야 계산
   const effOut=a.adjustedEnd||a.outTime;
   if(!effOut)return null;
@@ -1935,7 +1945,7 @@ function getDayTime(p,dayOfWeek,date){
   if(p.scheduleReplaces&&p.scheduleReplaces.length){
     const matched=latestByStartAndAt(p.scheduleReplaces.filter(r=>today>=r.startDate&&today<=r.endDate));
     if(matched){
-      if((matched.days||[]).includes(dayOfWeek))return{start:matched.start,end:matched.end,customBreak:matched.customBreak,fromReplace:true};
+      if((matched.days||[]).includes(dayOfWeek))return{start:matched.start,end:matched.end,customBreak:matched.customBreak,wage:matched.wage,role:matched.role,tutorKind:matched.tutorKind,fromReplace:true};
       return{start:null,end:null,replaced:true};
     }
   }
@@ -3181,6 +3191,8 @@ function plannedPhraseBadge(a){
   }
   return '';
 }
+function normalizedAttendancePhrase(p,a){if(!a)return'';const ph=a.stdPhrase||'';if(ph==='지각'&&p&&p.start){const effIn=a.adjustedStart||a.inTime;if(effIn&&toM(effIn)<=toM(p.start))return a.inTime?'정상':'';}return ph;}
+window.normalizedAttendancePhrase=normalizedAttendancePhrase;
 window.scheduleCell=scheduleCell;
 window.attendTimeCell=attendTimeCell;
 window.plannedPhraseBadge=plannedPhraseBadge;
@@ -3268,7 +3280,7 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   const rh=a.inTime?calcRealH(p,a):(isPlnAbs?0:null);
   const col=cof(p.role);const hp=!!a.inTime;
   // 미처리 판정
-  const isReservationOnly=a.stdPhrase==='추가근무'&&!a.outTime;
+  const ph=normalizedAttendancePhrase(p,a);const isReservationOnly=ph==='추가근무'&&!a.outTime;
   const isToday2=dt===kstDate();
   const isPast=dt<kstDate();
   // 출근 시간 지났는지 (유예 없음, 즉시 미처리)
@@ -3280,8 +3292,8 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   // 자동 감지: 10분 초과 조기퇴근 (퇴근이 스케줄보다 10분 이상 빠름)
   const autoEarly=a.outTime&&(earlyM(p.start,p.end,a.outTime)>10);
   // 예정(adjustedStart/End)보다 더 벗어난 경우 미처리
-  const lateThanReserved=a.stdPhrase==='지각'&&a.adjustedStart&&a.inTime&&toM(a.inTime)>toM(a.adjustedStart)+10;
-  const earlyThanReserved=a.stdPhrase==='조기퇴근'&&a.adjustedEnd&&a.outTime&&timeMFromStart(p.start,a.outTime)<timeMFromStart(p.start,a.adjustedEnd)-10;
+  const lateThanReserved=ph==='지각'&&a.adjustedStart&&a.inTime&&toM(a.inTime)>toM(a.adjustedStart)+10;
+  const earlyThanReserved=ph==='조기퇴근'&&a.adjustedEnd&&a.outTime&&timeMFromStart(p.start,a.outTime)<timeMFromStart(p.start,a.adjustedEnd)-10;
   // 미처리 조건
   let unproc=false;
   if(!isPlnAbs&&(!a.stdPhrase||isReservationOnly)){
@@ -3323,8 +3335,8 @@ const rows=sorted.map(({dt,p,a,alertHtml,unscheduled})=>{
   else if(lateThanReserved)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">예정초과 지각</span>';
   else if(earlyThanReserved)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:8px;margin-left:3px">예정초과 조기</span>';
   else if(plannedPhraseBadge(a))procBadge=plannedPhraseBadge(a);
-  else if(a.stdPhrase==='정상')procBadge=`<span style="color:#047857;font-size:11px;font-weight:600;background:#d1fae5;padding:2px 7px;border-radius:10px">정상</span>`;
-  else if(a.stdPhrase)procBadge=`<span class="sbadge s-active" style="font-size:10px">${phraseLabel(a.stdPhrase)}</span>`;
+  else if(ph==='정상')procBadge=`<span style="color:#047857;font-size:11px;font-weight:600;background:#d1fae5;padding:2px 7px;border-radius:10px">정상</span>`;
+  else if(ph)procBadge=`<span class="sbadge s-active" style="font-size:10px">${phraseLabel(ph)}</span>`;
   else if(unproc&&autoLate&&autoEarly)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">지각+조기</span>';
   else if(unproc&&autoLate)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:var(--warning);background:var(--warning-light);padding:1px 5px;border-radius:8px;margin-left:3px">지각</span>';
   else if(unproc&&autoEarly)procBadge='<span style="color:var(--danger);font-size:11px;font-weight:600">미처리</span> <span style="font-size:9px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:8px;margin-left:3px">조기퇴근</span>';
@@ -5342,7 +5354,7 @@ async function waQuickAdjTime(dk,mode,schedStart,schedEnd){
   const newT=await timePromptModal(title,null,defaultT,{singleTime:true,label,msg});
   if(!newT)return;
   // 검증
-  if(mode==='end-late'&&toM(newT)<=toM(schedEnd)){ST('기존 퇴근 시각보다 늦어야 합니다');return;}
+  if(mode==='end-late'&&timeMFromStart(schedEnd,newT)<=toM(schedEnd)){ST('기존 퇴근 시각보다 늦어야 합니다');return;}
   if(mode==='start-early'&&toM(newT)>=toM(schedStart)){ST('기존 출근 시각보다 일러야 합니다');return;}
   if(mode==='end-early'&&(toM(newT)>=toM(schedEnd)||toM(newT)<=toM(schedStart))){ST('퇴근 시각이 올바르지 않습니다');return;}
   if(mode==='start-late'&&(toM(newT)<=toM(schedStart)||toM(newT)>=toM(schedEnd))){ST('출근 시각이 올바르지 않습니다');return;}
@@ -5587,7 +5599,8 @@ ${p&&p.cat==='tutor'&&p.tutorKind==='부담임'?`<div style="background:#f0f9ff;
 <div style="display:flex;gap:6px;margin-bottom:10px"><div class="form-group" style="flex:1"><label class="form-label">시작일</label><input type="date" class="form-input" id="wa-start" value="${today}" onchange="waAutoDays()"></div><div class="form-group" style="flex:1"><label class="form-label">종료일</label><input type="date" class="form-input" id="wa-end" value="${today}" onchange="waAutoDays()"></div></div>
 <div class="form-group"><label class="form-label">기간 내 근무 요일</label><div class="day-btns" id="wa-days">${DAYS.map(d=>`<button type="button" class="day-btn" onclick="this.classList.toggle('selected')">${d}</button>`).join('')}</div></div>
 <div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">출근</label>${mkTimeSelect('wa-s-time','09:00','width:100%')}</div><div class="form-group" style="flex:1"><label class="form-label">퇴근</label>${mkTimeSelect('wa-e-time','18:00','width:100%')}</div></div>
-<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">휴게시간(분) <span id="wa-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">${autoBreakLabelFromTimes('09:00','18:00')}</span> <span style="font-size:10px;color:var(--text-muted)">— 비워두면 적용</span></label><input class="form-input" id="wa-brk" type="number" min="0" max="240" placeholder="${autoBreakLabelFromTimes('09:00','18:00')} — 비워두면 적용"></div>`;
+<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">휴게시간(분) <span id="wa-brk-auto" style="font-size:10px;color:#1d4ed8;background:#eff6ff;padding:1px 7px;border-radius:10px;border:1px solid #bfdbfe;font-weight:600">${autoBreakLabelFromTimes('09:00','18:00')}</span> <span style="font-size:10px;color:var(--text-muted)">— 비워두면 적용</span></label><input class="form-input" id="wa-brk" type="number" min="0" max="240" placeholder="${autoBreakLabelFromTimes('09:00','18:00')} — 비워두면 적용"></div>
+<div style="display:flex;gap:10px"><div class="form-group" style="flex:1"><label class="form-label">해당 기간 직무 <span style="font-size:10px;color:var(--text-muted)">— 다를 때만</span></label><input class="form-input" id="wa-role" placeholder="현재 ${escAttr(p.role||'')}" value=""></div>${canSeeWage()?`<div class="form-group" style="flex:1"><label class="form-label">해당 기간 시급 <span style="font-size:10px;color:var(--text-muted)">— 다를 때만</span></label><input class="form-input" id="wa-replace-wage" type="number" min="0" step="0.01" placeholder="현재 ${wageAt(p,today)||''}"></div>`:''}</div>`;
   }else if(type==='absent'){
     body=`<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px">💡 하루 또는 연속 날짜 결근을 사전 등록합니다.</div>
 <div style="display:flex;gap:6px;margin-bottom:10px"><div class="form-group" style="flex:1"><label class="form-label">시작일</label><input type="date" class="form-input" id="wa-start" value="${today}"></div><div class="form-group" style="flex:1"><label class="form-label">종료일</label><input type="date" class="form-input" id="wa-end" value="${today}"></div></div>
@@ -5797,6 +5810,8 @@ async function waSave(pid,type){
       const bN=parseInt(repBrk,10);
       if(!isNaN(bN)&&bN>=0)newEvent.customBreak=bN;
     }
+    const repRole=document.getElementById('wa-role')?.value?.trim();if(repRole)newEvent.role=repRole;
+    const repWage=document.getElementById('wa-replace-wage')?.value;if(repWage!==''&&repWage!==undefined){const n=Number(repWage);if(!Number.isFinite(n)||n<0){ST('시급은 0 이상이어야 합니다');return;}newEvent.wage=Math.round(n*100)/100;}
     newEvent.by=CU.name;newEvent.at=`${kstLabel()} ${kstNow()}`;
   }else if(type==='absent'){
     const end=document.getElementById('wa-end')?.value;
@@ -6485,6 +6500,10 @@ function initPayroll(){
 }
 window.initPayroll=initPayroll;
 
+function payrollEducationPersonKey(p){const name=String(p?.name||'').trim(),pin=String(p?.pin||'').trim();return name&&pin?`${name}|${pin}`:'';}
+function payrollActualAttendance(a){return !!a&&(((a.inTime||a.adjustedStart)&&(a.outTime||a.adjustedEnd))||['추가근무','지각','조기퇴근'].includes(a.stdPhrase));}
+async function payrollPriorWorkMap(keys){const out=new Map();if(!keys.size)return out;try{const sn=await get(ref(db,'attendance'));Object.entries(sn.val()||{}).forEach(([dt,day])=>Object.entries(day||{}).forEach(([pid,a])=>{if(!payrollActualAttendance(a))return;const key=payrollEducationPersonKey(AP[pid]);if(!key||!keys.has(key))return;if(!out.has(key))out.set(key,[]);out.get(key).push(dt);}));}catch(e){console.warn('과거 근무기록 확인 실패:',e);}return out;}
+
 async function loadPayroll(){
   const ym=document.getElementById('pay-month').value;
   if(!ym){ST('정산 월을 선택해주세요');return;}
@@ -6530,7 +6549,10 @@ async function loadPayroll(){
   }
   await Promise.all(fetchPromises);
   // 사람별 정산 계산
+  const candidateKeys=new Set(parts.map(([,p])=>isEducationTarget(p)&&String(p.joinDate||'').startsWith(ym)?payrollEducationPersonKey(p):'').filter(Boolean));
+  const priorWorkMap=await payrollPriorWorkMap(candidateKeys);
   const result=parts.map(([pid,p])=>calcPersonPayroll(pid,p,y,m,lastDay,attByDate)).filter(Boolean);
+  result.forEach(r=>{const key=payrollEducationPersonKey(AP[r.pid]||r);r.hasPriorWorkBeforeJoin=!!(key&&r.joinDate&&(priorWorkMap.get(key)||[]).some(dt=>dt<r.joinDate));});
   PAY_DATA={ym,year:y,month:m,lastDay,rows:result,monthStart,monthEnd};
   SL(false);
   renderPayroll();
@@ -7262,7 +7284,8 @@ function wageAtBefore(p,date){
   if(!p)return 0;
   const wPerms=(p.permChanges||[]).filter(pc=>pc.startDate<date&&pc.wage!==undefined&&pc.wage!==null&&Number(pc.wage)>0).sort((a,b)=>b.startDate.localeCompare(a.startDate));
   if(wPerms.length)return wPerms[0].wage||0;
-  return wageAt(p,date)||0;
+  // 첫 시급변경 직전 값은 파트의 기준 시급이다. 변경일 값을 다시 읽으면 변경 전/후가 같아지는 오류가 난다.
+  return Number(p.wage||0);
 }
 
 // 이번달 이슈 섹션 — 종류별 묶음, 금액 영향 표시
@@ -7914,7 +7937,7 @@ function renderPayDetail(r){
     const bonusCell=r.isT?'<span style="color:var(--text-muted)">-</span>':`${w.bonusH||'-'}${w.bonusH?'h':''}`;
     return`<tr><td style="padding:6px 10px;font-family:'DM Mono',monospace;font-size:11px;color:var(--text-secondary);text-align:left">${lbl}</td><td style="padding:6px 10px;font-family:'DM Mono',monospace;text-align:right;white-space:nowrap"><span>${timeDisp}</span>${badge}</td><td style="padding:6px 10px;font-family:'DM Mono',monospace;text-align:right;color:${w.bonusH&&!r.isT?'#0369a1':'var(--text-muted)'};font-weight:600">${bonusCell}</td></tr>`;
   }).join('');
-  const monthlyNote=r.isT||r.meetMonthly?'':`<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:8px 12px;font-size:11px;color:#991b1b;margin-bottom:10px"><b>⚠ 월 60시간 미달</b> (현재 ${(Math.round((r.monthH||0)*10)/10)}h) — 주휴수당 미지급</div>`;
+  const monthlyNote=r.isT||r.meetMonthly?'':`<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px;font-size:11px;color:#92400e;margin-bottom:10px"><b>월 60시간 미만</b> (현재 ${(Math.round((r.monthH||0)*10)/10)}h) — 주 15시간 이상인 주만 주휴수당 지급</div>`;
   // 가산 내역 수집 (조교 제외, 일반 직원만) - bonusList 사용
   const bonusRows=[];
   if(r.bonusList&&r.bonusList.length){
@@ -8718,6 +8741,1002 @@ function openHistoryForDate(pid,dt){
   },120);
 }
 window.openHistoryForDate=openHistoryForDate;
+
+// ============================================================
+// 총무 급여/교육 테스트 반영 블록
+// - 현재 파일(admin_급여교육_테스트.html)에만 적용되는 최종후보용 오버라이드
+// - 파트 등록/출근현황/스케줄 저장 로직은 건드리지 않고, 급여 계산/엑셀/교육 입력만 분리
+// ============================================================
+let EDU_ACTIVE_PID=null;
+let EDU_SEARCH_VALUE='';
+let EDU_DATE_VALUE='';
+let EDU_FILTER_VALUE='monthNeed';
+let EDU_SEARCH_COMPOSING=false;
+let EDU_VIEW_MODE='schedule';
+let EDU_SCHEDULE_SCOPE='upcoming';
+let EDU_SCHEDULE_PAGE=0;
+
+function listVals(v){
+  if(!v)return[];
+  if(Array.isArray(v))return v.filter(Boolean);
+  if(typeof v==='object'){
+    if(v.startDate||v.date||v.endDate)return[v];
+    return Object.values(v).filter(Boolean);
+  }
+  return[];
+}
+window.listVals=listVals;
+
+function isOneDayPermChange(pc){
+  const memo=String(pc?.memo||'');
+  return !!(pc&&!pc.endDate&&(memo.includes('일시')||memo.includes('하루')||memo.includes('1일')));
+}
+window.isOneDayPermChange=isOneDayPermChange;
+
+function getEducationEntry(p,dt){
+  return listVals(p?.educationDates).find(e=>e&&e.date===dt)||null;
+}
+function getEducationH(p,dt){
+  const e=getEducationEntry(p,dt);
+  const h=Number(e?.hours||0)||0;
+  return Math.max(0,Math.round(h*100)/100);
+}
+window.getEducationH=getEducationH;
+function isEducationTarget(p){
+  return !!p&&(p.cat==='mgmt'||(p.cat==='tutor'&&String(p.tutorKind||'').includes('부담임')));
+}
+window.isEducationTarget=isEducationTarget;
+function educationEntries(p){
+  return listVals(p?.educationDates).filter(e=>e&&e.date&&Number(e.hours)>0).sort(educationDateTimeCompare);
+}
+function educationEntryTime(e){
+  return String(e?.time||e?.startTime||'').trim();
+}
+function educationEntryEndTime(e){
+  const saved=String(e?.endTime||'').trim();
+  if(saved)return saved;
+  const start=educationEntryTime(e),hours=Number(e?.hours||0);
+  if(!start||!hours)return'';
+  const mins=toM(start)+Math.round(hours*60);
+  return `${String(Math.floor(mins/60)%24).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`;
+}
+function educationHoursBetween(start,end){
+  if(!start||!end)return 0;
+  const mins=toM(end)-toM(start);
+  return mins>0?Math.round((mins/60)*100)/100:0;
+}
+function updateEducationHoursPreview(){
+  const start=document.getElementById('edu-time')?.value||'';
+  const end=document.getElementById('edu-end-time')?.value||'';
+  const hours=educationHoursBetween(start,end);
+  const out=document.getElementById('edu-hours');
+  if(out)out.value=hours?formatEducationHours(hours):'';
+}
+window.updateEducationHoursPreview=updateEducationHoursPreview;
+function educationTimeOptions(includeBlank=true){
+  const opts=[];
+  if(includeBlank)opts.push('<option value="">선택</option>');
+  for(let mins=7*60;mins<=21*60;mins+=30){
+    const value=`${String(Math.floor(mins/60)).padStart(2,'0')}:${String(mins%60).padStart(2,'0')}`;
+    const h=Math.floor(mins/60),label=`${h<12?'오전':'오후'} ${h%12||12}:${String(mins%60).padStart(2,'0')}`;
+    opts.push(`<option value="${value}">${label}</option>`);
+  }
+  return opts.join('');
+}
+function educationDateTimeCompare(a,b){
+  const dc=String(a?.date||'').localeCompare(String(b?.date||''));
+  if(dc!==0)return dc;
+  return (educationEntryTime(a)||'99:99').localeCompare(educationEntryTime(b)||'99:99');
+}
+function educationEntryForDate(p,dt){
+  return educationEntries(p).find(e=>e&&e.date===dt)||null;
+}
+function formatEducationHours(h){
+  const n=Math.round((Number(h||0)||0)*100)/100;
+  return Number.isInteger(n)?String(n):String(n).replace(/\.0+$/,'');
+}
+function educationStatus(p){
+  if(!isEducationTarget(p))return{key:'none',label:'대상아님'};
+  if(p.educationExcluded)return{key:'excluded',label:'제외'};
+  if(educationEntries(p).length)return{key:'done',label:'등록완료'};
+  return{key:'need',label:'확인필요'};
+}
+function currentEducationMonth(){
+  return document.getElementById('pay-month')?.value||kstDate().slice(0,7);
+}
+function educationPartRows(){
+  const search=EDU_SEARCH_VALUE.trim().toLowerCase();
+  const filter=EDU_FILTER_VALUE;
+  const dateFilter=EDU_DATE_VALUE;
+  const ym=currentEducationMonth();
+  const today=kstDate();
+  let ps=Object.entries(AP||{}).map(([id,p])=>({...p,id})).filter(p=>isEducationTarget(p));
+  ps=ps.filter(p=>!(p.status==='inactive'||(p.leaveDate&&p.leaveDate<today)));
+  if(search){
+    ps=ps.filter(p=>(p.name||'').toLowerCase().includes(search)||(p.role||'').toLowerCase().includes(search)||(p.phone||'').includes(search));
+  }
+  if(dateFilter){
+    ps=ps.filter(p=>educationEntryForDate(p,dateFilter));
+    ps.sort((a,b)=>{
+      const ae=educationEntryForDate(a,dateFilter),be=educationEntryForDate(b,dateFilter);
+      const tc=(educationEntryTime(ae)||'99:99').localeCompare(educationEntryTime(be)||'99:99');
+      if(tc!==0)return tc;
+      return (a.name||'').localeCompare(b.name||'','ko');
+    });
+  }else{
+    if(filter==='monthNeed')ps=ps.filter(p=>educationStatus(p).key==='need'&&String(p.joinDate||'').startsWith(ym));
+    else if(filter==='need')ps=ps.filter(p=>educationStatus(p).key==='need');
+    else if(filter==='done')ps=ps.filter(p=>educationStatus(p).key==='done');
+    else if(filter==='excluded')ps=ps.filter(p=>educationStatus(p).key==='excluded');
+    ps.sort((a,b)=>(a.joinDate||'9999').localeCompare(b.joinDate||'9999')||(a.name||'').localeCompare(b.name||'','ko'));
+  }
+  if(EDU_ACTIVE_PID&&!AP[EDU_ACTIVE_PID])EDU_ACTIVE_PID=null;
+  return ps;
+}
+function educationScheduleGroups(from='',to=''){
+  const groups={};
+  Object.entries(AP||{}).forEach(([pid,p])=>{
+    if(!isEducationTarget(p))return;
+    educationEntries(p).forEach(e=>{
+      if(from&&e.date<from)return;
+      if(to&&e.date>to)return;
+      (groups[e.date]||(groups[e.date]=[])).push({pid,p,e});
+    });
+  });
+  return groups;
+}
+function setEducationView(mode){EDU_VIEW_MODE=mode;EDU_ACTIVE_PID=null;if(mode==='schedule'){EDU_SCHEDULE_SCOPE='upcoming';EDU_SCHEDULE_PAGE=0;}renderEducationManager();}
+function educationAddDays(dateStr,n){const d=new Date(dateStr+'T00:00:00+09:00');d.setDate(d.getDate()+n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+function moveEducationSchedulePage(n){EDU_SCHEDULE_PAGE=Math.max(0,EDU_SCHEDULE_PAGE+n);renderEducationManager();}
+function resetEducationSchedulePage(){EDU_SCHEDULE_PAGE=0;renderEducationManager();}
+function setEducationScheduleScope(scope){EDU_SCHEDULE_SCOPE=scope;EDU_SCHEDULE_PAGE=0;renderEducationManager();}
+function openEducationStaffFromSchedule(pid){
+  const p=AP[pid];EDU_VIEW_MODE='staff';EDU_SEARCH_VALUE=p?.name||'';EDU_FILTER_VALUE='all';EDU_ACTIVE_PID=pid;renderEducationManager();
+}
+window.setEducationView=setEducationView;
+window.moveEducationSchedulePage=moveEducationSchedulePage;
+window.resetEducationSchedulePage=resetEducationSchedulePage;
+window.setEducationScheduleScope=setEducationScheduleScope;
+window.openEducationStaffFromSchedule=openEducationStaffFromSchedule;
+function renderEducationSchedule(){
+  const narrow=window.innerWidth<700,today=kstDate(),isPast=EDU_SCHEDULE_SCOPE==='past',groupMap=educationScheduleGroups(isPast?'':today,isPast?educationAddDays(today,-1):''),allDates=Object.keys(groupMap).sort((a,b)=>isPast?b.localeCompare(a):a.localeCompare(b)),start=EDU_SCHEDULE_PAGE*7,dateSlice=allDates.slice(start,start+7),dowNames=['일','월','화','수','목','금','토'];
+  if(EDU_SCHEDULE_PAGE>0&&!dateSlice.length){EDU_SCHEDULE_PAGE=Math.max(0,Math.ceil(allDates.length/7)-1);return renderEducationSchedule();}
+  const days=dateSlice.map(date=>({date,dow:dowNames[new Date(date+'T00:00:00+09:00').getDay()],rows:(groupMap[date]||[]).sort((a,b)=>(educationEntryTime(a.e)||'99:99').localeCompare(educationEntryTime(b.e)||'99:99')||(a.p.name||'').localeCompare(b.p.name||'','ko'))}));
+  const total=days.reduce((s,d)=>s+d.rows.length,0);
+  return `<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 12px;background:#f8fafc;border-bottom:1px solid var(--border-light);flex-wrap:wrap">
+      <div><b style="font-size:14px">${isPast?'지난 교육 이력':'예정 교육 일정'}</b><div style="font-size:11px;color:var(--text-muted);margin-top:2px">${days.length?`${days[0].date.replace(/-/g,'.')}부터 · 교육일 ${days.length}개 · ${total}명`:(isPast?'지난 교육 이력 없음':'등록된 예정 교육 없음')}</div></div>
+      <div style="display:flex;gap:5px">
+        <button type="button" class="icon-btn" onclick="setEducationScheduleScope('upcoming')" style="${!isPast?'background:#eff6ff;color:#1d4ed8;border-color:#93c5fd':''}">예정 교육</button><button type="button" class="icon-btn" onclick="setEducationScheduleScope('past')" style="${isPast?'background:#f8fafc;color:#475569;border-color:#cbd5e1':''}">지난 교육</button>
+        ${EDU_SCHEDULE_PAGE>0?`<button type="button" class="icon-btn" onclick="moveEducationSchedulePage(-1)">${isPast?'최근 이력':'이전 일정'}</button>`:''}${start+7<allDates.length?`<button type="button" class="icon-btn" onclick="moveEducationSchedulePage(1)">${isPast?'더 이전 7일':'다음 7일'}</button>`:''}
+      </div>
+    </div>
+    <div style="padding:8px">
+      ${days.length?days.map(d=>`<div style="display:grid;grid-template-columns:${narrow?'78px minmax(0,1fr)':'135px minmax(0,1fr)'};border:1px solid var(--border-light);border-bottom:0"><div style="padding:8px ${narrow?'6px':'10px'};border-right:1px solid var(--border-light);background:#fafafa"><div style="font-size:${narrow?'12px':'14px'};font-weight:600;white-space:nowrap">${d.date.slice(5).replace('-','.')} <span style="font-size:10px;font-weight:500;color:${d.dow==='일'?'#b91c1c':d.dow==='토'?'#1d4ed8':'var(--text-muted)'}">(${d.dow})</span></div><div style="font-size:10px;color:var(--text-muted);margin-top:3px">${d.rows.length}명</div></div><div style="min-width:0">${d.rows.map(({pid,p,e})=>{const timeStart=educationEntryTime(e),timeEnd=educationEntryEndTime(e),isMgmt=p.cat==='mgmt',kind=isMgmt?'관리':'부담임',badge=isMgmt?'background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8':'background:#f5f3ff;border-color:#ddd6fe;color:#6d28d9',timeLabel=escHtml(timeStart?(timeEnd?`${timeStart}~${timeEnd}`:timeStart):'시간 미정')+` · ${formatEducationHours(e.hours)}h`;return narrow?`<div style="padding:7px 8px;border-bottom:1px solid var(--border-light);display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 6px;align-items:center"><button type="button" onclick="openEducationStaffFromSchedule('${jsStr(pid)}')" style="min-width:0;border:0;background:transparent;padding:0;text-align:left;cursor:pointer"><span style="font-size:12px;font-weight:500">${escHtml(p.name||'-')}</span><span style="display:inline-block;margin-left:4px;padding:1px 5px;border:1px solid;border-radius:10px;font-size:9px;font-weight:600;${badge}">${kind}</span><span style="font-size:10px;color:#475569;margin-left:4px">${escHtml(p.role||'-')}</span></button><button type="button" class="icon-btn" onclick="deleteEducationEntry('${jsStr(pid)}','${jsStr(e.date||'')}')" style="color:#b91c1c;padding:3px 6px;font-size:10px">삭제</button><span style="grid-column:1 / -1;font-size:11px;font-weight:500;white-space:nowrap">${timeLabel}</span>${e.memo?`<span style="grid-column:1 / -1;font-size:10px;color:var(--text-muted)">${escHtml(e.memo)}</span>`:''}</div>`:`<div style="padding:7px 10px;border-bottom:1px solid var(--border-light);display:grid;grid-template-columns:minmax(145px,1fr) auto auto;gap:8px;align-items:center"><button type="button" onclick="openEducationStaffFromSchedule('${jsStr(pid)}')" style="border:0;background:transparent;padding:0;text-align:left;cursor:pointer"><span style="font-size:13px;font-weight:500">${escHtml(p.name||'-')}</span><span style="display:inline-block;margin-left:7px;padding:1px 6px;border:1px solid;border-radius:10px;font-size:10px;font-weight:600;${badge}">${kind}</span><span style="font-size:11px;color:#475569;margin-left:6px">${escHtml(p.role||'-')}</span>${e.memo?`<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${escHtml(e.memo)}</div>`:''}</button><span style="font-size:12px;font-weight:500;white-space:nowrap">${timeLabel}</span><button type="button" class="icon-btn" onclick="deleteEducationEntry('${jsStr(pid)}','${jsStr(e.date||'')}')" style="color:#b91c1c">삭제</button></div>`;}).join('')}</div></div>`).join(''):`<div style="padding:40px;text-align:center;color:var(--text-muted);font-size:13px">${isPast?'지난 교육 이력이 없습니다.':'예정된 교육이 없습니다.'}</div>`}
+    </div>
+  </div>`;
+}
+function focusEducationSearch(){
+  requestAnimationFrame(()=>{const input=document.getElementById('edu-search');if(!input)return;input.focus();const n=input.value.length;try{input.setSelectionRange(n,n);}catch(e){}});
+}
+function handleEducationSearchInput(input){
+  EDU_SEARCH_VALUE=input.value||'';
+  EDU_DATE_VALUE='';
+  EDU_FILTER_VALUE='all';
+  EDU_ACTIVE_PID=null;
+  if(EDU_SEARCH_COMPOSING)return;
+  renderEducationManager();focusEducationSearch();
+}
+function handleEducationSearchComposition(done,input){
+  EDU_SEARCH_COMPOSING=!done;
+  if(done)handleEducationSearchInput(input);
+}
+function handleEducationDateFilter(value){
+  EDU_DATE_VALUE=value||'';
+  if(EDU_DATE_VALUE){EDU_SEARCH_VALUE='';EDU_FILTER_VALUE='all';}
+  EDU_ACTIVE_PID=null;renderEducationManager();
+}
+function handleEducationStatusFilter(value){
+  EDU_FILTER_VALUE=value||'monthNeed';
+  EDU_SEARCH_VALUE='';EDU_DATE_VALUE='';EDU_ACTIVE_PID=null;renderEducationManager();
+}
+window.handleEducationSearchInput=handleEducationSearchInput;
+window.handleEducationSearchComposition=handleEducationSearchComposition;
+window.handleEducationDateFilter=handleEducationDateFilter;
+window.handleEducationStatusFilter=handleEducationStatusFilter;
+function openEducationManager(pid){
+  EDU_ACTIVE_PID=pid||null;
+  renderEducationManager();
+  OM('modal-education');
+}
+window.openEducationManager=openEducationManager;
+function selectEducationPart(pid){
+  EDU_ACTIVE_PID=pid;
+  renderEducationManager();
+}
+window.selectEducationPart=selectEducationPart;
+function renderEducationManager(){
+  const body=document.getElementById('modal-education-body');
+  if(!body)return;
+  const narrow=window.innerWidth<700;
+  body.style.overflowY=(EDU_VIEW_MODE==='schedule'&&!narrow)?'hidden':'auto';
+  const ps=educationPartRows();
+  const modeButtons=`<div style="display:flex;gap:6px;margin-bottom:12px"><button type="button" class="btn-secondary" onclick="setEducationView('schedule')" style="${EDU_VIEW_MODE==='schedule'?'background:#eff6ff;color:#1d4ed8;border-color:#93c5fd':''}">교육 일정</button><button type="button" class="btn-secondary" onclick="setEducationView('staff')" style="${EDU_VIEW_MODE==='staff'?'background:#eff6ff;color:#1d4ed8;border-color:#93c5fd':''}">교육등록</button></div>`;
+  if(EDU_VIEW_MODE==='schedule'){
+    body.innerHTML=modeButtons+renderEducationSchedule();
+    return;
+  }
+  body.innerHTML=`
+    ${modeButtons}
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+      <input id="edu-search" class="form-input" placeholder="이름/직무/휴대폰 검색" value="${escAttr(EDU_SEARCH_VALUE)}" oncompositionstart="handleEducationSearchComposition(false,this)" oncompositionend="handleEducationSearchComposition(true,this)" oninput="handleEducationSearchInput(this)" style="${narrow?'flex:1 1 100%;min-width:0':'min-width:220px;flex:1'}">
+      <select id="edu-filter" class="form-select" onchange="handleEducationStatusFilter(this.value)" style="${narrow?'flex:1 1 150px;min-width:0':'width:170px'}">
+        <option value="monthNeed" ${EDU_FILTER_VALUE==='monthNeed'?'selected':''}>이번달 확인필요</option>
+        <option value="need" ${EDU_FILTER_VALUE==='need'?'selected':''}>전체 확인필요</option>
+        <option value="done" ${EDU_FILTER_VALUE==='done'?'selected':''}>등록완료</option>
+        <option value="excluded" ${EDU_FILTER_VALUE==='excluded'?'selected':''}>교육 제외</option>
+        <option value="all" ${EDU_FILTER_VALUE==='all'?'selected':''}>전체</option>
+      </select>
+    </div>
+    <div style="display:grid;grid-template-columns:${narrow?'1fr':'260px 1fr'};gap:14px;min-height:${narrow?'auto':'430px'}">
+      <div style="border:1px solid var(--border);border-radius:8px;overflow:auto;max-height:${narrow?'210px':'56vh'}">
+        ${ps.length?ps.map(p=>renderEducationListRow(p)).join(''):'<div style="padding:28px;text-align:center;color:var(--text-muted);font-size:13px">조건에 맞는 직원 없음</div>'}
+      </div>
+      <div style="border:1px solid var(--border);border-radius:8px;padding:14px;min-height:${narrow?'260px':'360px'};min-width:0">
+        ${EDU_ACTIVE_PID?renderEducationDetail(EDU_ACTIVE_PID):'<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:13px">직원을 선택하세요</div>'}
+      </div>
+    </div>`;
+}
+window.renderEducationManager=renderEducationManager;
+function renderEducationListRow(p){
+  const st=educationStatus(p);
+  const dateFilter=EDU_DATE_VALUE;
+  const edu=dateFilter?educationEntryForDate(p,dateFilter):null;
+  const color=st.key==='need'?'#b91c1c':st.key==='done'?'#64748b':st.key==='excluded'?'#9ca3af':'#64748b';
+  const rightText=edu?`${educationEntryTime(edu)||'시간 미정'} · ${formatEducationHours(edu.hours)}h`:st.label;
+  const subText=edu
+    ?`${escHtml(CATL[p.cat]||p.cat||'-')} · ${escHtml(p.role||'-')} · ${escHtml(edu.memo||'교육 등록')}`
+    :`${escHtml(CATL[p.cat]||p.cat||'-')} · ${escHtml(p.role||'-')} · 입사 ${escHtml(p.joinDate||'-')}`;
+  return `<button type="button" onclick="selectEducationPart('${jsStr(p.id)}')" style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;text-align:left;border:0;border-bottom:1px solid var(--border-light);background:${p.id===EDU_ACTIVE_PID?'#eff6ff':'#fff'};padding:12px;cursor:pointer;font-family:inherit">
+    <span>
+      <b style="font-size:13px">${escHtml(p.name||'-')}</b>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:3px">${subText}</div>
+    </span>
+    <span style="font-size:11px;color:${edu?'#475569':color};font-weight:600;white-space:nowrap">${escHtml(rightText)}</span>
+  </button>`;
+}
+function renderEducationDetail(pid){
+  const p=AP[pid];
+  if(!p)return '<div style="color:var(--text-muted)">직원 정보 없음</div>';
+  const rows=educationEntries(p);
+  const st=educationStatus(p);
+  const today=kstDate();
+  const narrow=window.innerWidth<700;
+  return `
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border-bottom:1px solid var(--border-light);padding-bottom:10px;margin-bottom:12px">
+      <div>
+        <div style="font-size:16px;font-weight:800">${escHtml(p.name||'-')}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:3px">${escHtml(CATL[p.cat]||p.cat||'-')} · ${escHtml(p.role||'-')} · ${escHtml(p.phone||'-')}</div>
+      </div>
+      <span style="font-size:12px;font-weight:700;color:${st.key==='need'?'#b91c1c':'#64748b'}">${st.label}</span>
+    </div>
+    <div style="font-size:12px;color:var(--text-secondary);background:#f8fafc;border:1px solid var(--border-light);border-radius:8px;padding:9px 10px;margin-bottom:12px">
+      교육시수는 급여에 별도 추가되며 주휴수당과 월 60시간 판단에서는 제외합니다. 근무일 교육은 해당일 스케줄을 실제 근무시간으로 조정하세요.
+    </div>
+    <div style="display:grid;grid-template-columns:${narrow?'1fr 1fr':'150px minmax(130px,1fr) minmax(130px,1fr) 90px'};gap:8px;align-items:end;margin-bottom:10px">
+      <div><label class="form-label">교육일</label><input type="date" class="form-input" id="edu-date" value="${today}"></div>
+      <div><label class="form-label">시작시간</label><select class="form-select" id="edu-time" onchange="updateEducationHoursPreview()">${educationTimeOptions()}</select></div>
+      <div><label class="form-label">종료시간</label><select class="form-select" id="edu-end-time" onchange="updateEducationHoursPreview()">${educationTimeOptions()}</select></div>
+      <div><label class="form-label">교육시수</label><input class="form-input" id="edu-hours" value="" placeholder="자동" readonly style="background:#f8fafc"></div>
+      <div style="grid-column:1 / -1"><label class="form-label">메모</label><input class="form-input" id="edu-memo" placeholder="예: 신규 교육"></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:14px">
+      <button type="button" class="btn-secondary" onclick="toggleEducationExcluded('${jsStr(pid)}')">${p.educationExcluded?'교육 제외 해제':'교육 제외'}</button>
+      <button type="button" class="btn-primary" onclick="saveEducationEntry('${jsStr(pid)}')">교육시수 저장</button>
+    </div>
+    <div style="border-top:1px solid var(--border-light);padding-top:10px">
+      <div style="font-size:12px;font-weight:700;margin-bottom:8px">등록 내역</div>
+      ${rows.length?rows.map(e=>renderEducationEntryRow(pid,e)).join(''):'<div style="padding:16px;text-align:center;color:var(--text-muted);background:#f8fafc;border-radius:8px;font-size:13px">등록된 교육시수 없음</div>'}
+    </div>`;
+}
+function renderEducationEntryRow(pid,e){
+  const time=educationEntryTime(e);
+  const endTime=educationEntryEndTime(e);
+  return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--border-light);border-radius:8px;padding:9px 10px;margin-bottom:6px;background:#fff">
+    <div>
+      <span style="font-size:13px;font-weight:600;color:#334155;font-family:inherit">${escHtml(e.date||'')}</span>
+      <span style="font-size:12px;color:#64748b;font-weight:500;margin-left:8px">${escHtml(time?(endTime?`${time}~${endTime}`:time):'시간 미정')}</span>
+      <span style="font-size:12px;color:#475569;font-weight:600;margin-left:8px">${formatEducationHours(e.hours)}h</span>
+      <span style="font-size:11px;color:var(--text-muted);margin-left:8px">급여 추가</span>
+      ${e.memo?`<div style="font-size:12px;color:var(--text-secondary);margin-top:3px">${escHtml(e.memo)}</div>`:''}
+    </div>
+    <button type="button" class="icon-btn" onclick="deleteEducationEntry('${jsStr(pid)}','${jsStr(e.date||'')}')" style="color:#b91c1c">삭제</button>
+  </div>`;
+}
+async function saveEducationEntry(pid){
+  const p=AP[pid];if(!p)return;
+  const existing=educationEntries(p);
+  if(existing.length){
+    const e=existing[0],start=educationEntryTime(e),end=educationEntryEndTime(e);
+    await CA(`${p.name||'해당 직원'}은(는) 이미 교육이 등록되어 있습니다.\n\n등록일: ${e.date||'-'}\n시간: ${start?(end?`${start}~${end}`:start):'시간 미정'}\n교육시수: ${formatEducationHours(e.hours)}h\n\n잘못 등록했다면 기존 내역을 삭제한 후 다시 등록해주세요.`,'교육 중복 등록 불가');
+    return;
+  }
+  const date=document.getElementById('edu-date')?.value||'';
+  const time=document.getElementById('edu-time')?.value||'';
+  const endTime=document.getElementById('edu-end-time')?.value||'';
+  const hours=educationHoursBetween(time,endTime);
+  const memo=(document.getElementById('edu-memo')?.value||'').trim();
+  if(!date){ST('교육일을 선택해주세요');return;}
+  if(!time){ST('교육 시작시간을 선택해주세요');return;}
+  if(!endTime){ST('교육 종료시간을 선택해주세요');return;}
+  if(!hours||hours<=0){ST('종료시간은 시작시간보다 늦어야 합니다');return;}
+  const arr=[];
+  arr.push({date,time,startTime:time,endTime,hours,mode:'separate',memo,by:CU?.name||'',at:`${kstLabel()} ${kstNow()}`});
+  arr.sort(educationDateTimeCompare);
+  SL(true);
+  try{
+    await update(ref(db,`parts/${pid}`),{educationDates:arr,educationExcluded:false});
+    AP[pid]={...AP[pid],educationDates:arr,educationExcluded:false};
+    ST('교육시수 저장 완료');
+    renderEducationManager();
+    if(PAY_DATA)loadPayroll();
+  }catch(e){ST('교육시수 저장 실패: '+(e.message||e));}
+  finally{SL(false);}
+}
+window.saveEducationEntry=saveEducationEntry;
+async function deleteEducationEntry(pid,date){
+  const p=AP[pid];if(!p)return;
+  const target=educationEntryForDate(p,date);
+  const start=educationEntryTime(target),end=educationEntryEndTime(target);
+  if(!await CC(`${p.name||'해당 직원'}의 교육 일정을 삭제합니다.\n\n교육일: ${date||'-'}\n시간: ${start?(end?`${start}~${end}`:start):'시간 미정'}\n교육시수: ${formatEducationHours(target?.hours)}h\n\n취소된 교육이 맞는지 확인해주세요.`,{title:'교육 일정 삭제',danger:true,okText:'삭제'}))return;
+  const arr=educationEntries(p).filter(e=>e.date!==date);
+  SL(true);
+  try{
+    await update(ref(db,`parts/${pid}`),{educationDates:arr});
+    AP[pid]={...AP[pid],educationDates:arr};
+    ST('교육시수 삭제 완료');
+    renderEducationManager();
+    if(PAY_DATA)loadPayroll();
+  }catch(e){ST('교육시수 삭제 실패: '+(e.message||e));}
+  finally{SL(false);}
+}
+window.deleteEducationEntry=deleteEducationEntry;
+async function toggleEducationExcluded(pid){
+  const p=AP[pid];if(!p)return;
+  const next=!p.educationExcluded;
+  SL(true);
+  try{
+    await update(ref(db,`parts/${pid}`),{educationExcluded:next});
+    AP[pid]={...AP[pid],educationExcluded:next};
+    ST(next?'교육 제외 처리 완료':'교육 제외 해제 완료');
+    renderEducationManager();
+  }catch(e){ST('교육 제외 처리 실패: '+(e.message||e));}
+  finally{SL(false);}
+}
+window.toggleEducationExcluded=toggleEducationExcluded;
+
+calcDayPay=function(p,date,realH){
+  if(!p||!realH)return{pay:0,basePay:0,overtimePay:0,holidayPay:0,normalH:0,overtimeH:0};
+  const isT=p.cat==='tutor';
+  const wage=p._payrollWage!==undefined&&p._payrollWage!==null?Number(p._payrollWage):wageAt(p,date);
+  if(!wage)return{pay:0,basePay:0,overtimePay:0,holidayPay:0,normalH:0,overtimeH:0};
+  if(isT){
+    const tutorH=realH*60/70;
+    const sign=tutorH<0?-1:1;
+    const absH=Math.abs(tutorH);
+    const tCountRounded=Math.ceil(absH*2-0.001)/2*sign;
+    const raw=wage*tCountRounded;
+    const distToInt=Math.abs(raw-Math.round(raw));
+    const pay=distToInt<0.05?Math.round(raw):Math.ceil(raw);
+    return{pay,basePay:pay,overtimePay:0,holidayPay:0,normalH:realH,overtimeH:0};
+  }
+  const realHDisp=Math.round(realH*10)/10;
+  const isHol=isHoliday(date);
+  if(isHol){
+    const pay=Math.ceil(wage*realHDisp*1.5);
+    return{pay,basePay:Math.ceil(wage*realHDisp),overtimePay:0,holidayPay:Math.ceil(wage*realHDisp*0.5),normalH:realHDisp,overtimeH:0};
+  }
+  const normalH=realHDisp;
+  const overtimeH=Math.max(0,realHDisp-8);
+  const basePay=wage*realHDisp;
+  const overtimePay=wage*overtimeH*0.5;
+  const pay=Math.ceil(basePay+overtimePay);
+  return{pay,basePay:Math.ceil(basePay),overtimePay:Math.ceil(overtimePay),holidayPay:0,normalH,overtimeH};
+};
+window.calcDayPay=calcDayPay;
+
+calcPersonPayroll=function(pid,p,year,month,lastDay,attByDate){
+  const isTutor=p.cat==='tutor';
+  const days=[];
+  const today=kstDate();
+  for(let d=1;d<=lastDay;d++){
+    const dt=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    if(dt>today){
+      const futurePlnAbs=isPlannedAbsent(p,dt);
+      days.push({dt,h:0,future:true,attended:false,plnAbs:futurePlnAbs});
+      continue;
+    }
+    const DM=['일','월','화','수','목','금','토'];
+    const dw=DM[new Date(dt+'T00:00:00+09:00').getDay()];
+    const tempDay=listVals(p.tempDates).find(td=>td.date===dt);
+    const dayPerm=listVals(p.permChanges).filter(pc=>dt>=pc.startDate&&(!isOneDayPermChange(pc)||pc.startDate===dt)).sort((a,b)=>{const c=(b.startDate||'').localeCompare(a.startDate||'');return c!==0?c:(b.at||'').localeCompare(a.at||'');})[0]||null;
+    const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,wage:tempDay.wage,role:tempDay.role,tutorKind:tempDay.tutorKind,_isTemp:true}:getDayTime(p,dw,dt);
+    if(dayPerm){if(ds.wage===undefined&&dayPerm.wage!==undefined)ds.wage=dayPerm.wage;if(!ds.role&&dayPerm.role)ds.role=dayPerm.role;if(!ds.tutorKind&&dayPerm.tutorKind)ds.tutorKind=dayPerm.tutorKind;}
+    const effWage=ds.wage!==undefined&&ds.wage!==null&&Number(ds.wage)>0?Number(ds.wage):wageAt(p,dt);
+    const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,role:ds.role||p.role,tutorKind:ds.tutorKind||p.tutorKind,customBreak:_resolveBreak(p,ds),_payrollWage:effWage};
+    const edu=getEducationEntry(p,dt);
+    const eduHours=isEducationTarget(p)?Math.max(0,Math.round((Number(edu?.hours||0)||0)*100)/100):0;
+    if(p.joinDate&&dt<p.joinDate&&!eduHours){days.push({dt,h:0,attended:false,offDay:true});continue;}
+    if(p.leaveDate&&dt>p.leaveDate&&!(p.isCasual&&tempDay)&&!eduHours){days.push({dt,h:0,attended:false,offDay:true});continue;}
+    const a=attByDate[dt]?.[pid]||{};
+    const isPlnAbs=isPlannedAbsent(p,dt);
+    const a_in=a.adjustedStart||a.inTime;
+    const a_out=a.adjustedEnd||a.outTime;
+    let h=0,attended=false;
+    if(a_in&&a_out){
+      const r=calcRealH(pEff,a);
+      if(r!==null){h=r;attended=true;}
+    }else if(a.stdPhrase==='연차'||a.stdPhrase==='반차'){
+      h=schedH(pEff,null);
+      if(a.stdPhrase==='반차')h=h/2;
+      attended=true;
+    }
+    const rawH=Math.round(h*1000)/1000;
+    const payH=isTutor?rawH:Math.round(h*10)/10;
+    const eduMode='separate';
+    let educationH=0,educationPay=0,extraEducationPay=0,weekH=payH;
+    if(eduHours>0){
+      educationH=eduHours;
+      extraEducationPay=Math.ceil(educationH*effWage);
+      educationPay=extraEducationPay;
+    }
+    days.push({dt,h:payH,rawH,weekH,educationH,educationPay,extraEducationPay,educationMode:eduMode,educationMemo:edu?.memo||'',attended,plnAbs:isPlnAbs,phrase:a.stdPhrase,wage:effWage,role:pEff.role,tutorKind:pEff.tutorKind,att:a,sched:{start:pEff.start,end:pEff.end,customBreak:pEff.customBreak,wage:effWage,role:pEff.role,tutorKind:pEff.tutorKind,fromReplace:!!ds.fromReplace,fromPerm:!!ds.fromPerm,fromPeriod:!!ds.fromPeriod,_isTemp:!!ds._isTemp}});
+  }
+  const weeks=[];
+  let curWeek=null;
+  days.forEach(d=>{
+    const dow=new Date(d.dt+'T00:00:00+09:00').getDay();
+    if(dow===0||!curWeek){
+      if(curWeek)weeks.push(curWeek);
+      const wd=new Date(d.dt+'T00:00:00+09:00');wd.setDate(wd.getDate()-wd.getDay());
+      curWeek={start:`${wd.getFullYear()}-${String(wd.getMonth()+1).padStart(2,'0')}-${String(wd.getDate()).padStart(2,'0')}`,days:[],totalH:0,eligible:false,bonusH:0};
+    }
+    curWeek.days.push(d);
+    curWeek.totalH+=Number(d.weekH!==undefined?d.weekH:(d.h||0));
+  });
+  if(curWeek)weeks.push(curWeek);
+  weeks.forEach(w=>{
+    w.totalH=Math.round(w.totalH*100)/100;
+    const hasUnplannedAbsent=w.days.some(d=>{
+      if(d.future||d.offDay)return false;
+      if(d.plnAbs)return false;
+      if(d.phrase==='연차'||d.phrase==='반차')return false;
+      return d.phrase==='결근';
+    });
+    w.absent=hasUnplannedAbsent;
+    if(w.totalH>=15&&!hasUnplannedAbsent){
+      w.eligible=true;
+      w.bonusH=Math.round((Math.min(w.totalH,40)/5)*100)/100;
+    }
+  });
+  const monthH=Math.round(weeks.reduce((s,w)=>s+w.totalH,0)*100)/100;
+  let monthHDisp;
+  if(isTutor){
+    monthHDisp=days.reduce((sum,d)=>{
+      if(!d.h||d.future||d.offDay)return sum;
+      return sum+payrollDayDisplayValue(p,d);
+    },0);
+    monthHDisp=Math.round(monthHDisp*100)/100;
+  }else{
+    monthHDisp=days.reduce((sum,d)=>{
+      if(!d.h||d.future||d.offDay)return sum;
+      return sum+Math.round(d.h*10)/10;
+    },0);
+    monthHDisp=Math.round(monthHDisp*100)/100;
+  }
+  const meetMonthly=monthH>=60;
+  if(meetMonthly){
+    weeks.forEach(w=>{
+      if(w.totalH>0&&!w.absent){
+        w.eligible=true;
+        w.bonusH=Math.round((Math.min(w.totalH,40)/5)*100)/100;
+      }
+    });
+  }
+  const totalBonusH=isTutor?0:Math.round(weeks.reduce((s,w)=>s+w.bonusH,0)*100)/100;
+  const dailyCalc=days.map(d=>{
+    if(!d.h)return{pay:0,basePay:0,overtimePay:0,holidayPay:0,normalH:0,overtimeH:0};
+    return calcDayPay({...p,_payrollWage:d.wage},d.dt,d.h);
+  });
+  const attendanceBasePay=dailyCalc.reduce((s,dp)=>s+(dp.basePay||0),0);
+  const extraEducationPay=days.reduce((s,d)=>s+(d.extraEducationPay||0),0);
+  const basePay=attendanceBasePay+extraEducationPay;
+  const totalEducationH=Math.round(days.reduce((s,d)=>s+(d.educationH||0),0)*100)/100;
+  const educationPay=days.reduce((s,d)=>s+(d.educationPay||0),0);
+  const lastWage=wageAt(p,`${year}-${String(month).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`)||p.wage||0;
+  const displayWage=(()=>{const worked=days.filter(d=>(d.h||d.educationH)&&!d.future&&!d.offDay&&d.wage!==undefined&&d.wage!==null);return worked.length?worked[worked.length-1].wage:lastWage;})();
+  const bonusPay=isTutor?0:Math.ceil(totalBonusH*lastWage);
+  const bonusList=[];
+  let bonusSum=0,holidayCnt=0,overtimeCnt=0;
+  if(!isTutor){
+    days.forEach(d=>{
+      if(!d.h||d.future||d.offDay)return;
+      const dp=calcDayPay({...p,_payrollWage:d.wage},d.dt,d.h);
+      const dow=['일','월','화','수','목','금','토'][new Date(d.dt+'T00:00:00+09:00').getDay()];
+      if(dp.holidayPay>0){
+        bonusList.push({dt:d.dt,dow,type:'holiday',h:d.h,wage:d.wage,amount:dp.holidayPay,att:d.att,sched:d.sched,calc:`${d.h}h × ${d.wage}원 × 0.5`});
+        bonusSum+=dp.holidayPay;holidayCnt++;
+      }else if(dp.overtimePay>0){
+        const overH=Math.round(dp.overtimeH*100)/100;
+        const overAmt=Math.ceil(overH*d.wage*0.5);
+        bonusList.push({dt:d.dt,dow,type:'overtime',h:d.h,overH,wage:d.wage,amount:overAmt,att:d.att,sched:d.sched,calc:`${overH}h × ${d.wage}원 × 0.5`});
+        bonusSum+=overAmt;overtimeCnt++;
+      }
+    });
+  }
+  const isReviewChangeDay=d=>{
+    const schedChanged=d.sched&&(d.sched.fromReplace||d.sched.fromPeriod||d.sched._isTemp);
+    const extraPhrase=d.att&&d.att.stdPhrase==='추가근무';
+    return !!(schedChanged||extraPhrase);
+  };
+  const reviewBonusList=bonusList.filter(b=>isReviewChangeDay(b));
+  const reviewBonusSum=reviewBonusList.reduce((s,b)=>s+(b.amount||0),0);
+  const reviewHolidayCnt=reviewBonusList.filter(b=>b.type==='holiday').length;
+  const reviewOvertimeCnt=reviewBonusList.filter(b=>b.type==='overtime').length;
+  const monthPrefix=`${year}-${String(month).padStart(2,'0')}`;
+  const reviewIsCasual=!!p.isCasual;
+  const casualWorkDays=reviewIsCasual?days.filter(d=>d.attended&&!d.future&&!d.offDay).length:0;
+  const monthTempDates=listVals(p.tempDates).filter(td=>(td.date||'').startsWith(monthPrefix));
+  const addedWorkDays=monthTempDates.length;
+  const extensionDays=days.filter(d=>d.h&&!d.future&&!d.offDay&&d.att&&d.att.stdPhrase==='추가근무').length;
+  const manualDays=days.filter(d=>d.att&&d.att.manual).length;
+  const adjustedDays=days.filter(d=>d.att&&(d.att.adjustedStart||d.att.adjustedEnd)).length;
+  const scheduleChangeDays=days.filter(d=>d.sched&&(d.sched.fromReplace||d.sched.fromPeriod||d.sched._isTemp)).length;
+  const monthPermsWithWage=listVals(p.permChanges).filter(pc=>(pc.startDate||'').startsWith(monthPrefix)&&pc.wage!==undefined&&pc.wage!==null);
+  const allPermsSorted=listVals(p.permChanges).filter(pc=>pc.wage!==undefined&&pc.wage!==null).sort((a,b)=>(a.startDate||'').localeCompare(b.startDate||''));
+  const monthWageChangedPerms=monthPermsWithWage.filter(cur=>{
+    const prevPerms=allPermsSorted.filter(pc=>(pc.startDate||'')<(cur.startDate||''));
+    const prevWage=prevPerms.length>0?prevPerms[prevPerms.length-1].wage:wageAtBefore(p,cur.startDate);
+    if(!prevWage||prevWage===0)return false;
+    return prevWage!==cur.wage;
+  });
+  const reviewWageChanged=monthWageChangedPerms.length>0;
+  const eligibleWeeks=weeks.filter(w=>w.eligible).length;
+  const ineligibleWeeks=weeks.filter(w=>!w.eligible&&w.totalH>0).length;
+  const reviewWeekVariation=eligibleWeeks>0&&ineligibleWeeks>0;
+  const baseSchedHForDate=dt=>{
+    const DM=['일','월','화','수','목','금','토'];
+    const dw=DM[new Date(dt+'T00:00:00+09:00').getDay()];
+    let ds=null;
+    const permChanges=listVals(p.permChanges);
+    if(permChanges.length){
+      const applicable=[...permChanges].filter(pc=>dt>=pc.startDate&&(!isOneDayPermChange(pc)||pc.startDate===dt)).sort((a,b)=>{const c=b.startDate.localeCompare(a.startDate);if(c!==0)return c;return(b.at||'').localeCompare(a.at||'');});
+      if(applicable.length){
+        const latest=applicable[0];
+        if(!(latest.days||[]).includes(dw))return 0;
+        if(latest.daySchedule&&latest.daySchedule[dw]&&latest.daySchedule[dw].start&&latest.daySchedule[dw].end)ds=latest.daySchedule[dw];
+        else if(p.daySchedule&&p.daySchedule[dw]&&p.daySchedule[dw].start&&p.daySchedule[dw].end)ds=p.daySchedule[dw];
+        else ds={start:latest.start,end:latest.end,customBreak:latest.customBreak};
+      }
+    }
+    if(!ds){
+      if(!(p.days||[]).includes(dw))return 0;
+      ds=(p.daySchedule&&p.daySchedule[dw])?p.daySchedule[dw]:{start:p.start,end:p.end,customBreak:p.customBreak};
+    }
+    if(!ds.start||!ds.end)return 0;
+    return schedH({start:ds.start,end:ds.end,customBreak:_resolveBreak(p,ds)},null);
+  };
+  const weekEntitlementGainWeeks=weeks.filter(w=>{
+    if(!w.eligible)return false;
+    const changedH=w.days.reduce((sum,d)=>{
+      if(!d.h||d.future||d.offDay)return sum;
+      const schedChanged=d.sched&&(d.sched.fromReplace||d.sched.fromPeriod||d.sched._isTemp);
+      const extraPhrase=d.att&&d.att.stdPhrase==='추가근무';
+      if(!schedChanged&&!extraPhrase)return sum;
+      if(d.sched&&d.sched._isTemp)return sum+d.h;
+      const baseH=baseSchedHForDate(d.dt);
+      return sum+Math.max(0,d.h-baseH);
+    },0);
+    return changedH>0&&(w.totalH-changedH)<15;
+  });
+  const reviewWeekEntitlementGain=weekEntitlementGainWeeks.length>0;
+  const changeNotes=[];
+  listVals(p.permChanges).filter(pc=>(pc.startDate||'').startsWith(monthPrefix)).forEach(pc=>{
+    const one=isOneDayPermChange(pc), oldW=wageAtBefore(p,pc.startDate), newW=Number(pc.wage||0);
+    const changes=[];
+    if(pc.role&&pc.role!==p.role)changes.push(`${p.role||'-'} → ${pc.role}`);
+    if(newW&&oldW&&newW!==oldW)changes.push(`${Number(oldW).toLocaleString()}원 → ${newW.toLocaleString()}원`);
+    if(changes.length)changeNotes.push(`${pc.startDate.slice(5).replace('-','/')} ${one?'하루만 ':'부터 '}${changes.join(', ')}`);
+  });
+  days.filter(d=>d.sched&&d.sched.fromReplace&&(d.role!==p.role||Number(d.wage)!==Number(p.wage))).forEach(d=>{
+    const changes=[];if(d.role&&d.role!==p.role)changes.push(`${p.role||'-'} → ${d.role}`);if(Number(d.wage)!==Number(p.wage))changes.push(`${Number(p.wage||0).toLocaleString()}원 → ${Number(d.wage||0).toLocaleString()}원`);if(changes.length)changeNotes.push(`${d.dt.slice(5).replace('-','/')} 하루만 ${changes.join(', ')}`);
+  });
+  return{pid,name:p.name,pin:p.pin||'',role:p.role,cat:p.cat,tutorKind:p.tutorKind,isT:isTutor,wage:displayWage,weeks,monthH,monthHDisp,meetMonthly,totalBonusH,basePay,bonusPay,totalPay:basePay+bonusSum+bonusPay,totalEducationH,educationPay,days,joinDate:p.joinDate,leaveDate:p.leaveDate,status:p.status,bonusList,bonusSum,holidayCnt,overtimeCnt,reviewBonusList,reviewBonusSum,reviewHolidayCnt,reviewOvertimeCnt,reviewIsCasual,casualWorkDays,addedWorkDays,monthTempDates,extensionDays,reviewWageChanged,monthPermsWithWage,monthWageChangedPerms,changeNotes,reviewWeekVariation,reviewWeekEntitlementGain,weekEntitlementGainWeeks,eligibleWeeks,ineligibleWeeks,manualDays,adjustedDays,scheduleChangeDays};
+};
+window.calcPersonPayroll=calcPersonPayroll;
+
+function isPayrollPayableRow(r){
+  if(!r)return false;
+  const h=Number(r.monthHDisp!==undefined?r.monthHDisp:(r.monthH||0))||0;
+  const edu=Number(r.totalEducationH||0)||0;
+  const pay=Number(r.totalPay||0)||0;
+  return h>0||edu>0||pay>0;
+}
+function payrollExportRows(rows){
+  return (rows||[]).filter(isPayrollPayableRow);
+}
+window.payrollExportRows=payrollExportRows;
+function payrollPersonKey(row){
+  const p=AP[row?.pid]||row||{};
+  // 여러 직무 합산은 관리/기타만. 조교(부담임·질의응답 포함)는 파트별 독립 정산한다.
+  if(!['mgmt','etc'].includes(p.cat||row?.cat))return `__part__${row?.pid||p.id||Math.random()}`;
+  return typeof docPersonKey==='function'?docPersonKey(row?.pid,p):(`${p.name||row?.name||''}|${p.phone||p.pin||row?.pin||row?.pid||''}`);
+}
+function payrollExportName(row){
+  const p=AP[row?.pid]||row||{};
+  const phone=String(p.phone||'').replace(/\D/g,'');
+  const tail=phone?phone.slice(-4):String(p.pin||row?.pin||'').slice(-4);
+  const base=(p.isCasual&&!row._mergedParts?'[단발] ':'')+(row.name||p.name||'');
+  return tail?`${base} (${tail})`:base;
+}
+function mergePayrollDays(parts){
+  const byDate={};
+  parts.forEach(row=>{
+    (row.days||[]).forEach(d=>{
+      if(!byDate[d.dt])byDate[d.dt]={...d,h:0,rawH:0,weekH:0,educationH:0,educationPay:0,extraEducationPay:0,att:d.att||{},_wages:[],_sourceDays:[]};
+      const cur=byDate[d.dt];
+      cur.h+=Number(d.h||0);
+      cur.rawH+=Number(d.rawH!==undefined?d.rawH:(d.h||0));
+      cur.weekH+=Number(d.weekH!==undefined?d.weekH:(d.h||0));
+      cur.educationH+=Number(d.educationH||0);
+      cur.educationPay+=Number(d.educationPay||0);
+      cur.extraEducationPay+=Number(d.extraEducationPay||0);
+      cur.att=cur.att&&Object.keys(cur.att).length?cur.att:(d.att||{});
+      cur.phrase=cur.phrase||d.phrase;
+      cur.plnAbs=cur.plnAbs||d.plnAbs;
+      cur.future=cur.future&&d.future;
+      cur.offDay=cur.offDay&&d.offDay;
+      if(d.h>0&&d.wage!==undefined&&d.wage!==null)cur._wages.push(Number(d.wage));
+      cur._sourceDays.push({...d,_sourceCat:row.cat,_sourceIsT:!!row.isT,_sourcePid:row.pid});
+    });
+  });
+  return Object.values(byDate).sort((a,b)=>a.dt.localeCompare(b.dt)).map(d=>{
+    const h=Math.round(d.h*100)/100;
+    const rawH=Math.round(d.rawH*1000)/1000;
+    const weekH=Math.max(0,Math.round(d.weekH*100)/100);
+    const wage=d._wages.length?d._wages[d._wages.length-1]:(d.wage||0);
+    const out={...d,h,rawH,weekH,wage,educationH:Math.round((d.educationH||0)*100)/100,educationPay:d.educationPay||0,extraEducationPay:d.extraEducationPay||0};
+    delete out._wages;
+    return out;
+  });
+}
+function recalcMergedWeeklyBonus(row){
+  const weeks=[];
+  let curWeek=null;
+  (row.days||[]).forEach(d=>{
+    const dow=new Date(d.dt+'T00:00:00+09:00').getDay();
+    if(dow===0||!curWeek){
+      if(curWeek)weeks.push(curWeek);
+      const wd=new Date(d.dt+'T00:00:00+09:00');wd.setDate(wd.getDate()-wd.getDay());
+      curWeek={start:`${wd.getFullYear()}-${String(wd.getMonth()+1).padStart(2,'0')}-${String(wd.getDate()).padStart(2,'0')}`,days:[],totalH:0,eligible:false,bonusH:0};
+    }
+    curWeek.days.push(d);
+    curWeek.totalH+=Number(d.weekH!==undefined?d.weekH:(d.h||0));
+  });
+  if(curWeek)weeks.push(curWeek);
+  weeks.forEach(w=>{
+    w.totalH=Math.round(w.totalH*100)/100;
+    const absent=w.days.some(d=>{
+      if(d.future||d.offDay||d.plnAbs)return false;
+      if(d.phrase==='연차'||d.phrase==='반차')return false;
+      return d.phrase==='결근';
+    });
+    w.absent=absent;
+    if(w.totalH>=15&&!absent){w.eligible=true;w.bonusH=Math.round((Math.min(w.totalH,40)/5)*100)/100;}
+  });
+  const monthH=Math.round(weeks.reduce((s,w)=>s+w.totalH,0)*100)/100;
+  const meetMonthly=monthH>=60;
+  if(meetMonthly)weeks.forEach(w=>{if(w.totalH>0&&!w.absent){w.eligible=true;w.bonusH=Math.round((Math.min(w.totalH,40)/5)*100)/100;}});
+  const totalBonusH=row.isT?0:Math.round(weeks.reduce((s,w)=>s+w.bonusH,0)*100)/100;
+  // 여러 직무의 시급이 다르면 해당 주 근무시수 비율로 시간당 환산시급을 가중평균한다.
+  // 조교 T급은 1T=70분이므로 시간당 환산 후 합산한다.
+  const bonusPay=row.isT?0:Math.ceil(weeks.reduce((sum,w)=>{
+    if(!w.bonusH)return sum;
+    const sources=w.days.flatMap(d=>(d._sourceDays&&d._sourceDays.length)?d._sourceDays:[d]).filter(d=>Number(d.weekH!==undefined?d.weekH:(d.h||0))>0);
+    const totalSourceH=sources.reduce((s,d)=>s+Number(d.weekH!==undefined?d.weekH:(d.h||0)),0);
+    if(!totalSourceH)return sum;
+    const weightedHourly=sources.reduce((s,d)=>{
+      const h=Number(d.weekH!==undefined?d.weekH:(d.h||0));
+      const wage=Number(d.wage||row.wage||0);
+      const hourly=d._sourceIsT?wage*60/70:wage;
+      return s+h*hourly;
+    },0)/totalSourceH;
+    return sum+w.bonusH*weightedHourly;
+  },0));
+  return{weeks,monthH,meetMonthly,totalBonusH,bonusPay};
+}
+function combinedAttendanceForBonus(sourceDays){
+  const rows=(sourceDays||[]).filter(d=>d&&d.att);
+  const actualRows=rows.map(d=>({att:d.att,s:d.att.adjustedStart||d.att.inTime||'',e:d.att.adjustedEnd||d.att.outTime||''})).filter(x=>x.s||x.e);
+  if(!actualRows.length)return rows[0]?.att||{};
+  const start=actualRows.map(x=>x.s).filter(Boolean).sort((a,b)=>toM(a)-toM(b))[0]||'';
+  const end=actualRows.map(x=>x.e).filter(Boolean).sort((a,b)=>timeMFromStart(start,b)-timeMFromStart(start,a))[0]||'';
+  return{inTime:start,outTime:end,memoText:'같은 사람 여러 직무 합산',notes:rows.flatMap(d=>d.att?.notes||[]),history:[...rows.flatMap(d=>d.att?.history||[]),{memo:'같은 사람 여러 직무 합산'}]};
+}
+function combinedScheduleForBonus(sourceDays){
+  const rows=(sourceDays||[]).map(d=>d&&d.sched).filter(Boolean);
+  if(!rows.length)return{};
+  const starts=rows.map(s=>s.start).filter(Boolean).sort((a,b)=>toM(a)-toM(b));
+  const ends=rows.map(s=>s.end).filter(Boolean).sort((a,b)=>toM(b)-toM(a));
+  return{...rows[0],start:starts[0]||rows[0].start||'',end:ends[0]||rows[0].end||''};
+}
+function recalcMergedBonus(row){
+  const bonusList=[];
+  let bonusSum=0,holidayCnt=0,overtimeCnt=0;
+  if(!row||row.isT)return{bonusList,bonusSum,holidayCnt,overtimeCnt};
+  (row.days||[]).forEach(d=>{
+    if(!d.h||d.future||d.offDay)return;
+    const dp=calcDayPay({...row,_payrollWage:d.wage||row.wage},d.dt,d.h);
+    const dow=['일','월','화','수','목','금','토'][new Date(d.dt+'T00:00:00+09:00').getDay()];
+    const sourceDays=d._sourceDays||[d];
+    const att=combinedAttendanceForBonus(sourceDays);
+    const sched=combinedScheduleForBonus(sourceDays);
+    const mergedCalc=sourceDays.length>1?' · 여러 직무 합산':'';
+    if(dp.holidayPay>0){
+      bonusList.push({dt:d.dt,dow,type:'holiday',h:d.h,wage:d.wage||row.wage,amount:dp.holidayPay,att,sched,calc:`${d.h}h × ${d.wage||row.wage}원 × 0.5${mergedCalc}`});
+      bonusSum+=dp.holidayPay;holidayCnt++;
+    }else if(dp.overtimePay>0){
+      const overH=Math.round(dp.overtimeH*100)/100;
+      const amount=Math.ceil(overH*(d.wage||row.wage)*0.5);
+      bonusList.push({dt:d.dt,dow,type:'overtime',h:d.h,overH,wage:d.wage||row.wage,amount,att,sched,calc:`${overH}h × ${d.wage||row.wage}원 × 0.5${mergedCalc}`});
+      bonusSum+=amount;overtimeCnt++;
+    }
+  });
+  return{bonusList,bonusSum,holidayCnt,overtimeCnt};
+}
+function mergePayrollExportRows(rows){
+  const src=payrollExportRows(rows);
+  const groups={};
+  src.forEach(row=>{const key=payrollPersonKey(row)||`__single__${row.pid}`;(groups[key]||(groups[key]=[])).push(row);});
+  const merged=[];
+  Object.values(groups).forEach(group=>{
+    if(group.length===1){merged.push(group[0]);return;}
+    const base={...group[0]};
+    base._mergedParts=group;
+    base._mergedNote=group.map(r=>`${r.name||''}(${r.role||''})`).join(' / ');
+    base.pid=group[0].pid;
+    base.name=group[0].name;
+    base.pin=group[0].pin||'';
+    base.role=[...new Set(group.map(r=>r.role).filter(Boolean))].join('+');
+    base.tutorKind=[...new Set(group.map(r=>r.tutorKind).filter(Boolean))].join('+');
+    base.cat=group[0].cat;
+    base.isT=group.every(r=>r.isT);
+    base.wage=group[group.length-1].wage;
+    base.days=mergePayrollDays(group);
+    base.monthHDisp=Math.round(group.reduce((s,r)=>s+(r.monthHDisp!==undefined?r.monthHDisp:(r.monthH||0)),0)*100)/100;
+    base.basePay=group.reduce((s,r)=>s+(r.basePay||0),0);
+    base.totalEducationH=Math.round(group.reduce((s,r)=>s+(r.totalEducationH||0),0)*100)/100;
+    base.educationPay=group.reduce((s,r)=>s+(r.educationPay||0),0);
+    const weekly=recalcMergedWeeklyBonus(base);
+    base.weeks=weekly.weeks;
+    base.monthH=weekly.monthH;
+    base.meetMonthly=weekly.meetMonthly;
+    base.totalBonusH=weekly.totalBonusH;
+    base.bonusPay=weekly.bonusPay;
+    const mergedBonus=recalcMergedBonus(base);
+    base.bonusList=mergedBonus.bonusList;
+    base.bonusSum=mergedBonus.bonusSum;
+    base.holidayCnt=mergedBonus.holidayCnt;
+    base.overtimeCnt=mergedBonus.overtimeCnt;
+    base.totalPay=base.basePay+base.bonusSum+base.bonusPay;
+    merged.push(base);
+  });
+  return merged;
+}
+window.mergePayrollExportRows=mergePayrollExportRows;
+function payrollDayDisplayValue(p,d){
+  if(!d||!d.h)return 0;
+  if(p&&p.cat==='tutor')return toCatH(p,d.rawH!==undefined?d.rawH:d.h);
+  return Math.round(d.h*10)/10;
+}
+function payrollDayDisplayLabel(p,d){
+  const v=payrollDayDisplayValue(p,d);
+  return p&&p.cat==='tutor'?v+'T':v+'h';
+}
+window.payrollDayDisplayValue=payrollDayDisplayValue;
+window.payrollDayDisplayLabel=payrollDayDisplayLabel;
+
+exportPayrollCSV=function(){
+  if(!PAY_DATA||!PAY_DATA.rows.length){ST('먼저 조회해주세요');return;}
+  const{ym,rows}=PAY_DATA;
+  const exportRows=mergePayrollExportRows(rows);
+  if(!exportRows.length){ST('급여시수/입금액이 있는 인원이 없습니다');return;}
+  const headers=['카테고리','직무','종류','이름','주민번호','은행명','계좌번호','예금주명','시급','단위','급여시수','월60h충족','주휴수당시수','기본급','주휴수당','공휴일가산건수','평일0.5가산건수','가산합계','교육시수','교육급여(기본급포함)','입금액'];
+  const catLbl={mgmt:'관리',tutor:'조교',etc:'기타'};
+  const data=exportRows.map(r=>{
+    const pi=docPayrollInfo(r.pid);
+    return [catLbl[r.cat]||r.cat,r.role,r.tutorKind||'',payrollExportName(r),formatResidentNoValue(pi.residentNo||''),pi.bankName||'',pi.accountNo||'',pi.accountHolder||'',r.wage,r.isT?'T':'시간',(r.monthHDisp!==undefined?r.monthHDisp:r.monthH),r.meetMonthly?'O':'X',r.isT?'':r.totalBonusH,r.basePay,r.bonusPay,r.holidayCnt||0,r.overtimeCnt||0,r.bonusSum||0,r.totalEducationH||0,r.educationPay||0,r.totalPay].map(v=>`"${v??''}"`).join(',');
+  }).join('\n');
+  const b=new Blob(['\uFEFF'+headers.join(',')+'\n'+data],{type:'text/csv;charset=utf-8;'});
+  const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=`강안교육_급여정산_${ym}.csv`;a.click();URL.revokeObjectURL(u);
+}
+window.exportPayrollCSV=exportPayrollCSV;
+
+exportPayrollXLSX=async function(){
+  if(!PAY_DATA||!PAY_DATA.rows.length){ST('먼저 조회해주세요');return;}
+  ST('엑셀 생성 중...');
+  SL(true);
+  try{
+    const ExcelJS=await _loadExcelJS();
+    const{ym,year,month,lastDay,rows}=PAY_DATA;
+    const exportRows=mergePayrollExportRows(rows);
+    if(!exportRows.length){ST('급여시수/입금액이 있는 인원이 없습니다');return;}
+    const wb=new ExcelJS.Workbook();
+    wb.creator='강안교육';
+    wb.created=new Date();
+    _xlBuildSummary(wb,ym,year,month,exportRows);
+    _xlBuildDetail(wb,ym,year,month,exportRows);
+    _xlBuildDailyHours(wb,ym,year,month,lastDay,exportRows);
+    _xlBuildDailyPay(wb,ym,year,month,lastDay,exportRows);
+    _xlBuildBonusVerify(wb,ym,year,month,exportRows);
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download=`강안교육_급여정산_${ym}.xlsx`;a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    ST('엑셀 다운로드 완료');
+  }catch(e){console.error(e);ST('엑셀 생성 실패: '+(e.message||e));}
+  finally{SL(false);}
+}
+window.exportPayrollXLSX=exportPayrollXLSX;
+
+_xlFlattenBonus=function(rows){
+  const all=[];
+  rows.forEach(row=>{
+    if(!row.bonusList||!row.bonusList.length)return;
+    row.bonusList.forEach(b=>{
+      const a=b.att||{};
+      const actS=a.adjustedStart||a.inTime||'';
+      const actE=a.adjustedEnd||a.outTime||'';
+      const adjusted=(a.adjustedStart&&a.adjustedStart!==a.inTime)||(a.adjustedEnd&&a.adjustedEnd!==a.outTime);
+      let reason='';
+      if(a.history&&a.history.length){const lh=a.history[a.history.length-1];if(lh.memo)reason=lh.memo;else if(lh.phrase)reason=phraseLabel(lh.phrase);}
+      if(!reason&&a.memoText)reason=a.memoText;
+      if(!reason&&a.stdPhrase)reason=phraseLabel(a.stdPhrase);
+      let by='',at='';
+      if(a.history&&a.history.length){const lh=a.history[a.history.length-1];by=lh.by||'';at=lh.at||'';}
+      else if(a.memoBy){by=a.memoBy;at=a.memoAt||'';}
+      all.push({...b,pid:row.pid,name:payrollExportName(row),role:row.role,cat:row.cat,actS,actE,adjusted,reason,by,at});
+    });
+  });
+  all.sort((a,b)=>{const c=a.dt.localeCompare(b.dt);return c!==0?c:a.name.localeCompare(b.name,'ko');});
+  return all;
+}
+
+_xlBuildDetail=function(wb,ym,year,month,rows){
+  const ws=wb.addWorksheet('직원별상세',{views:[{state:'frozen',ySplit:3}]});
+  ws.columns=[{width:5},{width:10},{width:12},{width:16},{width:16},{width:12},{width:18},{width:12},{width:6},{width:11},{width:9},{width:12},{width:12},{width:12},{width:12},{width:13},{width:10},{width:15},{width:32}];
+  ws.mergeCells('A1:S1');
+  const tc=ws.getCell('A1');tc.value=`직원별 정산 상세 — ${year}년 ${month}월`;_xlT(tc,{bold:true,size:14,color:_XL_T.brand,align:'left',border:false});
+  ws.getRow(1).height=28;ws.getRow(2).height=4;
+  ['No','카테고리','직무','이름','주민번호','은행명','계좌번호','예금주명','단위','시급','급여시수','주휴 시수','기본급','주휴수당','가산','입금액','교육시수','교육급여(기본급포함)','특이사항'].forEach((h,i)=>{const c=ws.getCell(3,i+1);c.value=h;_xlT(c,{bold:true,size:10,bg:_XL_T.headerBg,color:_XL_T.headerText,align:'center',wrap:true});});
+  const catLbl={mgmt:'관리',tutor:'조교',etc:'기타'};
+  const order=['mgmt','tutor','etc'];
+  let r=4,n=1;
+  order.forEach(cat=>{
+    const grp=rows.filter(x=>x.cat===cat);
+    if(!grp.length)return;
+    grp.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+    grp.forEach(row=>{
+      const pi=docPayrollInfo(row.pid);
+      const noteParts=[];
+      if(row._mergedNote)noteParts.push(`여러 직무 합산: ${row._mergedNote}`);
+      if((row.totalEducationH||0)>0)noteParts.push(`교육시수 ${row.totalEducationH}h`);
+      (row.changeNotes||[]).forEach(x=>noteParts.push(x));
+      const noteText=noteParts.join('\n');
+      const monthHForDisp=row.monthHDisp!==undefined?row.monthHDisp:row.monthH;
+      [n++,catLbl[cat],row.role,payrollExportName(row)+(row.tutorKind?` (${row.tutorKind})`:''),formatResidentNoValue(pi.residentNo||''),pi.bankName||'',pi.accountNo||'',pi.accountHolder||'',row.isT?'T':'h',row.wage,monthHForDisp,row.isT?'':(row.totalBonusH||0),row.basePay,row.bonusPay,row.bonusSum||0,row.totalPay,row.totalEducationH||0,row.educationPay||0,noteText].forEach((v,i)=>{
+        const c=ws.getCell(r,i+1);c.value=v;
+        const o={size:10};
+        if(i<=2)o.align='center';
+        else if(i===3){o.align='left';o.indent=1;}
+        else if(i===4||i===6){o.align='left';o.numFmt='@';}
+        else if(i===5||i===7||i===8)o.align='center';
+        else if(i===18){o.align='left';o.wrap=true;}
+        else{o.align='right';o.numFmt=(i===10||i===11||i===16)?'0.##':'#,##0';}
+        if(i===14&&row.bonusSum>0){o.bg=_XL_T.bonusBg;o.color=_XL_T.bonusText;o.bold=true;}
+        if(i===15)o.bold=true;
+        if((i===16||i===17)&&(row.totalEducationH||0)>0){o.bg=_XL_T.weekBg;o.color=_XL_T.weekText;o.bold=true;}
+        _xlT(c,o);
+      });
+      ws.getRow(r).height=noteText?Math.min(60,22+noteText.split('\n').length*14):18;r++;
+    });
+    const sBase=grp.reduce((s,x)=>s+x.basePay,0);
+    const sBonus=grp.reduce((s,x)=>s+x.bonusPay,0);
+    const sExtra=grp.reduce((s,x)=>s+(x.bonusSum||0),0);
+    const sH=Math.round(grp.reduce((s,x)=>s+(x.monthHDisp!==undefined?x.monthHDisp:(x.monthH||0)),0)*100)/100;
+    const sBh=Math.round(grp.reduce((s,x)=>s+(x.totalBonusH||0),0)*100)/100;
+    const sEduH=Math.round(grp.reduce((s,x)=>s+(x.totalEducationH||0),0)*100)/100;
+    const sEduPay=grp.reduce((s,x)=>s+(x.educationPay||0),0);
+    ws.mergeCells(r,1,r,10);
+    const lc=ws.getCell(r,1);lc.value=`${catLbl[cat]} 소계 (${grp.length}명)`;_xlT(lc,{bold:true,size:10,bg:_XL_T.catBg,color:_XL_T.catText,align:'right',indent:1});
+    [[11,sH,'0.##'],[12,sBh,'0.##'],[13,sBase,'#,##0'],[14,sBonus,'#,##0'],[15,sExtra,'#,##0'],[16,sBase+sBonus+sExtra,'#,##0'],[17,sEduH,'0.##'],[18,sEduPay,'#,##0']].forEach(([col,val,fmt])=>{const c=ws.getCell(r,col);c.value=val;_xlT(c,{bold:true,size:10,bg:_XL_T.catBg,color:_XL_T.catText,align:'right',numFmt:fmt});});
+    ws.getRow(r).height=22;r++;
+  });
+  const tBase=rows.reduce((s,x)=>s+x.basePay,0),tBonus=rows.reduce((s,x)=>s+x.bonusPay,0),tExtra=rows.reduce((s,x)=>s+(x.bonusSum||0),0),tEduH=Math.round(rows.reduce((s,x)=>s+(x.totalEducationH||0),0)*100)/100,tEduPay=rows.reduce((s,x)=>s+(x.educationPay||0),0),tH=Math.round(rows.reduce((s,x)=>s+(x.monthHDisp!==undefined?x.monthHDisp:(x.monthH||0)),0)*100)/100,tBh=Math.round(rows.reduce((s,x)=>s+(x.totalBonusH||0),0)*100)/100;
+  ws.mergeCells(r,1,r,10);
+  const lc=ws.getCell(r,1);lc.value=`전체 합계 (${rows.length}명)`;_xlT(lc,{bold:true,size:11,bg:_XL_T.totalBg,color:_XL_T.totalText,align:'right',indent:1});
+  [[11,tH,'0.##'],[12,tBh,'0.##'],[13,tBase,'#,##0'],[14,tBonus,'#,##0'],[15,tExtra,'#,##0'],[16,tBase+tBonus+tExtra,'#,##0'],[17,tEduH,'0.##'],[18,tEduPay,'#,##0']].forEach(([col,val,fmt])=>{const c=ws.getCell(r,col);c.value=val;_xlT(c,{bold:true,size:11,bg:_XL_T.totalBg,color:_XL_T.totalText,align:'right',numFmt:fmt});});
+  ws.getRow(r).height=26;
+}
+
+_xlBuildDailyHours=function(wb,ym,year,month,lastDay,rows){
+  const ws=wb.addWorksheet('일별시수',{views:[{state:'frozen',xSplit:4,ySplit:4}]});
+  const cols=[{width:7},{width:10},{width:13},{width:18}];
+  const dayToCol={};
+  const weekBonusCols=[];
+  const dowMap=['일','월','화','수','목','금','토'];
+  const weekStartOf=dt=>{const x=new Date(dt.getTime());x.setDate(x.getDate()-x.getDay());return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;};
+  let curCol=5;
+  for(let d=1;d<=lastDay;d++){const dt=new Date(year,month-1,d);dayToCol[d]=curCol++;cols.push({width:5});if(dt.getDay()===6||d===lastDay){weekBonusCols.push({col:curCol++,weekStart:weekStartOf(dt)});cols.push({width:8});}}
+  cols.push({width:10},{width:10},{width:10});ws.columns=cols;
+  const totalStartCol=curCol;
+  const totC=totalStartCol+2;
+  const lastL=(()=>{let n=totC,s='';while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;})();
+  ws.mergeCells(`A1:${lastL}1`);const tc=ws.getCell('A1');tc.value=`일별 시수표 — ${year}년 ${month}월`;_xlT(tc,{bold:true,size:14,color:_XL_T.brand,align:'left',border:false});
+  ws.mergeCells(`A2:${lastL}2`);const sc=ws.getCell('A2');sc.value='교육시수는 급여에는 포함/표시하되 주휴수당과 월 60시간 판단에서는 제외합니다.';_xlT(sc,{size:9,color:_XL_T.textMuted,align:'left',bg:_XL_T.headerBg,border:false});
+  ['카테고리','직무','이름','특이사항'].forEach((h,i)=>{ws.mergeCells(3,i+1,4,i+1);const c=ws.getCell(3,i+1);c.value=h;_xlT(c,{bold:true,size:10,bg:_XL_T.headerBg,color:_XL_T.headerText,align:'center'});});
+  for(let d=1;d<=lastDay;d++){const dt=new Date(year,month-1,d),dow=dowMap[dt.getDay()],dtStr=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`,isHol=isHoliday(dtStr),isSun=dt.getDay()===0,isSat=dt.getDay()===6;let bg=_XL_T.headerBg,color=_XL_T.headerText;if(isHol||isSun){bg=_XL_T.holidayBg;color=_XL_T.holidayText;}else if(isSat){bg=_XL_T.weekBg;color=_XL_T.weekText;}const col=dayToCol[d];const c3=ws.getCell(3,col);c3.value=dow;_xlT(c3,{bold:true,size:9,bg,color,align:'center'});const c4=ws.getCell(4,col);c4.value=d;_xlT(c4,{bold:true,size:10,bg,color,align:'center'});}
+  weekBonusCols.forEach(wc=>{ws.mergeCells(3,wc.col,4,wc.col);const c=ws.getCell(3,wc.col);c.value='주휴수당';_xlT(c,{bold:true,size:9,bg:_XL_T.weekBg,color:_XL_T.weekText,align:'center',wrap:true});});
+  ws.mergeCells(3,totalStartCol,4,totalStartCol);const cT=ws.getCell(3,totalStartCol);cT.value='월합계';_xlT(cT,{bold:true,size:10,bg:_XL_T.bonusBg,color:_XL_T.bonusText,align:'center'});
+  ws.mergeCells(3,totalStartCol+1,4,totalStartCol+1);const cB=ws.getCell(3,totalStartCol+1);cB.value='주휴 시수';_xlT(cB,{bold:true,size:10,bg:_XL_T.weekBg,color:_XL_T.weekText,align:'center',wrap:true});
+  ws.mergeCells(3,totalStartCol+2,4,totalStartCol+2);const cE=ws.getCell(3,totalStartCol+2);cE.value='교육시수';_xlT(cE,{bold:true,size:10,bg:_XL_T.weekBg,color:_XL_T.weekText,align:'center',wrap:true});
+  const catLbl={mgmt:'관리',tutor:'조교',etc:'기타'};
+  let r=5;
+  ['mgmt','tutor','etc'].forEach(cat=>{
+    const grp=rows.filter(x=>x.cat===cat);
+    if(!grp.length)return;
+    grp.sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+    grp.forEach(row=>{
+      ws.getCell(r,1).value=catLbl[cat];ws.getCell(r,2).value=row.role;ws.getCell(r,3).value=payrollExportName(row)+(row.tutorKind?` (${row.tutorKind})`:'');
+      const note=[];if(row._mergedNote)note.push('여러 직무 합산');if((row.totalEducationH||0)>0)note.push(`교육 ${row.totalEducationH}h`);(row.changeNotes||[]).forEach(x=>note.push(x));if(isEducationTarget(AP[row.pid]||row)&&String(row.joinDate||'').startsWith(ym)&&!row.hasPriorWorkBeforeJoin&&!(row.totalEducationH>0))note.push('신규 교육시수 확인 필요');ws.getCell(r,4).value=note.join('\n');
+      _xlT(ws.getCell(r,1),{size:10,align:'center'});_xlT(ws.getCell(r,2),{size:10,align:'center'});_xlT(ws.getCell(r,3),{size:10,align:'left',indent:1});_xlT(ws.getCell(r,4),{size:10,align:'center',wrap:true,color:note.length?_XL_T.weekText:_XL_T.textMuted,bg:note.length?_XL_T.weekBg:undefined});
+      row.days.forEach(d=>{const day=parseInt(d.dt.slice(8,10));const c=ws.getCell(r,dayToCol[day]);const dt=new Date(d.dt+'T00:00:00+09:00');const isHol=isHoliday(d.dt),isSun=dt.getDay()===0,isSat=dt.getDay()===6;let bg=undefined;if(isHol||isSun)bg=_XL_T.holidayBg;else if(isSat)bg=_XL_T.weekBg;if(d.h>0){c.value=payrollDayDisplayValue(row,d);_xlT(c,{size:10,align:'center',numFmt:'0.##',bg});}else if(d.phrase==='결근'){c.value='결';_xlT(c,{bold:true,size:10,align:'center',color:_XL_T.absentText,bg:_XL_T.absentBg});}else if(d.plnAbs){c.value=d.dt<kstDate()?'결':'예';_xlT(c,{bold:true,size:10,align:'center',color:_XL_T.absentText,bg:_XL_T.absentBg});}else if(d.phrase==='연차'){c.value='연';_xlT(c,{bold:true,size:10,align:'center',color:_XL_T.bonusText,bg:_XL_T.bonusBg});}else if(d.phrase==='반차'){c.value='반';_xlT(c,{bold:true,size:10,align:'center',color:_XL_T.bonusText,bg:_XL_T.bonusBg});}else{_xlT(c,{size:10,align:'center',bg});}const memo=[];const a=d.att||{};if(a.stdPhrase)memo.push(`처리: ${a.stdPhrase}`);if(a.memoText)memo.push(`처리메모: ${a.memoText}`);listVals(a.notes).forEach(n=>memo.push(`일반메모: ${typeof n==='string'?n:(n.text||n.memo||'')}`));listVals(a.history).forEach(h=>{const t=h.memo||h.text||'';if(t)memo.push(`이력: ${t}`);});if(d.educationH)memo.push(`교육: ${d.educationH}h${d.educationMemo?' / '+d.educationMemo:''}`);const uniq=[...new Set(memo.filter(Boolean))];const vice=row.cat==='tutor'&&String(row.tutorKind||'').includes('부담임'),nonSix=payrollDayDisplayValue(row,d)!==6,marked=d.h>0||d.phrase==='결근'||d.plnAbs||d.phrase==='연차'||d.phrase==='반차';if(vice&&marked&&nonSix){_xlT(c,{bold:true,size:10,align:'center',numFmt:'0.##',bg:_XL_T.bonusBg,color:_XL_T.bonusText});if(uniq.length)c.note=uniq.join('\n');}});
+      weekBonusCols.forEach(wc=>{const c=ws.getCell(r,wc.col);const w=(row.weeks||[]).find(x=>x.start===wc.weekStart);c.value=row.isT?'':(w&&w.bonusH?Math.round(w.bonusH*100)/100:0);_xlT(c,{bold:true,size:10,bg:_XL_T.weekBg,color:_XL_T.weekText,align:'right',numFmt:'0.##'});});
+      const cTotal=ws.getCell(r,totalStartCol);cTotal.value=row.monthHDisp!==undefined?row.monthHDisp:(Math.round((row.monthH||0)*10)/10);_xlT(cTotal,{bold:true,size:10,bg:_XL_T.bonusBg,color:_XL_T.bonusText,align:'right',numFmt:'0.##'});
+      const cWeek=ws.getCell(r,totalStartCol+1);cWeek.value=row.isT?'':(row.totalBonusH?Math.round(row.totalBonusH*100)/100:0);_xlT(cWeek,{bold:true,size:10,bg:_XL_T.weekBg,color:_XL_T.weekText,align:'right',numFmt:'0.##'});
+      const cEdu=ws.getCell(r,totalStartCol+2);cEdu.value=row.totalEducationH?Math.round(row.totalEducationH*100)/100:0;_xlT(cEdu,{bold:true,size:10,bg:_XL_T.weekBg,color:_XL_T.weekText,align:'right',numFmt:'0.##'});
+      ws.getRow(r).height=18;r++;
+    });
+  });
+}
+
+_xlBuildDailyPay=function(wb,ym,year,month,lastDay,rows){
+  const ws=wb.addWorksheet('일별 급여시수·페이',{views:[{state:'frozen',xSplit:3,ySplit:4}]});
+  const cols=[{width:7},{width:10},{width:14}];for(let d=1;d<=lastDay;d++)cols.push({width:11});cols.push({width:14},{width:14});ws.columns=cols;
+  const totC=3+lastDay+2;const lastL=(()=>{let n=totC,s='';while(n>0){const r=(n-1)%26;s=String.fromCharCode(65+r)+s;n=Math.floor((n-1)/26);}return s;})();
+  ws.mergeCells(`A1:${lastL}1`);const tc=ws.getCell('A1');tc.value=`일별 급여시수·페이 통합표 — ${year}년 ${month}월`;_xlT(tc,{size:13,color:_XL_T.text,align:'left',border:false});
+  ws.mergeCells(`A2:${lastL}2`);const sc=ws.getCell('A2');sc.value='각 셀: 위=급여시수(h/T), 아래=페이(원). 교육시수는 해당 일자 페이에 더해집니다.';_xlT(sc,{size:9,color:_XL_T.textMuted,align:'left',bg:_XL_T.headerBg,border:false});
+  const dowMap=['일','월','화','수','목','금','토'];['카테고리','직무','이름'].forEach((h,i)=>{ws.mergeCells(3,i+1,4,i+1);const c=ws.getCell(3,i+1);c.value=h;_xlT(c,{size:10,bg:_XL_T.headerBg,color:_XL_T.headerText,align:'center'});});
+  for(let d=1;d<=lastDay;d++){const dt=new Date(year,month-1,d),dow=dowMap[dt.getDay()],dtStr=`${year}-${String(month).padStart(2,'0')}-${String(d).padStart(2,'0')}`,isHol=isHoliday(dtStr),isSun=dt.getDay()===0,isSat=dt.getDay()===6;let bg=_XL_T.headerBg,color=_XL_T.headerText;if(isHol||isSun){bg=_XL_T.holidayBg;color=_XL_T.holidayText;}else if(isSat){bg=_XL_T.weekBg;color=_XL_T.weekText;}const c3=ws.getCell(3,3+d);c3.value=dow;_xlT(c3,{size:9,bg,color,align:'center'});const c4=ws.getCell(4,3+d);c4.value=d;_xlT(c4,{size:10,bg,color,align:'center'});}
+  ws.mergeCells(3,3+lastDay+1,4,3+lastDay+1);const cTh=ws.getCell(3,3+lastDay+1);cTh.value='급여시수';_xlT(cTh,{size:10,bg:_XL_T.bonusBg,color:_XL_T.bonusText,align:'center'});
+  ws.mergeCells(3,3+lastDay+2,4,3+lastDay+2);const cTp=ws.getCell(3,3+lastDay+2);cTp.value='월 페이';_xlT(cTp,{size:10,bg:_XL_T.bonusBg,color:_XL_T.bonusText,align:'center'});
+  const catLbl={mgmt:'관리',tutor:'조교',etc:'기타'};let r=5;
+  ['mgmt','tutor','etc'].forEach(cat=>{const grp=rows.filter(x=>x.cat===cat);if(!grp.length)return;grp.sort((a,b)=>a.name.localeCompare(b.name,'ko'));grp.forEach(row=>{ws.getCell(r,1).value=catLbl[cat];ws.getCell(r,2).value=row.role;ws.getCell(r,3).value=payrollExportName(row)+(row.tutorKind?` (${row.tutorKind})`:'');_xlT(ws.getCell(r,1),{size:10,align:'center'});_xlT(ws.getCell(r,2),{size:10,align:'center'});_xlT(ws.getCell(r,3),{size:10,align:'left',indent:1});let monthPay=0;row.days.forEach(d=>{const day=parseInt(d.dt.slice(8,10));const c=ws.getCell(r,3+day);const dt=new Date(d.dt+'T00:00:00+09:00');const isHol=isHoliday(d.dt),isSun=dt.getDay()===0,isSat=dt.getDay()===6;let bg=undefined;if(isHol||isSun)bg=_XL_T.holidayBg;else if(isSat)bg=_XL_T.weekBg;if(d.h>0||d.extraEducationPay>0){const base=d.h>0?calcDayPay({cat:row.cat,_payrollWage:d.wage||row.wage},d.dt,d.h).pay:0;const pay=base+(d.extraEducationPay||0);monthPay+=pay;const hLabel=d.h>0?payrollDayDisplayLabel(row,d):'0h';const eduLine=d.educationH?`\n교육 ${d.educationH}h`:'';c.value=`${hLabel}\n${pay.toLocaleString()}원${eduLine}`;c.alignment={vertical:'middle',horizontal:'center',wrapText:true};c.font={size:9,name:'맑은 고딕',color:{argb:'FF3F3F3F'}};if(bg)c.fill={type:'pattern',pattern:'solid',fgColor:{argb:bg}};c.border={top:{style:'thin',color:{argb:'FFEFEFEF'}},left:{style:'thin',color:{argb:'FFEFEFEF'}},bottom:{style:'thin',color:{argb:'FFEFEFEF'}},right:{style:'thin',color:{argb:'FFEFEFEF'}}};}else if(d.phrase==='결근'){c.value='결';_xlT(c,{size:10,align:'center',color:_XL_T.absentText,bg:_XL_T.absentBg});}else if(d.plnAbs){c.value=d.dt<kstDate()?'결':'예';_xlT(c,{size:10,align:'center',color:_XL_T.absentText,bg:_XL_T.absentBg});}else{_xlT(c,{size:10,align:'center',bg});}});const cH=ws.getCell(r,3+lastDay+1);cH.value=row.cat==='tutor'?(row.monthHDisp||0)+'T':(Math.round((row.monthHDisp!==undefined?row.monthHDisp:(row.monthH||0))*10)/10)+'h';_xlT(cH,{size:10,bg:_XL_T.bonusBg,color:_XL_T.bonusText,align:'center'});const cP=ws.getCell(r,3+lastDay+2);cP.value=monthPay;_xlT(cP,{size:10,bg:_XL_T.bonusBg,color:_XL_T.bonusText,align:'right',numFmt:'#,##0'});ws.getRow(r).height=38;r++;});});
+}
+
+exportBonusCSV=async function(){
+  if(!PAY_DATA||!PAY_DATA.rows.length){ST('먼저 조회해주세요');return;}
+  const{ym,rows}=PAY_DATA;
+  const all=_xlFlattenBonus(mergePayrollExportRows(rows));
+  if(!all.length){ST('가산 내역이 없습니다');return;}
+  const h=['날짜','요일','이름','직무','가산유형','급여시수','초과시수','시급','추가가산액(기본급제외)','계산식','스케줄출근','스케줄퇴근','실제출근','실제퇴근','조정여부','사유메모','조정자','조정시각'];
+  const data=all.map(b=>[b.dt,b.dow,b.name,b.role,b.type==='holiday'?'공휴일×1.5':'평일+0.5',b.h,b.overH||'',b.wage,b.amount,b.calc||'',b.sched.start||'',b.sched.end||'',b.actS||'',b.actE||'',b.adjusted?'O':'',(b.reason+'').replace(/[\r\n,]/g,' '),b.by||'',b.at||''].map(v=>`"${v||''}"`).join(',')).join('\n');
+  const blob=new Blob(['\uFEFF'+h.join(',')+'\n'+data],{type:'text/csv;charset=utf-8;'});
+  const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=`강안교육_가산검증_${ym}.csv`;a.click();URL.revokeObjectURL(u);
+  ST(`가산 ${all.length}건 다운로드 완료`);
+}
+window.exportBonusCSV=exportBonusCSV;
 </script>
 </body>
 </html>
