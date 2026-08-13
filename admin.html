@@ -839,23 +839,34 @@ function docData(pid,type){return docSource(pid,type).doc;}
 function hasActualPartDoc(pid,type){const d=docData(pid,type);return !!(d&&(d.url||d.path||d.dataUrl));}
 function legacyDocStatus(pid,type){
   const p=AP?.[pid]||{},key=docPersonKey(pid,p);
-  return (PDS?.[key]?.[DOC_LEGACY_KEY]?.[type])||(PDS?.[pid]?.[DOC_LEGACY_KEY]?.[type])||null;
+  const d=(PDS?.[key]?.[DOC_LEGACY_KEY]?.[type])||(PDS?.[pid]?.[DOC_LEGACY_KEY]?.[type])||null;
+  if(!d)return null;
+  const scopes=Array.isArray(d.scopeCats)?d.scopeCats:[];
+  if(scopes.length&&!scopes.includes(p.cat))return null;
+  return d;
 }
 function hasLegacyPartDoc(pid,type){const d=legacyDocStatus(pid,type);return !!(d&&(d.verified===true||d.status==='verified'));}
 function hasPartDoc(pid,type){return hasActualPartDoc(pid,type)||hasLegacyPartDoc(pid,type);}
 window.hasActualPartDoc=hasActualPartDoc;window.hasLegacyPartDoc=hasLegacyPartDoc;
 function requiredDocTypes(pidOrPart){
-  const pid=typeof pidOrPart==='string'?pidOrPart:(pidOrPart?.id||'');
   const p=typeof pidOrPart==='string'?(AP?.[pidOrPart]||{}):(pidOrPart||{});
-  const key=pid?docPersonKey(pid,p):'';
-  const needsCrime=(p.cat==='mgmt'||p.cat==='etc')||!!(key&&Object.entries(AP||{}).some(([otherId,other])=>docPersonKey(otherId,other)===key&&(other.cat==='mgmt'||other.cat==='etc')));
-  return needsCrime?['idCard','bank','crime']:['idCard','bank'];
+  return (p.cat==='mgmt'||p.cat==='etc')?['idCard','bank','crime']:['idCard','bank'];
 }
-function hasAllPartDocs(pid){return requiredDocTypes(pid).every(type=>hasPartDoc(pid,type));}
-function docPayrollInfo(pid){
+function sameDocPersonParts(pid){
+  const p=AP?.[pid]||{},key=docPersonKey(pid,p);
+  return Object.entries(AP||{}).filter(([id,other])=>docPersonKey(id,other)===key).map(([id,other])=>({...other,id}));
+}
+function hasAllPartDocs(pid){return sameDocPersonParts(pid).every(p=>requiredDocTypes(p).every(type=>hasPartDoc(p.id,type)));}
+function rawDocPayrollInfo(pid){
   const p=AP?.[pid]||{};
   const key=docPersonKey(pid,p);
   return (PDS?.[key]?.[DOC_INFO_KEY])||(PDS?.[pid]?.[DOC_INFO_KEY])||{};
+}
+function docPayrollInfo(pid){
+  const p=AP?.[pid]||{};
+  const info=rawDocPayrollInfo(pid);
+  const scopes=Array.isArray(info.scopeCats)?info.scopeCats:[];
+  return scopes.length&&!scopes.includes(p.cat)?{}:info;
 }
 function docStatusButton(pid){
   if(!pid)return '';
@@ -921,7 +932,9 @@ function uniqueDocsParts(ps){
   const byKey=new Map();
   ps.forEach(p=>{
     const key=docPersonKey(p.id,p);
-    if(!byKey.has(key)||p.id===DOC_ACTIVE_PID)byKey.set(key,p);
+    const old=byKey.get(key);
+    const rank=x=>(x.cat==='mgmt'||x.cat==='etc')?2:1;
+    if(!old||rank(p)>rank(old)||p.id===DOC_ACTIVE_PID)byKey.set(key,p);
   });
   return Array.from(byKey.values());
 }
@@ -1166,7 +1179,12 @@ async function saveDocPayrollInfo(pid){
   const accountHolder=(document.getElementById('doc-account-holder')?.value||'').trim();
   const hasAnyBank=!!(bankName||accountNo||accountHolder);
   if(hasAnyBank&&!(bankName&&accountNo&&accountHolder)){setDocPayInfoMsg('통장정보는 은행명, 계좌번호, 예금주명을 모두 입력해야 저장됩니다. 부족한 항목만 채운 뒤 다시 저장하세요.','error');ST('통장정보는 은행명, 계좌번호, 예금주명을 모두 입력해야 저장됩니다');return;}
-  const info={residentNo,bankName,accountNo,accountHolder};
+  const previous=rawDocPayrollInfo(pid);
+  const previousScopes=Array.isArray(previous.scopeCats)?previous.scopeCats:[];
+  const scopeCats=previousScopes.length
+    ?Array.from(new Set([...previousScopes,p.cat].filter(Boolean)))
+    :[];
+  const info={residentNo,bankName,accountNo,accountHolder,...(scopeCats.length?{scopeCats}:{})};
   const keys=docStorageKeys(pid,p);
   SL(true);
   try{
