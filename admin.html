@@ -845,8 +845,11 @@ function hasLegacyPartDoc(pid,type){const d=legacyDocStatus(pid,type);return !!(
 function hasPartDoc(pid,type){return hasActualPartDoc(pid,type)||hasLegacyPartDoc(pid,type);}
 window.hasActualPartDoc=hasActualPartDoc;window.hasLegacyPartDoc=hasLegacyPartDoc;
 function requiredDocTypes(pidOrPart){
+  const pid=typeof pidOrPart==='string'?pidOrPart:(pidOrPart?.id||'');
   const p=typeof pidOrPart==='string'?(AP?.[pidOrPart]||{}):(pidOrPart||{});
-  return (p.cat==='mgmt'||p.cat==='etc')?['idCard','bank','crime']:['idCard','bank'];
+  const key=pid?docPersonKey(pid,p):'';
+  const needsCrime=(p.cat==='mgmt'||p.cat==='etc')||!!(key&&Object.entries(AP||{}).some(([otherId,other])=>docPersonKey(otherId,other)===key&&(other.cat==='mgmt'||other.cat==='etc')));
+  return needsCrime?['idCard','bank','crime']:['idCard','bank'];
 }
 function hasAllPartDocs(pid){return requiredDocTypes(pid).every(type=>hasPartDoc(pid,type));}
 function docPayrollInfo(pid){
@@ -922,6 +925,19 @@ function uniqueDocsParts(ps){
   });
   return Array.from(byKey.values());
 }
+function docsActiveCounts(){
+  const today=kstDate();
+  const isResigned=p=>p.status==='inactive'||(p.leaveDate&&p.leaveDate<today);
+  const active=uniqueDocsParts(Object.entries(AP||{}).map(([id,p])=>({...p,id})).filter(p=>!isResigned(p)));
+  const done=active.filter(p=>hasAllPartDocs(p.id)).length;
+  return{total:active.length,done,missing:active.length-done};
+}
+function renderDocsCounts(){
+  const el=document.getElementById('doc-counts');if(!el)return;
+  const c=docsActiveCounts();
+  el.innerHTML=`<span>재직 총인원 <b>${c.total}</b>명</span><span>제출완료 <b style="color:#047857">${c.done}</b>명</span><span>미제출 <b style="color:#b91c1c">${c.missing}</b>명</span>`;
+}
+window.docsActiveCounts=docsActiveCounts;
 function renderDocsManager(){
   const body=document.getElementById('modal-part-docs-body');
   if(!body)return;
@@ -936,11 +952,13 @@ function renderDocsManager(){
         <option value="done" ${oldFilter==='done'?'selected':''}>제출완료</option>
       </select>
     </div>
+    <div id="doc-counts" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:8px 2px 10px;font-size:12px;color:var(--text-secondary)"></div>
     <div class="doc-layout">
       <div class="doc-list"></div>
       <div class="doc-detail"></div>
     </div>`;
   renderDocsList(true);
+  renderDocsCounts();
 }
 window.renderDocsManager=renderDocsManager;
 function filteredDocsParts(){
@@ -958,7 +976,7 @@ function filteredDocsParts(){
   const searched=q?ps.filter(p=>docSearchMatch(p,q)):ps;
   ps=uniqueDocsParts(searched);
   if(filter==='missing')ps=ps.filter(p=>!isResigned(p)&&!hasAllPartDocs(p.id));
-  else if(filter==='done')ps=ps.filter(p=>hasAllPartDocs(p.id));
+  else if(filter==='done')ps=ps.filter(p=>!isResigned(p)&&hasAllPartDocs(p.id));
   if(!DOC_ACTIVE_PID||!AP[DOC_ACTIVE_PID])DOC_ACTIVE_PID=null;
   return ps;
 }
@@ -967,6 +985,7 @@ function renderDocsList(forceDetail=false){
   const detail=document.querySelector('#modal-part-docs .doc-detail');
   if(!list||!detail)return;
   const filtered=filteredDocsParts();
+  renderDocsCounts();
   const ps=filtered;
   const layout=document.querySelector('#modal-part-docs .doc-layout');
   if(layout)layout.classList.toggle('docs-has-selection',!!DOC_ACTIVE_PID);
