@@ -798,6 +798,7 @@ function canSeeWage(){return CU&&(CU.role==='관리자'||CU.role==='총무');}
 window.canSeeWage=canSeeWage;
 const DOC_TYPES={idCard:{short:'신',label:'신분증'},bank:{short:'통',label:'통장사본'},crime:{short:'범',label:'범죄신고서'}};
 const DOC_INFO_KEY='_payrollInfo';
+const DOC_LEGACY_KEY='_legacyVerified';
 let DOC_ACTIVE_PID=null,DOC_DEFAULT_FILTER='missing';
 let DOC_UPLOADING={},DOC_UPLOAD_MSG={};
 let DOC_FILTER_RESETTING=false;
@@ -835,7 +836,14 @@ function docStorageKeys(pid,p=AP?.[pid]){
   return Array.from(keys).filter(Boolean);
 }
 function docData(pid,type){return docSource(pid,type).doc;}
-function hasPartDoc(pid,type){const d=docData(pid,type);return !!(d&&(d.url||d.path||d.dataUrl));}
+function hasActualPartDoc(pid,type){const d=docData(pid,type);return !!(d&&(d.url||d.path||d.dataUrl));}
+function legacyDocStatus(pid,type){
+  const p=AP?.[pid]||{},key=docPersonKey(pid,p);
+  return (PDS?.[key]?.[DOC_LEGACY_KEY]?.[type])||(PDS?.[pid]?.[DOC_LEGACY_KEY]?.[type])||null;
+}
+function hasLegacyPartDoc(pid,type){const d=legacyDocStatus(pid,type);return !!(d&&(d.verified===true||d.status==='verified'));}
+function hasPartDoc(pid,type){return hasActualPartDoc(pid,type)||hasLegacyPartDoc(pid,type);}
+window.hasActualPartDoc=hasActualPartDoc;window.hasLegacyPartDoc=hasLegacyPartDoc;
 function requiredDocTypes(pidOrPart){
   const p=typeof pidOrPart==='string'?(AP?.[pidOrPart]||{}):(pidOrPart||{});
   return (p.cat==='mgmt'||p.cat==='etc')?['idCard','bank','crime']:['idCard','bank'];
@@ -892,7 +900,9 @@ function selectDocsPart(pid){
 window.selectDocsPart=selectDocsPart;
 function docsStatusText(pid){
   const miss=requiredDocTypes(pid).filter(type=>!hasPartDoc(pid,type)).map(type=>DOC_TYPES[type].label);
-  return miss.length?`미제출: ${miss.join(', ')}`:'제출 완료';
+  if(miss.length)return `미제출: ${miss.join(', ')}`;
+  const legacy=requiredDocTypes(pid).some(type=>!hasActualPartDoc(pid,type)&&hasLegacyPartDoc(pid,type));
+  return legacy?'제출 완료 · 과거확인':'제출 완료';
 }
 function docsListSubText(p){
   const bits=[CATL[p.cat]||p.cat||'-',p.role||'-'];
@@ -920,7 +930,7 @@ function renderDocsManager(){
   body.innerHTML=`
     <div class="doc-toolbar">
       <input id="doc-search" class="form-input" placeholder="이름/직무/휴대폰 검색" value="${escAttr(oldSearch)}" oninput="filterDocsList('search')" style="min-width:180px;flex:1">
-      <select id="doc-filter" class="form-select" onchange="filterDocsList(true)" style="width:150px">
+      <select id="doc-filter" class="form-select" onchange="changeDocsStatusFilter()" style="width:150px">
         <option value="" ${oldFilter===''?'selected':''}>전체</option>
         <option value="missing" ${oldFilter==='missing'?'selected':''}>미제출만</option>
         <option value="done" ${oldFilter==='done'?'selected':''}>제출완료</option>
@@ -947,7 +957,7 @@ function filteredDocsParts(){
   const q=search.trim().toLowerCase();
   const searched=q?ps.filter(p=>docSearchMatch(p,q)):ps;
   ps=uniqueDocsParts(searched);
-  if(filter==='missing')ps=ps.filter(p=>!hasAllPartDocs(p.id));
+  if(filter==='missing')ps=ps.filter(p=>!isResigned(p)&&!hasAllPartDocs(p.id));
   else if(filter==='done')ps=ps.filter(p=>hasAllPartDocs(p.id));
   if(!DOC_ACTIVE_PID||!AP[DOC_ACTIVE_PID])DOC_ACTIVE_PID=null;
   return ps;
@@ -983,6 +993,15 @@ function filterDocsList(resetActive=false){
   DOC_FILTER_RESETTING=false;
 }
 window.filterDocsList=filterDocsList;
+function changeDocsStatusFilter(){
+  const search=document.getElementById('doc-search');
+  if(search)search.value='';
+  DOC_ACTIVE_PID=null;
+  DOC_FILTER_RESETTING=true;
+  renderDocsList();
+  DOC_FILTER_RESETTING=false;
+}
+window.changeDocsStatusFilter=changeDocsStatusFilter;
 function renderDocsDetail(pid){
   const p=AP[pid];
   if(!p)return '<div class="doc-empty">직원 정보 없음</div>';
@@ -1153,15 +1172,17 @@ function renderDocPanel(pid,type){
   const saving=!!DOC_UPLOADING[key];
   const partBusy=isDocPartUploading(pid);
   const stateMsg=DOC_UPLOAD_MSG[key]||'';
-  const done=!!(d&&(d.url||d.path||d.dataUrl));
+  const done=hasActualPartDoc(pid,type);
+  const legacy=!done&&hasLegacyPartDoc(pid,type);
+  const legacyInfo=legacyDocStatus(pid,type)||{};
   const fileUrl=d&&(d.url||d.dataUrl)?escAttr(d.url||d.dataUrl):'';
   const isImg=done&&((d.type||'').startsWith('image/')||/\.(png|jpe?g|gif|webp|bmp)$/i.test(d.name||d.url||''));
   const preview=done
     ?(isImg?`<img src="${fileUrl}" alt="${escAttr(info.label)}">`:`<button type="button" class="doc-file-link" onclick="openDocFile('${jsStr(pid)}','${type}')">파일 열기</button>`)
-    :'<div class="doc-missing">미제출</div>';
-  const meta=done?`${escHtml(d.name||'파일')} · ${escHtml(d.uploadedAt||'')}`:'파일 없음';
+    :(legacy?'<div class="doc-missing" style="color:#047857;background:#ecfdf5;border-color:#a7f3d0">과거 제출확인</div>':'<div class="doc-missing">미제출</div>');
+  const meta=done?`${escHtml(d.name||'파일')} · ${escHtml(d.uploadedAt||'')}`:(legacy?`기존 자료 확인 · ${escHtml(legacyInfo.verifiedAt||'')}`:'파일 없음');
   return `<div class="doc-panel${saving?' saving':''}">
-    <div class="doc-panel-head"><span>${info.label}</span><span class="doc-mark${done?'':' missing'}">${info.short}</span></div>
+    <div class="doc-panel-head"><span>${info.label}</span><span class="doc-mark${(done||legacy)?'':' missing'}">${info.short}</span></div>
     <div class="doc-preview">${preview}</div>
     <div class="doc-file-meta">
       <span>${meta}</span>
@@ -1337,7 +1358,7 @@ async function deletePartDoc(pid,type){
     removeKeys.forEach(k=>{
       if(PDS[k]){
         delete PDS[k][type];
-        if(!PDS[k].idCard&&!PDS[k].bank&&!PDS[k].crime&&!PDS[k][DOC_INFO_KEY])delete PDS[k];
+        if(!PDS[k].idCard&&!PDS[k].bank&&!PDS[k].crime&&!PDS[k][DOC_INFO_KEY]&&!PDS[k][DOC_LEGACY_KEY])delete PDS[k];
       }
     });
     ST(`${p.name} ${info.label} 삭제완료`);
