@@ -461,7 +461,7 @@ body.docs-modal-open{overflow:hidden!important;}
         <div style="display:flex;gap:8px">
           <button class="btn-secondary parts-export-mobile-hide" onclick="exportPartsCSV()">📤 엑셀 다운로드</button>
           <button class="part-doc-btn" onclick="openDocsManager()">서류</button>
-          <button class="part-doc-btn" onclick="openEducationManager()">교육</button>
+          <button class="part-doc-btn" id="btn-education-manager" onclick="openEducationManager()">교육</button>
           <button class="btn-primary" id="btn-add-part" onclick="openAP()">+ 파트 등록</button>
         </div>
       </div>
@@ -1851,8 +1851,8 @@ async function changeDashDate(cat){const el=document.getElementById('dash-date'+
 window.changeDashDate=changeDashDate;
 function goToday(cat){const t=kstDate();DD[cat]=t;const el=document.getElementById('dash-date'+(cat==='mgmt'?'':'-'+cat));if(el)el.value=t;updateDL(cat,t);TB[cat]=TA;renderCat(cat);}
 window.goToday=goToday;
-function clk(){const k=new Date(Date.now()+9*3600000);const D=['일','월','화','수','목','금','토'];document.getElementById('top-date').textContent=`${k.getUTCFullYear()}.${String(k.getUTCMonth()+1).padStart(2,'0')}.${String(k.getUTCDate()).padStart(2,'0')} (${D[k.getUTCDay()]})  ${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')}`;}
-function listenP(){onValue(ref(db,'parts'),s=>{AP=s.val()||{};renderAll();renderPT();if(typeof updateWorkmanRoleOptions==='function')updateWorkmanRoleOptions();});}
+function clk(){const k=new Date(Date.now()+9*3600000);const D=['일','월','화','수','목','금','토'];document.getElementById('top-date').textContent=`${k.getUTCFullYear()}.${String(k.getUTCMonth()+1).padStart(2,'0')}.${String(k.getUTCDate()).padStart(2,'0')} (${D[k.getUTCDay()]})  ${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')}`;if(typeof updateEducationTodayButton==='function')updateEducationTodayButton();}
+function listenP(){onValue(ref(db,'parts'),s=>{AP=s.val()||{};renderAll();renderPT();if(typeof updateEducationTodayButton==='function')updateEducationTodayButton();if(typeof updateWorkmanRoleOptions==='function')updateWorkmanRoleOptions();});}
 function listenA(){onValue(ref(db,`attendance/${kstDate()}`),s=>{TA=s.val()||{};['mgmt','tutor','etc'].forEach(c=>{if(DD[c]===kstDate())TB[c]=TA;});renderAll();
 // 출결현황이 오늘 날짜 조회 중이면 자동 갱신
 const wf=document.getElementById('workman-from')?.value;
@@ -8894,6 +8894,20 @@ function updateEducationHoursPreview(){
   if(out)out.value=hours?formatEducationHours(hours):'';
 }
 window.updateEducationHoursPreview=updateEducationHoursPreview;
+function hasTodayEducationSchedule(){
+  const today=kstDate();
+  return Object.values(AP||{}).some(p=>educationEntries(p).some(e=>e.date===today));
+}
+function updateEducationTodayButton(){
+  const btn=document.getElementById('btn-education-manager');
+  if(!btn)return;
+  const active=hasTodayEducationSchedule();
+  btn.style.background=active?'#fffbeb':'';
+  btn.style.borderColor=active?'#facc15':'';
+  btn.style.color=active?'#92400e':'';
+  btn.title=active?'오늘 교육 일정 있음':'교육시수 관리';
+}
+window.updateEducationTodayButton=updateEducationTodayButton;
 function educationTimeOptions(includeBlank=true){
   const opts=[];
   if(includeBlank)opts.push('<option value="">선택</option>');
