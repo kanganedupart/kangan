@@ -9014,13 +9014,23 @@ function renderEducationSchedule(){
 function focusEducationSearch(){
   requestAnimationFrame(()=>{const input=document.getElementById('edu-search');if(!input)return;input.focus();const n=input.value.length;try{input.setSelectionRange(n,n);}catch(e){}});
 }
+function refreshEducationSearchResults(){
+  const list=document.getElementById('edu-staff-list');
+  const detail=document.getElementById('edu-staff-detail');
+  if(!list||!detail)return;
+  const ps=educationPartRows();
+  list.innerHTML=ps.length?ps.map(p=>renderEducationListRow(p)).join(''):'<div style="padding:28px;text-align:center;color:var(--text-muted);font-size:13px">조건에 맞는 직원 없음</div>';
+  detail.innerHTML=EDU_ACTIVE_PID?renderEducationDetail(EDU_ACTIVE_PID):'<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:13px">직원을 선택하세요</div>';
+}
 function handleEducationSearchInput(input){
   EDU_SEARCH_VALUE=input.value||'';
   EDU_DATE_VALUE='';
   EDU_FILTER_VALUE='all';
   EDU_ACTIVE_PID=null;
   if(EDU_SEARCH_COMPOSING)return;
-  renderEducationManager();focusEducationSearch();
+  const filter=document.getElementById('edu-filter');
+  if(filter)filter.value='all';
+  refreshEducationSearchResults();
 }
 function handleEducationSearchComposition(done,input){
   EDU_SEARCH_COMPOSING=!done;
@@ -9074,10 +9084,10 @@ function renderEducationManager(){
       </select>
     </div>
     <div style="display:grid;grid-template-columns:${narrow?'1fr':'260px 1fr'};gap:14px;min-height:${narrow?'auto':'430px'}">
-      <div style="border:1px solid var(--border);border-radius:8px;overflow:auto;max-height:${narrow?'210px':'56vh'}">
+      <div id="edu-staff-list" style="border:1px solid var(--border);border-radius:8px;overflow:auto;max-height:${narrow?'210px':'56vh'}">
         ${ps.length?ps.map(p=>renderEducationListRow(p)).join(''):'<div style="padding:28px;text-align:center;color:var(--text-muted);font-size:13px">조건에 맞는 직원 없음</div>'}
       </div>
-      <div style="border:1px solid var(--border);border-radius:8px;padding:14px;min-height:${narrow?'260px':'360px'};min-width:0">
+      <div id="edu-staff-detail" style="border:1px solid var(--border);border-radius:8px;padding:14px;min-height:${narrow?'260px':'360px'};min-width:0">
         ${EDU_ACTIVE_PID?renderEducationDetail(EDU_ACTIVE_PID):'<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--text-muted);font-size:13px">직원을 선택하세요</div>'}
       </div>
     </div>`;
