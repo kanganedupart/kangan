@@ -9184,7 +9184,7 @@ async function saveEducationEntry(pid){
     AP[pid]={...AP[pid],educationDates:arr,educationExcluded:false};
     ST('교육시수 저장 완료');
     renderEducationManager();
-    if(PAY_DATA)loadPayroll();
+    PAY_DATA=null;
   }catch(e){ST('교육시수 저장 실패: '+(e.message||e));}
   finally{SL(false);}
 }
