@@ -5587,13 +5587,13 @@ window.waReRenderPermAutofill=waReRenderPermAutofill;
 // 이벤트 모달 열기
 function waOpenModal(pid,type){
   WA_PID=pid;
+  const p=AP[pid];
   document.getElementById('modal-workman-title').innerHTML=`<span style="color:var(--accent)">${WA_LABELS[type]}</span> — 등록`;
   const today=kstDate();
   const DAYS=['월','화','수','목','금','토','일'];
   let body='';
   if(type==='perm'){
     // 현재 적용 중 값 자동 채움 (오늘 기준, 영구변경 활성이면 그것)
-    const p=AP[pid];
     const DM_K=['일','월','화','수','목','금','토'];
     const todayDow=DM_K[new Date(today+'T00:00:00+09:00').getDay()];
     const dsCur=p?getDayTime(p,todayDow,today):{};
