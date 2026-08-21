@@ -938,10 +938,14 @@ function uniqueDocsParts(ps){
   });
   return Array.from(byKey.values());
 }
-function docsActiveCounts(){
+function isDocsCurrentTarget(p){
   const today=kstDate();
-  const isResigned=p=>p.status==='inactive'||(p.leaveDate&&p.leaveDate<today);
-  const active=uniqueDocsParts(Object.entries(AP||{}).map(([id,p])=>({...p,id})).filter(p=>!isResigned(p)));
+  const isResigned=p.status==='inactive'||(p.leaveDate&&p.leaveDate<today);
+  if(!isResigned)return true;
+  return !!p.leaveDate&&p.leaveDate.slice(0,7)===today.slice(0,7);
+}
+function docsActiveCounts(){
+  const active=uniqueDocsParts(Object.entries(AP||{}).map(([id,p])=>({...p,id})).filter(isDocsCurrentTarget));
   const done=active.filter(p=>hasAllPartDocs(p.id)).length;
   return{total:active.length,done,missing:active.length-done};
 }
@@ -988,8 +992,8 @@ function filteredDocsParts(){
   const q=search.trim().toLowerCase();
   const searched=q?ps.filter(p=>docSearchMatch(p,q)):ps;
   ps=uniqueDocsParts(searched);
-  if(filter==='missing')ps=ps.filter(p=>!isResigned(p)&&!hasAllPartDocs(p.id));
-  else if(filter==='done')ps=ps.filter(p=>!isResigned(p)&&hasAllPartDocs(p.id));
+  if(filter==='missing')ps=ps.filter(p=>isDocsCurrentTarget(p)&&!hasAllPartDocs(p.id));
+  else if(filter==='done')ps=ps.filter(p=>isDocsCurrentTarget(p)&&hasAllPartDocs(p.id));
   if(!DOC_ACTIVE_PID||!AP[DOC_ACTIVE_PID])DOC_ACTIVE_PID=null;
   return ps;
 }
