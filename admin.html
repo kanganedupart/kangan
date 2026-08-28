@@ -1564,7 +1564,9 @@ function effectivePartOn(pid,dt){
 }
 function hasNormalAdjustedWindow(p,a){
   if(!p||!a||a.stdPhrase!=='정상')return false;
-  return !!((a.adjustedStart&&a.adjustedStart!==p.start)||(a.adjustedEnd&&a.adjustedEnd!==p.end));
+  const delayedStart=!!(a.adjustedStart&&toM(a.adjustedStart)>toM(p.start));
+  const earlyEnd=!!(a.adjustedEnd&&timeMFromStart(p.start,a.adjustedEnd)<timeMFromStart(p.start,p.end));
+  return delayedStart||earlyEnd;
 }
 function calcAttendanceWindow(p,a){
   if(!p||!a||(!a.inTime&&!a.adjustedStart))return null;
@@ -3258,20 +3260,30 @@ window.normalizedAttendancePhrase=normalizedAttendancePhrase;
 window.scheduleCell=scheduleCell;
 window.attendTimeCell=attendTimeCell;
 window.plannedPhraseBadge=plannedPhraseBadge;
-let WD=[];
+let WD=[],WORKMAN_LOAD_SEQ=0;
 async function loadWorkmanData(){
 const fr=document.getElementById('workman-from').value;
 const to=document.getElementById('workman-to').value;
 if(!fr||!to){ST('날짜를 선택해주세요');return;}
-const unprocOnly=document.getElementById('workman-unproc')?.checked;
+const requestId=++WORKMAN_LOAD_SEQ;
 SL(true);
+try{
 const ps=Object.entries(AP).filter(([,p])=>p.status!=='inactive'||p.isCasual).map(([id,p])=>({...p,id}));
-WD=[];
+const nextWD=[];
+const dateList=[];
 let cur=new Date(fr+'T00:00:00+09:00');const end=new Date(to+'T00:00:00+09:00');
 while(cur<=end){
   const dt=`${cur.getFullYear()}-${String(cur.getMonth()+1).padStart(2,'0')}-${String(cur.getDate()).padStart(2,'0')}`;
-  const sn=await get(ref(db,`attendance/${dt}`));const ad=sn.val()||{};
   const DM=['일','월','화','수','목','금','토'];const dw=DM[cur.getDay()];
+  dateList.push({dt,dw});
+  cur.setDate(cur.getDate()+1);
+}
+const loaded=await Promise.all(dateList.map(async item=>{
+  const sn=await get(ref(db,`attendance/${item.dt}`));
+  return{...item,ad:sn.val()||{}};
+}));
+if(requestId!==WORKMAN_LOAD_SEQ)return;
+for(const{dt,dw,ad}of loaded){
   const includeResigned=true; // 체크박스 제거됨 - 항상 포함 (스케줄 있어야 패드 찍을 수 있음)
   const sc=ps.filter(p=>{
     if(!isWorkDay(p,dw,dt))return false;
@@ -3292,18 +3304,24 @@ while(cur<=end){
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dt);
     const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dt);
     const pEff={...p,start:ds.start||p.start,end:ds.end||p.end,customBreak:_resolveBreak(p,ds),fromReplace:!!ds.fromReplace,fromPerm:!!ds.fromPerm,fromPeriod:!!ds.fromPeriod,_isTemp:!!ds._isTemp};
-    WD.push({dt,p:pEff,a:ad[p.id]||{},alertHtml:''});
+    nextWD.push({dt,p:pEff,a:ad[p.id]||{},alertHtml:''});
   });
   // 스케줄 없는 출근 (이름 필터는 렌더 단계에서)
   unscheduled.forEach(p=>{
     // 퇴사자도 단발근무자이고 "포함" 체크됐으면 노출, 일반 퇴사자는 출근기록 있어도 제외 (실수 방지)
     if(p.status==='inactive'&&!(p.isCasual&&includeResigned))return;
-    WD.push({dt,p,a:ad[p.id]||{},alertHtml:'',unscheduled:true});
+    nextWD.push({dt,p,a:ad[p.id]||{},alertHtml:'',unscheduled:true});
   });
-  cur.setDate(cur.getDate()+1);
 }
-SL(false);
+if(requestId!==WORKMAN_LOAD_SEQ)return;
+WD=nextWD;
 renderWorkmanList();
+}catch(e){
+  console.error('출결현황 조회 실패:',e);
+  if(requestId===WORKMAN_LOAD_SEQ)ST('출결현황 조회 실패: '+(e.message||e));
+}finally{
+  if(requestId===WORKMAN_LOAD_SEQ)SL(false);
+}
 }
 function renderWorkmanList(){
 if(!WD.length){document.getElementById('workman-list').innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">해당 조건 근무 인원 없음</div>';return;}
