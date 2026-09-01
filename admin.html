@@ -3268,7 +3268,7 @@ if(!fr||!to){ST('날짜를 선택해주세요');return;}
 const requestId=++WORKMAN_LOAD_SEQ;
 SL(true);
 try{
-const ps=Object.entries(AP).filter(([,p])=>p.status!=='inactive'||p.isCasual).map(([id,p])=>({...p,id}));
+const ps=Object.entries(AP).map(([id,p])=>({...p,id}));
 const nextWD=[];
 const dateList=[];
 let cur=new Date(fr+'T00:00:00+09:00');const end=new Date(to+'T00:00:00+09:00');
@@ -3284,10 +3284,11 @@ const loaded=await Promise.all(dateList.map(async item=>{
 }));
 if(requestId!==WORKMAN_LOAD_SEQ)return;
 for(const{dt,dw,ad}of loaded){
-  const includeResigned=true; // 체크박스 제거됨 - 항상 포함 (스케줄 있어야 패드 찍을 수 있음)
   const sc=ps.filter(p=>{
     if(!isWorkDay(p,dw,dt))return false;
     if(p.joinDate&&dt<p.joinDate)return false;
+    // 퇴사일이 없는 퇴사자는 미래/예정 스케줄을 만들지 않음 (실제 출결은 아래 unscheduled에서 보존)
+    if(p.status==='inactive'&&!p.leaveDate&&!p.isCasual)return false;
     // 퇴사일 이후 필터
     if(p.leaveDate&&dt>p.leaveDate){
       // 단발근무자라도 그 날 tempDates(추가근무 예약)가 있어야 노출 (대시보드 977번과 일관)
@@ -3308,8 +3309,8 @@ for(const{dt,dw,ad}of loaded){
   });
   // 스케줄 없는 출근 (이름 필터는 렌더 단계에서)
   unscheduled.forEach(p=>{
-    // 퇴사자도 단발근무자이고 "포함" 체크됐으면 노출, 일반 퇴사자는 출근기록 있어도 제외 (실수 방지)
-    if(p.status==='inactive'&&!(p.isCasual&&includeResigned))return;
+    // 실제 출결은 퇴사일 당일까지 보존하고, 퇴사일 다음 날부터만 제외
+    if(p.leaveDate&&dt>p.leaveDate)return;
     nextWD.push({dt,p,a:ad[p.id]||{},alertHtml:'',unscheduled:true});
   });
 }
