@@ -194,10 +194,8 @@ body.docs-modal-open{overflow:hidden!important;}
 .doc-preview{height:190px;display:flex;align-items:center;justify-content:center;padding:10px;background:#fafafa;}
 .doc-preview img{max-width:100%;max-height:100%;border-radius:6px;border:1px solid var(--border);background:#fff;}
 .doc-missing{width:100%;height:100%;min-height:150px;border:1px dashed #fecaca;border-radius:8px;background:var(--danger-light);color:var(--danger);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;}
-.doc-file-link{appearance:none;border:1px solid #93c5fd;border-radius:7px;background:#eff6ff;color:#1d4ed8;font-size:13px;font-weight:700;text-decoration:none;padding:9px 14px;cursor:pointer;white-space:nowrap;}
-.doc-pdf-preview{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;border:1px dashed #bfdbfe;border-radius:8px;background:#f8fbff;}
-.doc-pdf-icon{display:flex;align-items:center;justify-content:center;width:46px;height:54px;border:1px solid #fecaca;border-radius:6px;background:#fff;color:#b91c1c;font-size:12px;font-weight:800;letter-spacing:.5px;}
-.doc-file-meta{padding:9px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;min-width:0;}
+.doc-file-link{color:var(--accent);font-size:12px;font-weight:700;text-decoration:none;}
+.doc-file-meta{padding:9px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;}
 .doc-file-meta>span:first-child{min-width:0;overflow-wrap:anywhere;line-height:1.35;}
 .doc-file-meta>span:last-child{flex:0 0 auto!important;display:inline-flex!important;align-items:center;gap:4px;white-space:nowrap!important;}
 .doc-file-meta>span:last-child .icon-btn{flex:0 0 auto;white-space:nowrap;min-width:38px;padding:4px 8px;margin:0;text-align:center;}
@@ -801,7 +799,7 @@ window.canSeeWage=canSeeWage;
 const DOC_TYPES={idCard:{short:'신',label:'신분증'},bank:{short:'통',label:'통장사본'},crime:{short:'범',label:'범죄신고서'}};
 const DOC_INFO_KEY='_payrollInfo';
 const DOC_LEGACY_KEY='_legacyVerified';
-let DOC_ACTIVE_PID=null,DOC_DEFAULT_FILTER='missing';
+let DOC_ACTIVE_PID=null,DOC_DEFAULT_FILTER='missing',DOC_VIEWER_OBJECT_URL='';
 let DOC_UPLOADING={},DOC_UPLOAD_MSG={};
 let DOC_FILTER_RESETTING=false;
 function isDocPartUploading(pid){return Object.keys(DOC_UPLOADING).some(k=>k.startsWith(`${pid}:`));}
@@ -1220,9 +1218,8 @@ function renderDocPanel(pid,type){
   const legacyInfo=legacyDocStatus(pid,type)||{};
   const fileUrl=d&&(d.url||d.dataUrl)?escAttr(d.url||d.dataUrl):'';
   const isImg=done&&((d.type||'').startsWith('image/')||/\.(png|jpe?g|gif|webp|bmp)$/i.test(d.name||d.url||''));
-  const isPdf=done&&((d.type||d.originalType||'').toLowerCase()==='application/pdf'||/\.pdf(?:$|[?#])/i.test(d.name||d.url||''));
   const preview=done
-    ?(isImg?`<img src="${fileUrl}" alt="${escAttr(info.label)}">`:`<div class="doc-pdf-preview"><div class="doc-pdf-icon">${isPdf?'PDF':'FILE'}</div><button type="button" class="doc-file-link" onclick="openDocFile('${jsStr(pid)}','${type}')">${isPdf?'PDF 파일 보기':'파일 보기'}</button></div>`)
+    ?(isImg?`<img src="${fileUrl}" alt="${escAttr(info.label)}">`:`<button type="button" class="doc-file-link" onclick="openDocFile('${jsStr(pid)}','${type}')">파일 열기</button>`)
     :(legacy?'<div class="doc-missing" style="color:#047857;background:#ecfdf5;border-color:#a7f3d0">과거 제출확인</div>':'<div class="doc-missing">미제출</div>');
   const meta=done?`${escHtml(d.name||'파일')} · ${escHtml(d.uploadedAt||'')}`:(legacy?`기존 자료 확인 · ${escHtml(legacyInfo.verifiedAt||'')}`:'파일 없음');
   return `<div class="doc-panel${saving?' saving':''}">
@@ -1251,10 +1248,28 @@ function openDocFile(pid,type){
   const title=`${AP[pid]?.name||''} ${DOC_TYPES[type]?.label||'서류'}`.trim();
   const src=d.url||d.dataUrl;
   const isImg=(d.type||'').startsWith('image/')||/^data:image\//.test(src)||/\.(png|jpe?g|gif|webp|bmp)$/i.test(d.name||src||'');
+  let viewerSrc=src;
+  if(!isImg&&/^data:/i.test(src)){
+    try{
+      const comma=src.indexOf(',');
+      const meta=src.slice(5,comma);
+      const mime=(meta.split(';')[0]||d.type||'application/pdf');
+      const raw=/;base64/i.test(meta)?atob(src.slice(comma+1)):decodeURIComponent(src.slice(comma+1));
+      const bytes=new Uint8Array(raw.length);
+      for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+      if(DOC_VIEWER_OBJECT_URL)URL.revokeObjectURL(DOC_VIEWER_OBJECT_URL);
+      DOC_VIEWER_OBJECT_URL=URL.createObjectURL(new Blob([bytes],{type:mime}));
+      viewerSrc=DOC_VIEWER_OBJECT_URL;
+    }catch(e){
+      console.error('PDF 보기 주소 생성 실패',e);
+      ST('PDF 파일을 열 수 없습니다');
+      return;
+    }
+  }
   titleEl.textContent=title;
   body.innerHTML=isImg
     ?`<img src="${escAttr(src)}" alt="${escAttr(title)}">`
-    :`<iframe src="${escAttr(src)}" title="${escAttr(title)}"></iframe>`;
+    :`<iframe src="${escAttr(viewerSrc)}" title="${escAttr(title)}"></iframe>`;
   viewer.classList.add('open');
 }
 window.openDocFile=openDocFile;
@@ -1263,6 +1278,7 @@ function closeDocViewer(){
   const body=document.getElementById('doc-viewer-body');
   if(body)body.innerHTML='';
   if(viewer)viewer.classList.remove('open');
+  if(DOC_VIEWER_OBJECT_URL){URL.revokeObjectURL(DOC_VIEWER_OBJECT_URL);DOC_VIEWER_OBJECT_URL='';}
 }
 window.closeDocViewer=closeDocViewer;
 function readFileDataURL(file){
