@@ -222,6 +222,8 @@ body.docs-modal-open{overflow:hidden!important;}
 .doc-viewer-body{padding:14px;background:#111;display:flex;align-items:center;justify-content:center;overflow:auto;min-height:240px;}
 .doc-viewer-body img{width:auto;height:auto;min-width:min(92vw,900px);max-width:none;max-height:none;object-fit:contain;background:#fff;image-rendering:auto;}
 .doc-viewer-body iframe{width:100%;height:calc(94vh - 84px);border:0;background:#fff;}
+.doc-viewer-pdf{width:100%;display:flex;flex-direction:column;align-items:center;gap:12px;padding:2px;}
+.doc-viewer-pdf canvas{display:block;max-width:100%;height:auto;background:#fff;box-shadow:0 1px 5px rgba(0,0,0,.35);}
 .sbadge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
 .s-active{background:var(--success-light);color:var(--success);}
 .s-inactive{background:#f3f4f6;color:var(--text-muted);}
@@ -801,6 +803,7 @@ const DOC_INFO_KEY='_payrollInfo';
 const DOC_LEGACY_KEY='_legacyVerified';
 let DOC_ACTIVE_PID=null,DOC_DEFAULT_FILTER='missing',DOC_VIEWER_OBJECT_URL='';
 let DOC_UPLOADING={},DOC_UPLOAD_MSG={};
+let DOC_PDFJS_PROMISE=null;
 let DOC_FILTER_RESETTING=false;
 function isDocPartUploading(pid){return Object.keys(DOC_UPLOADING).some(k=>k.startsWith(`${pid}:`));}
 function escHtml(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
@@ -1238,7 +1241,47 @@ function renderDocPanel(pid,type){
     </div>
   </div>`;
 }
-function openDocFile(pid,type){
+function loadDocPdfJs(){
+  if(window.pdfjsLib)return Promise.resolve(window.pdfjsLib);
+  if(DOC_PDFJS_PROMISE)return DOC_PDFJS_PROMISE;
+  DOC_PDFJS_PROMISE=new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js';
+    s.onload=()=>{
+      if(!window.pdfjsLib){reject(new Error('PDF 뷰어 초기화 실패'));return;}
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+      resolve(window.pdfjsLib);
+    };
+    s.onerror=()=>reject(new Error('PDF 뷰어를 불러오지 못했습니다'));
+    document.head.appendChild(s);
+  }).catch(e=>{DOC_PDFJS_PROMISE=null;throw e;});
+  return DOC_PDFJS_PROMISE;
+}
+async function renderDocPdf(src,body){
+  const pdfjs=await loadDocPdfJs();
+  let source=src;
+  if(/^data:/i.test(src)){
+    const comma=src.indexOf(',');
+    const meta=src.slice(5,comma);
+    const raw=/;base64/i.test(meta)?atob(src.slice(comma+1)):decodeURIComponent(src.slice(comma+1));
+    const bytes=new Uint8Array(raw.length);
+    for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+    source={data:bytes};
+  }
+  const pdf=await pdfjs.getDocument(source).promise;
+  const wrap=document.createElement('div');wrap.className='doc-viewer-pdf';
+  body.innerHTML='';body.appendChild(wrap);
+  for(let n=1;n<=pdf.numPages;n++){
+    const page=await pdf.getPage(n);
+    const viewport=page.getViewport({scale:1.6});
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+    canvas.setAttribute('aria-label',`PDF ${n}페이지`);
+    wrap.appendChild(canvas);
+    await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+  }
+}
+async function openDocFile(pid,type){
   const d=docData(pid,type);
   if(!d||!(d.url||d.dataUrl)){ST('미제출 상태입니다');return;}
   const viewer=document.getElementById('doc-viewer');
@@ -1248,6 +1291,14 @@ function openDocFile(pid,type){
   const title=`${AP[pid]?.name||''} ${DOC_TYPES[type]?.label||'서류'}`.trim();
   const src=d.url||d.dataUrl;
   const isImg=(d.type||'').startsWith('image/')||/^data:image\//.test(src)||/\.(png|jpe?g|gif|webp|bmp)$/i.test(d.name||src||'');
+  const isPdf=(d.type||d.originalType||'').toLowerCase()==='application/pdf'||/^data:application\/pdf/i.test(src)||/\.pdf(?:$|[?#])/i.test(d.name||src||'');
+  titleEl.textContent=title;
+  viewer.classList.add('open');
+  if(isPdf){
+    body.innerHTML='<div style="color:#fff;font-size:13px">PDF 불러오는 중...</div>';
+    try{await renderDocPdf(src,body);}catch(e){console.error(e);body.innerHTML='<div style="color:#fff;font-size:13px;text-align:center">PDF를 표시하지 못했습니다.<br>잠시 후 다시 시도해주세요.</div>';}
+    return;
+  }
   let viewerSrc=src;
   if(!isImg&&/^data:/i.test(src)){
     try{
@@ -1266,7 +1317,6 @@ function openDocFile(pid,type){
       return;
     }
   }
-  titleEl.textContent=title;
   body.innerHTML=isImg
     ?`<img src="${escAttr(src)}" alt="${escAttr(title)}">`
     :`<iframe src="${escAttr(viewerSrc)}" title="${escAttr(title)}"></iframe>`;
