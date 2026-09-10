@@ -193,6 +193,7 @@ body.docs-modal-open{overflow:hidden!important;}
 .doc-panel-head{height:42px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 12px;font-size:13px;font-weight:700;}
 .doc-preview{height:190px;display:flex;align-items:center;justify-content:center;padding:10px;background:#fafafa;}
 .doc-preview img{max-width:100%;max-height:100%;border-radius:6px;border:1px solid var(--border);background:#fff;}
+.doc-preview canvas{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:6px;border:1px solid var(--border);background:#fff;}
 .doc-missing{width:100%;height:100%;min-height:150px;border:1px dashed #fecaca;border-radius:8px;background:var(--danger-light);color:var(--danger);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;}
 .doc-file-link{color:var(--accent);font-size:12px;font-weight:700;text-decoration:none;}
 .doc-file-meta{padding:9px 12px;border-top:1px solid var(--border);font-size:11px;color:var(--text-muted);display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;}
@@ -1023,6 +1024,7 @@ function renderDocsList(forceDetail=false){
     detail.innerHTML=DOC_ACTIVE_PID?renderDocsDetail(DOC_ACTIVE_PID):'<div class="doc-empty">직원을 선택하세요</div>';
     detail.dataset.pid=String(nextPid);
     prepareDocResidentNo(nextPid);
+    if(DOC_ACTIVE_PID)setTimeout(()=>renderDocPdfPreviews(DOC_ACTIVE_PID),0);
   }
 }
 function filterDocsList(resetActive=false){
@@ -1221,8 +1223,9 @@ function renderDocPanel(pid,type){
   const legacyInfo=legacyDocStatus(pid,type)||{};
   const fileUrl=d&&(d.url||d.dataUrl)?escAttr(d.url||d.dataUrl):'';
   const isImg=done&&((d.type||'').startsWith('image/')||/\.(png|jpe?g|gif|webp|bmp)$/i.test(d.name||d.url||''));
+  const isPdf=done&&((d.type||d.originalType||'').toLowerCase()==='application/pdf'||/^data:application\/pdf/i.test(d.url||d.dataUrl||'')||/\.pdf(?:$|[?#])/i.test(d.name||d.url||''));
   const preview=done
-    ?(isImg?`<img src="${fileUrl}" alt="${escAttr(info.label)}">`:`<button type="button" class="doc-file-link" onclick="openDocFile('${jsStr(pid)}','${type}')">파일 열기</button>`)
+    ?(isImg?`<img src="${fileUrl}" alt="${escAttr(info.label)}">`:(isPdf?`<div class="doc-pdf-preview" data-pid="${escAttr(pid)}" data-type="${escAttr(type)}"><span style="color:#94a3b8;font-size:12px">PDF 미리보기 불러오는 중...</span></div>`:`<button type="button" class="doc-file-link" onclick="openDocFile('${jsStr(pid)}','${type}')">파일 열기</button>`))
     :(legacy?'<div class="doc-missing" style="color:#047857;background:#ecfdf5;border-color:#a7f3d0">과거 제출확인</div>':'<div class="doc-missing">미제출</div>');
   const meta=done?`${escHtml(d.name||'파일')} · ${escHtml(d.uploadedAt||'')}`:(legacy?`기존 자료 확인 · ${escHtml(legacyInfo.verifiedAt||'')}`:'파일 없음');
   return `<div class="doc-panel${saving?' saving':''}">
@@ -1256,6 +1259,41 @@ function loadDocPdfJs(){
     document.head.appendChild(s);
   }).catch(e=>{DOC_PDFJS_PROMISE=null;throw e;});
   return DOC_PDFJS_PROMISE;
+}
+async function renderDocPdfPreviews(pid){
+  const targets=document.querySelectorAll(`#modal-part-docs .doc-pdf-preview[data-pid="${CSS.escape(String(pid))}"]`);
+  for(const target of targets){
+    if(target.dataset.rendered==='1')continue;
+    const type=target.dataset.type;
+    const d=docData(pid,type);
+    const src=d&&(d.url||d.dataUrl);
+    if(!src)continue;
+    target.dataset.rendered='1';
+    try{
+      const pdfjs=await loadDocPdfJs();
+      let source=src;
+      if(/^data:/i.test(src)){
+        const comma=src.indexOf(',');
+        const meta=src.slice(5,comma);
+        const raw=/;base64/i.test(meta)?atob(src.slice(comma+1)):decodeURIComponent(src.slice(comma+1));
+        const bytes=new Uint8Array(raw.length);
+        for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+        source={data:bytes};
+      }
+      const pdf=await pdfjs.getDocument(source).promise;
+      const page=await pdf.getPage(1);
+      const viewport=page.getViewport({scale:1});
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.ceil(viewport.width);canvas.height=Math.ceil(viewport.height);
+      canvas.setAttribute('aria-label',`${DOC_TYPES[type]?.label||'PDF'} 미리보기`);
+      target.innerHTML='';target.appendChild(canvas);
+      await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+    }catch(e){
+      console.error('PDF 미리보기 실패',e);
+      target.dataset.rendered='';
+      target.innerHTML=`<button type="button" class="doc-file-link" onclick="openDocFile('${jsStr(pid)}','${type}')">파일 열기</button>`;
+    }
+  }
 }
 async function renderDocPdf(src,body){
   const pdfjs=await loadDocPdfJs();
