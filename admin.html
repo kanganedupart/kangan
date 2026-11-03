@@ -1638,7 +1638,8 @@ function realBreakMin(p,a,startT,endT){
   const totalM=timeSpanM(startT,endT);
   const autoB=_autoBreakMin(totalM);
   const fixed=attBreakMin(a);
-  if(a&&a.breakAuto)return autoB;
+  // Normal processing keeps the effective schedule break; late/early auto remains duration-based.
+  if(a&&a.breakAuto)return a.stdPhrase==='정상'?brk(p,startT,endT):autoB;
   return fixed!==null?Math.max(fixed,autoB):brk(p,startT,endT);
 }
 function displayBreakMin(p,a){
@@ -1695,7 +1696,7 @@ function settleActualBreak(p,a,breakRaw){
       const raw=breakRaw===undefined||breakRaw===null?'':String(breakRaw).trim();
       if(raw===''){
         a.breakAuto=true;
-        a.breakMin=autoB;
+        a.breakMin=realBreakMin(p,a,w.startT,w.endT);
         return a.breakMin;
       }
       const n=parseInt(raw,10);
