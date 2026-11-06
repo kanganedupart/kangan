@@ -666,9 +666,15 @@ body.docs-modal-open{overflow:hidden!important;}
 <div class="doc-viewer" id="doc-viewer" onclick="closeDocViewer()"><div class="doc-viewer-box" onclick="event.stopPropagation()"><div class="doc-viewer-head"><div class="doc-viewer-title" id="doc-viewer-title">서류 보기</div><button class="modal-close" onclick="closeDocViewer()">✕</button></div><div class="doc-viewer-body" id="doc-viewer-body"></div></div></div>
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,set,get,update,onValue,push,remove}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getDatabase,ref,set as wsRawSet,get as wsRawGet,update as wsRawUpdate,onValue,push as wsRawPush,remove as wsRawRemove}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 const FC={apiKey:"AIzaSyDWtvRCSWWmApj0W_qTOXaJg7A2VL-vjVc",authDomain:"kanganedupart-8fb5a.firebaseapp.com",databaseURL:"https://kanganedupart-8fb5a-default-rtdb.firebaseio.com",projectId:"kanganedupart-8fb5a",storageBucket:"kanganedupart-8fb5a.firebasestorage.app",messagingSenderId:"433381824511",appId:"1:433381824511:web:3292f67b193dd0a81079ca"};
 const fbApp=initializeApp(FC);const db=getDatabase(fbApp);
+const WS_REVIEW=false;
+const get=(...args)=>wsBackendRead(...args);
+const set=(...args)=>wsBackendWrite("set",...args);
+const update=(...args)=>wsBackendWrite("update",...args);
+const push=(...args)=>wsBackendWrite("push",...args);
+const remove=(...args)=>wsBackendWrite("remove",...args);
 function kstDate(d){const k=new Date((d||new Date()).getTime()+9*3600000);return`${k.getUTCFullYear()}-${String(k.getUTCMonth()+1).padStart(2,'0')}-${String(k.getUTCDate()).padStart(2,'0')}`;}
 // ⭐ v10.8.7-fix3: YYYY-MM-DD 문자열에 일수 더하기 (자동 단축용)
 function kstDateAddDays(dateStr,days){const d=new Date(dateStr+'T00:00:00+09:00');d.setDate(d.getDate()+days);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
@@ -3393,7 +3399,7 @@ for(const{dt,dw,ad}of loaded){
   // 스케줄 없는 출근 기록 - 행으로 추가
   const scIds=sc.map(p=>p.id);
   const tempIds=Object.entries(AP).filter(([,pp])=>pp.tempDates&&pp.tempDates.find(td=>td.date===dt)).map(([id])=>id);
-  const unscheduled=Object.entries(ad).filter(([pid,a])=>a.inTime&&!scIds.includes(pid)&&!tempIds.includes(pid)).map(([pid,a])=>{const pp=AP[pid];return pp?{...pp,id:pid}:null;}).filter(Boolean);
+  const unscheduled=Object.entries(ad).filter(([pid,a])=>(a.inTime||(WS.has(AP[pid])&&wsActual(a)))&&!scIds.includes(pid)&&(!tempIds.includes(pid)||WS.has(AP[pid]))).map(([pid,a])=>{const pp=AP[pid];return pp?{...pp,id:pid}:null;}).filter(Boolean);
   sc.forEach(p=>{
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dt);
     const ds=tempDay?{start:tempDay.start,end:tempDay.end,customBreak:tempDay.customBreak,_isTemp:true}:getDayTime(p,dw,dt);
@@ -3894,7 +3900,7 @@ dateList.forEach(dk=>{
   const ad=attByDate[dk];
   const dw=DM[new Date(dk+'T00:00:00+09:00').getDay()];
   ps.filter(p=>{
-    const hasActual=!!(ad[p.id]&&ad[p.id].inTime);
+    const hasActual=!!(ad[p.id]&&ad[p.id].inTime)||(WS.has(p)&&wsActual(ad[p.id]));
     // ⭐ v10.8.7-fix3: 단발근무자 추가근무 허용 (대시보드와 동일)
     const hasTemp=p.tempDates&&p.tempDates.find(dt=>dt.date===dk);
     if(!isWorkDay(p,dw,dk)&&!hasActual&&!(p.isCasual&&hasTemp))return false;
@@ -3918,7 +3924,7 @@ dateList.forEach(dk=>{
 SL(false);
 // working 모드: 근무이력 있는 사람만 남김 (실제 출근 or 스케줄된 근무일)
 if(statusFilter==='working'){
-  const activePids=new Set(AD.filter(r=>r.att.inTime||r.realH!==null).map(r=>r.part.id));
+  const activePids=new Set(AD.filter(r=>r.att.inTime||r.realH!==null||(WS.has(r.part)&&wsActual(r.att))).map(r=>r.part.id));
   // ⭐ v10.8.7-fix3: 단발자 + tempDates 있는 케이스도 포함
   const casualWithTempPids=new Set(AD.filter(r=>{
     if(!r.part.isCasual)return false;
@@ -4511,7 +4517,7 @@ async function renderSchedCal(){
     const isToday=dk===today;const isPast=dk<today;const isFuture=dk>today;
     const hasPeriod=p.schedulePeriods&&p.schedulePeriods.some(pd=>dk>=pd.startDate&&dk<=pd.endDate&&(pd.days||[]).includes(dow));
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dk);
-    const worksDay=(p.days||[]).includes(dow)||hasPeriod||tempDay;
+    const worksDay=WS.has(p)?(isWorkDay(p,dow,dk)||wsActual(attMap[dk])):((p.days||[]).includes(dow)||hasPeriod||tempDay);
     const joinOk=!p.joinDate||dk>=p.joinDate;
     const leaveOk=!p.leaveDate||dk<=p.leaveDate;
     const isWork=worksDay&&joinOk&&leaveOk;
@@ -4520,14 +4526,14 @@ async function renderSchedCal(){
     let inner=`<div style="font-size:10px;font-weight:600;margin-bottom:2px;${numC}"><span style="${numBg}">${d}</span></div>`;
     if(isWork){
       const att=attMap[dk]||{};const ph=att.stdPhrase||'';
-      const ds=getDayTime(p,dow,dk);
+      const ds=WS.has(p)&&tempDay?tempDay:getDayTime(p,dow,dk);
       if(ph==='결근'){
         inner+=`<div style="font-size:9px;padding:1px 4px;background:#fef2f2;color:#b91c1c;border-radius:3px;margin-bottom:1px">결근</div>`;
         if(att.memoText)inner+=`<div style="font-size:9px;color:var(--text-muted);overflow:hidden;white-space:nowrap;max-width:50px">${att.memoText.slice(0,5)}</div>`;
       } else if(att.inTime){
         const effIn=att.adjustedStart||att.inTime;
         const out=att.adjustedEnd||att.outTime||'';
-        const isLate=toM(effIn)>toM(ds.start)+1;
+        const isLate=(!WS.has(p)||isWorkDay(p,dow,dk))&&toM(effIn)>toM(ds.start)+1;
         const bg=isLate?'#fffbeb':'#f0fdf4';const tc=isLate?'#b45309':'#15803d';
         inner+=`<div style="font-size:9px;padding:1px 3px;background:${bg};color:${tc};border-radius:3px;margin-bottom:1px">${att.inTime}${out?'→'+out:''}</div>`;
         if(ph&&ph!=='수동기록')inner+=`<div style="font-size:9px;padding:1px 3px;background:#f3f4f6;color:#6b7280;border-radius:3px">${ph}</div>`;
@@ -4568,9 +4574,9 @@ function downloadSchedCSV(){
     const dt=new Date(y,m,d);const dow=DM[dt.getDay()];
     const hasPeriod=p.schedulePeriods&&p.schedulePeriods.some(pd=>dk>=pd.startDate&&dk<=pd.endDate&&(pd.days||[]).includes(dow));
     const tempDay=p.tempDates&&p.tempDates.find(td=>td.date===dk);
-    const worksDay=(p.days||[]).includes(dow)||hasPeriod||tempDay;
+    const worksDay=WS.has(p)?(isWorkDay(p,dow,dk)||wsActual(attMap[dk])):((p.days||[]).includes(dow)||hasPeriod||tempDay);
     if(!worksDay||!(!p.joinDate||dk>=p.joinDate)||!(!p.leaveDate||dk<=p.leaveDate))continue;
-    const ds=getDayTime(p,dow,dk);const att=attMap[dk]||{};const ph=att.stdPhrase||'';
+    const ds=WS.has(p)&&tempDay?tempDay:getDayTime(p,dow,dk);const att=attMap[dk]||{};const ph=att.stdPhrase||'';
     const inT=att.inTime||'';const outT=att.adjustedEnd||att.outTime||'';
     let status='';
     if(ph==='결근')status='결근';
@@ -6024,6 +6030,7 @@ async function waSave(pid,type){
       newEvent.date=start;
     }
   }
+  if(WS.has(p))newEvent._skipAutoCleanup=true;
   // 겹침 체크
   if(type==='replace'){
     const overlaps=waCheckReplaceOverlap(pid,newEvent);
@@ -9390,7 +9397,7 @@ calcPersonPayroll=function(pid,p,year,month,lastDay,attByDate){
     const a_in=a.adjustedStart||a.inTime;
     const a_out=a.adjustedEnd||a.outTime;
     let h=0,attended=false;
-    if(a_in&&a_out){
+    if(a_in&&a_out&&!(WS.pauseAt(p,dt)&&!wsActual(a)&&!isWorkDay(p,dw,dt))){
       const r=calcRealH(pEff,a);
       if(r!==null){h=r;attended=true;}
     }else if(a.stdPhrase==='연차'||a.stdPhrase==='반차'){
@@ -9955,6 +9962,848 @@ exportBonusCSV=async function(){
   ST(`가산 ${all.length}건 다운로드 완료`);
 }
 window.exportBonusCSV=exportBonusCSV;
+
+// WORK_STATE_MODEL_BEGIN
+const WS=(function(){
+  'use strict';
+
+  const DAYS=['\uC77C','\uC6D4','\uD654','\uC218','\uBAA9','\uAE08','\uD1A0'];
+  const activeCallbacks=new Set();
+  const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+  const own=(v,k)=>v!==null&&typeof v==='object'&&Object.prototype.hasOwnProperty.call(v,k);
+  const absent=v=>v===undefined||v===null||v==='';
+  const text=v=>typeof v==='string'?v:'';
+  const empty=()=>({start:null,end:null});
+  const attempt=(fn,fallback)=>{try{return fn();}catch(_){return fallback();}};
+
+  function validDate(v){
+    if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;
+    const y=Number(v.slice(0,4)),m=Number(v.slice(5,7)),d=Number(v.slice(8,10));
+    if(y<1||m<1||m>12||d<1)return false;
+    const leap=y%4===0&&(y%100!==0||y%400===0);
+    return d<=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31][m-1];
+  }
+
+  function minutes(v){
+    if(typeof v!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(v))return null;
+    return Number(v.slice(0,2))*60+Number(v.slice(3));
+  }
+
+  function duration(s){
+    if(!object(s))return 0;
+    const a=minutes(s.start),b=minutes(s.end);
+    return a===null||b===null?0:(b-a+1440)%1440;
+  }
+
+  function day(v){
+    if(typeof v==='string'&&DAYS.includes(v))return v;
+    if((typeof v==='number'&&Number.isInteger(v))||
+       (typeof v==='string'&&/^[0-6]$/.test(v)))return DAYS[Number(v)]||null;
+    return null;
+  }
+
+  function days(v){
+    let values;
+    if(Array.isArray(v))values=Array.from(v);
+    else if(object(v))values=Object.keys(v).map(k=>v[k]===true?k:v[k]).filter(x=>x!==false&&x!==null);
+    else return null;
+    const result=values.map(day);
+    return result.some(x=>x===null)?null:[...new Set(result)];
+  }
+
+  function includes(s,d){return (days(s&&s.days)||[]).includes(d);}
+
+  function dayTime(s,d){
+    const ds=s&&s.daySchedule;
+    if(!ds||typeof ds!=='object')return null;
+    const found=own(ds,d)?ds[d]:ds[DAYS.indexOf(d)];
+    return object(found)?found:null;
+  }
+
+  function clone(v,seen=new Map()){
+    if(v===null||typeof v!=='object')return v;
+    if(seen.has(v))return seen.get(v);
+    const result=Array.isArray(v)?new Array(v.length):{};
+    seen.set(v,result);
+    Object.keys(v).forEach(k=>Object.defineProperty(result,k,{
+      value:clone(v[k],seen),enumerable:true,writable:true,configurable:true
+    }));
+    return result;
+  }
+
+  function cancelled(v){
+    if(!object(v))return false;
+    return v.cancelled===true||v.canceled===true||v.deleted===true||
+      !absent(v.cancelledAt)||!absent(v.canceledAt)||
+      ['cancelled','canceled','deleted'].includes(text(v.status).toLowerCase());
+  }
+
+  // Firebase collections may be arrays, keyed objects, or a legacy single record.
+  function rows(v,inferDate=false){
+    if(typeof v==='string')return [{key:'',value:v}];
+    if(!v||typeof v!=='object')return [];
+    if(!Array.isArray(v)&&(own(v,'startDate')||own(v,'date')||own(v,'resumeDate')||own(v,'endDate'))){
+      return [{key:'',value:v}];
+    }
+    return Object.keys(v).map(key=>{
+      let value=v[key];
+      if(inferDate&&validDate(key)){
+        if(object(value)&&!own(value,'date')&&!own(value,'startDate'))value={...value,date:key};
+        else if(value===true)value={date:key};
+      }
+      return {key,value};
+    });
+  }
+
+  function records(v){return rows(v,true).map(r=>r.value).filter(r=>object(r)&&!cancelled(r));}
+
+  function stamp(v){
+    if(typeof v!=='string')return '';
+    const m=/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})(?:[T\s]+(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|[+-]\d{2}:?\d{2})?)?$/.exec(v.trim().replace(/\s+KST$/,''));
+    if(!m)return '';
+    const date=m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+    const hour=(m[4]||'00').padStart(2,'0'),minute=m[5]||'00',second=m[6]||'00';
+    if(!validDate(date)||Number(hour)>23||Number(minute)>59||Number(second)>59)return '';
+    // Labels without an offset are KST, never the host machine's local timezone.
+    const ms=Date.parse(date+'T'+hour+':'+minute+':'+second+'.'+
+      (m[7]||'0').padEnd(3,'0').slice(0,3)+(m[8]||'+09:00'));
+    return Number.isFinite(ms)?new Date(ms).toISOString():'';
+  }
+
+  const compare=(a,b)=>a<b?-1:a>b?1:0;
+  const eventAt=v=>stamp(v.at||v.updatedAt||v.createdAt);
+  const resumeAt=v=>stamp(v.updatedAt||v.at||v.createdAt);
+
+  function validApprovalStamp(v){
+    if(typeof v!=='string')return false;
+    const s=v.trim();
+    const local=/^\d{4}[-./]\d{2}[-./]\d{2} \d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?: KST)?$/.test(s);
+    const zoned=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?\+09:?00$/.test(s);
+    return (local||zoned)&&stamp(s)!=='';
+  }
+
+  function entries(p){
+    if(!object(p))return [];
+    const array=Array.isArray(p.workPauses);
+    return rows(p.workPauses).filter(({value:v})=>object(v)&&!cancelled(v)&&
+      validDate(v.startDate)&&(absent(v.resumeDate)||
+      (validDate(v.resumeDate)&&v.resumeDate>v.startDate)))
+      .map(({key,value:v})=>{
+        const id=!array&&key?key:text(v.id);
+        return id?{...clone(v),id}:null;
+      }).filter(Boolean).sort((a,b)=>compare(a.startDate,b.startDate)||
+        compare(resumeAt(a),resumeAt(b))||compare(a.id,b.id));
+  }
+
+  function has(p){return entries(p).length>0;}
+
+  function pauseAt(p,date){
+    if(!validDate(date))return null;
+    return entries(p).filter(e=>e.startDate<=date&&(absent(e.resumeDate)||date<e.resumeDate)).pop()||null;
+  }
+
+  function latestResume(p,date){
+    if(!validDate(date))return null;
+    return entries(p).filter(e=>validDate(e.resumeDate)&&e.resumeDate<=date)
+      .sort((a,b)=>compare(a.resumeDate,b.resumeDate)||compare(resumeAt(a),resumeAt(b))||
+        compare(a.startDate,b.startDate)||compare(a.id,b.id)).pop()||null;
+  }
+
+  function breakNumber(v){
+    if(typeof v!=='number'&&(typeof v!=='string'||!v.trim()))return null;
+    const n=Number(v);
+    return Number.isFinite(n)&&n>=0&&n<=240?n:null;
+  }
+
+  function validateSchedule(s){
+    if(!object(s))return '\uadfc\ubb34\uc2dc\uac04\ud45c \ud615\uc2dd\uc774 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.';
+    const ds=days(s.days);
+    if(!ds||!ds.length)return '\uadfc\ubb34\uc694\uc77c\uc744 \ud558\ub098 \uc774\uc0c1 \uc62c\ubc14\ub974\uac8c \uc120\ud0dd\ud574\uc8fc\uc138\uc694.';
+    if(!duration(s))return '\uc2dc\uc791\u00b7\uc885\ub8cc\uc2dc\uac04\uc740 HH:MM \ud615\uc2dd\uc774\uc5b4\uc57c \ud558\uba70 \uc11c\ub85c \ub2ec\ub77c\uc57c \ud569\ub2c8\ub2e4.';
+    if(s.breakAuto!==undefined&&typeof s.breakAuto!=='boolean')return '\uc790\ub3d9\ud734\uac8c \uc124\uc815\uac12\uc774 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.';
+    if(s.customBreak!==undefined&&breakNumber(s.customBreak)===null)return '\ud734\uac8c\uc2dc\uac04\uc740 0~240\ubd84 \uc0ac\uc774\uc758 \uc720\ud6a8\ud55c \uc22b\uc790\uc5ec\uc57c \ud569\ub2c8\ub2e4.';
+    if(s.daySchedule!==undefined&&s.daySchedule!==null){
+      if(typeof s.daySchedule!=='object')return '\uc694\uc77c\ubcc4 \uc2dc\uac04\ud45c \ud615\uc2dd\uc774 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.';
+      for(const k of Object.keys(s.daySchedule)){
+        const t=s.daySchedule[k];
+        if(!day(k)||!duration(t))return '\uc694\uc77c\ubcc4 \uc2dc\uc791\u00b7\uc885\ub8cc\uc2dc\uac04\uc744 HH:MM \ud615\uc2dd\uc73c\ub85c \uc785\ub825\ud574\uc8fc\uc138\uc694. \ub450 \uc2dc\uac04\uc740 \uc11c\ub85c \ub2ec\ub77c\uc57c \ud569\ub2c8\ub2e4.';
+        if(t.breakAuto!==undefined&&typeof t.breakAuto!=='boolean')return '\uc694\uc77c\ubcc4 \uc790\ub3d9\ud734\uac8c \uc124\uc815\uac12\uc774 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.';
+        if(t.customBreak!==undefined&&(breakNumber(t.customBreak)===null||breakNumber(t.customBreak)>duration(t))){
+          return '\uc694\uc77c\ubcc4 \ud734\uac8c\uc2dc\uac04\uc740 0~240\ubd84\uc774\uba70 \ud574\ub2f9 \uadfc\ubb34\uc2dc\uac04\uc744 \ub118\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.';
+        }
+      }
+    }
+    const shortest=Math.min(...ds.map(d=>duration(dayTime(s,d)||s)));
+    if(!shortest)return '\uc120\ud0dd\ud55c \ubaa8\ub4e0 \uc694\uc77c\uc5d0 \uc11c\ub85c \ub2e4\ub978 \uc2dc\uc791\u00b7\uc885\ub8cc\uc2dc\uac04\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.';
+    if(s.customBreak!==undefined&&breakNumber(s.customBreak)>shortest)return '\ud734\uac8c\uc2dc\uac04\uc740 \uac00\uc7a5 \uc9e7\uc740 \uadfc\ubb34\uc2dc\uac04\uc744 \ub118\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.';
+    return '';
+  }
+
+  function rangeCovers(r,date){
+    return validDate(r.startDate)&&validDate(r.endDate)&&r.startDate<=date&&date<=r.endDate;
+  }
+
+  function replacement(p,date){
+    return records(p.scheduleReplaces).map((r,i)=>({r,i})).filter(x=>rangeCovers(x.r,date))
+      .sort((a,b)=>compare(a.r.startDate,b.r.startDate)||compare(eventAt(a.r),eventAt(b.r))||a.i-b.i)
+      .map(x=>x.r).pop()||null;
+  }
+
+  function period(p,d,date){
+    return records(p.schedulePeriods).find(r=>rangeCovers(r,date)&&includes(r,d))||null;
+  }
+
+  function temp(p,date,id){
+    return records(p.tempDates).find(r=>r.date===date&&
+      (id===undefined||(r.workPauseId===id&&r.approved!==false&&r.workPauseApproved!==false&&
+        validApprovalStamp(r.workPauseApprovedAt)))&&duration(r)>0)||null;
+  }
+
+  function permCovers(r,date){
+    if(!validDate(r.startDate)||r.startDate>date)return false;
+    if(!absent(r.endDate))return validDate(r.endDate)&&date<=r.endDate&&r.endDate>=r.startDate;
+    const memo=text(r.memo);
+    const oneDay=['\uC77C\uC2DC','\uD558\uB8E8','1\uC77C'].some(s=>memo.includes(s));
+    return !oneDay||date===r.startDate;
+  }
+
+  function permanent(p,date){
+    return records(p.permChanges).filter(r=>permCovers(r,date))
+      .sort((a,b)=>compare(b.startDate,a.startDate)||compare(eventAt(b),eventAt(a)))[0]||null;
+  }
+
+  function explicitSchedule(s,flag){
+    return {start:s.start,end:s.end,customBreak:s.customBreak,
+      ...(flag==='fromReplace'?{wage:s.wage,role:s.role,tutorKind:s.tutorKind}:{}),
+      ...(flag==='_isTemp'?{breakAuto:s.breakAuto===true}:{}),[flag]:true};
+  }
+
+  function overrides(p,d,date){
+    const r=replacement(p,date);
+    if(r)return includes(r,d)?explicitSchedule(r,'fromReplace'):{start:null,end:null,replaced:true};
+    const pd=period(p,d,date);
+    // Legacy periods intentionally do not inherit base break settings.
+    if(pd)return {start:pd.start,end:pd.end,fromPeriod:true};
+    return null;
+  }
+
+  function resumedSchedule(e,pc){
+    const s=object(e.resumeSchedule)?e.resumeSchedule:null;
+    if(!s||validateSchedule(s))return null;
+    if(!pc)return s;
+    const hasTimes=own(pc,'start')||own(pc,'end');
+    const hasBreak=pc.customBreak!==undefined;
+    return {
+      days:own(pc,'days')?pc.days:s.days,
+      start:own(pc,'start')?pc.start:s.start,
+      end:own(pc,'end')?pc.end:s.end,
+      // A later change with its own times must never inherit pre-pause weekday times.
+      daySchedule:own(pc,'daySchedule')?pc.daySchedule:(hasTimes?{}:s.daySchedule),
+      customBreak:pc.breakAuto===true?undefined:
+        (hasBreak?pc.customBreak:(s.breakAuto===true?undefined:s.customBreak)),
+      breakAuto:own(pc,'breakAuto')?pc.breakAuto:(hasBreak?false:s.breakAuto)
+    };
+  }
+
+  function resumedReference(p,d,date,e){
+    const pc=permanent(p,date);
+    const later=pc&&(pc.startDate>e.resumeDate||
+      (pc.startDate===e.resumeDate&&eventAt(pc)>resumeAt(e)));
+    const s=resumedSchedule(e,later?pc:null);
+    const auto=!!s&&(s.breakAuto===true||s.customBreak===undefined);
+    if(!s||validateSchedule(s)||!includes(s,d)){
+      return {start:null,end:null,permExcluded:true,fromPerm:true,breakAuto:!s||auto};
+    }
+    const t=dayTime(s,d)||s;
+    return {start:t.start,end:t.end,customBreak:auto?undefined:s.customBreak,breakAuto:auto,fromPerm:true};
+  }
+
+  function fallbackReference(p,d,date){
+    const explicit=overrides(p,d,date);
+    if(explicit)return explicit;
+    const pc=permanent(p,date);
+    if(pc){
+      if(!includes(pc,d))return {start:null,end:null,permExcluded:true};
+      const t=dayTime(pc,d)||dayTime(p,d)||pc;
+      return {start:t.start,end:t.end,customBreak:pc.customBreak,breakAuto:!!pc.breakAuto,fromPerm:true};
+    }
+    if(validDate(p.scheduleChangeDate)&&date<p.scheduleChangeDate){
+      const history=records(p.scheduleHistory),prev=history[history.length-1];
+      if(prev)return {start:prev.start,end:prev.end};
+    }
+    return clone(dayTime(p,d)||{start:p.start,end:p.end});
+  }
+
+  function fallbackExpected(p,d,date){
+    const r=replacement(p,date);
+    if(r)return includes(r,d);
+    if(period(p,d,date)||temp(p,date))return true;
+    return includes(permanent(p,date)||p,d);
+  }
+
+  function baseline(fn,p,dow,date,fallback){
+    if(typeof fn!=='function'||activeCallbacks.has(fn))return fallback();
+    activeCallbacks.add(fn);
+    try{return fn(p,dow,date);}catch(_){return fallback();}
+    finally{activeCallbacks.delete(fn);}
+  }
+
+  function resolve(p,dow,date,baseGetDayTime){
+    const d=day(dow);
+    if(!object(p))return empty();
+    const valid=!!d&&validDate(date);
+    const base=()=>baseline(baseGetDayTime,p,dow,date,()=>valid?fallbackReference(p,d,date):empty());
+    if(!has(p))return base();
+    if(!valid)return empty();
+    const e=latestResume(p,date);
+    // Actual-payroll callers already select tempDates explicitly. Do not add a new priority.
+    if(!e)return base();
+    const explicit=overrides(p,d,date);
+    return explicit||resumedReference(p,d,date,e);
+  }
+
+  function expected(p,dow,date,baseIsWorkDay,baseGetDayTime){
+    const d=day(dow);
+    if(!object(p))return false;
+    const valid=!!d&&validDate(date);
+    const base=()=>baseline(baseIsWorkDay,p,dow,date,()=>valid?fallbackExpected(p,d,date):false);
+    if(!has(p))return base();
+    if(!valid)return false;
+    const pause=pauseAt(p,date);
+    if(pause)return !!temp(p,date,pause.id);
+    if(!latestResume(p,date))return base();
+    const r=replacement(p,date);
+    if(r)return includes(r,d);
+    if(period(p,d,date)||temp(p,date))return true;
+    return duration(resolve(p,dow,date,baseGetDayTime))>0;
+  }
+
+  function signature(p){
+    const ancestors=new Map();
+    function encode(v,path){
+      if(v===null)return 'null';
+      if(typeof v==='string'||typeof v==='boolean')return JSON.stringify(v);
+      if(typeof v==='number')return Number.isFinite(v)?(Object.is(v,-0)?'-0':String(v)):'number:'+String(v);
+      if(typeof v!=='object')return typeof v+':'+String(v);
+      if(ancestors.has(v))return 'circular:'+JSON.stringify(ancestors.get(v));
+      ancestors.set(v,path);
+      let result;
+      if(Array.isArray(v)){
+        result='['+Array.from({length:v.length},(_,i)=>own(v,i)?encode(v[i],path+'/'+i):'hole').join(',')+']';
+      }else{
+        // The reserved lease is transient; all other snapshot fields participate in CAS.
+        result='{'+Object.keys(v).filter(k=>k!=='_workWriteLease'&&k!=='_workWriteProof').sort()
+          .map(k=>JSON.stringify(k)+':'+encode(v[k],path+'/'+JSON.stringify(k))).join(',')+'}';
+      }
+      ancestors.delete(v);
+      return result;
+    }
+    return encode(p,'$');
+  }
+
+  function conflicts(p,start,end){
+    if(!validDate(start)||(!absent(end)&&(!validDate(end)||end<start))){
+      return [{date:validDate(start)?start:'',type:'invalid',description:'Invalid conflict interval.'}];
+    }
+    if(!object(p)||end===start)return [];
+    const within=d=>validDate(d)&&d>=start&&(absent(end)||d<end);
+    const found=[];
+    const add=(date,type)=>found.push({date,type,description:type+': '+date});
+    ['scheduleReplaces','schedulePeriods'].forEach(type=>{
+      records(p[type]).forEach(r=>{
+        const first=r.startDate,last=absent(r.endDate)?first:r.endDate;
+        if(!validDate(first)||!validDate(last)||last<first)return;
+        if(last>=start&&(absent(end)||first<end))add(first<start?start:first,type);
+      });
+    });
+    records(p.permChanges).forEach(r=>{if(within(r.startDate))add(r.startDate,'permChanges');});
+    records(p.tempDates).forEach(r=>{if(within(r.date))add(r.date,'tempDates');});
+    rows(p.plannedAbsent,true).forEach(({value:r})=>{
+      if(cancelled(r))return;
+      const first=typeof r==='string'?r:object(r)?r.date||r.startDate:null;
+      const last=object(r)&&!absent(r.endDate)?r.endDate:first;
+      if(!validDate(first)||!validDate(last)||last<first)return;
+      if(last>=start&&(absent(end)||first<end))add(first<start?start:first,'plannedAbsent');
+    });
+    records(p.educationDates).forEach(r=>{
+      const h=typeof r.hours==='number'||(typeof r.hours==='string'&&r.hours.trim())?Number(r.hours):NaN;
+      if(within(r.date)&&Number.isFinite(h)&&h>0)add(r.date,'educationDates');
+    });
+    return found.sort((a,b)=>compare(a.date,b.date)||compare(a.type,b.type));
+  }
+
+  const API=Object.freeze({
+    has:p=>attempt(()=>has(p),()=>false),
+    entries:p=>attempt(()=>entries(p),()=>[]),
+    pauseAt:(p,date)=>attempt(()=>pauseAt(p,date),()=>null),
+    latestResume:(p,date)=>attempt(()=>latestResume(p,date),()=>null),
+    resolve:(p,dow,date,base)=>attempt(()=>resolve(p,dow,date,base),empty),
+    expected:(p,dow,date,work,time)=>attempt(()=>expected(p,dow,date,work,time),()=>false),
+    signature:p=>attempt(()=>signature(p),()=> 'invalid:unreadable-snapshot'),
+    validDate:v=>attempt(()=>validDate(v),()=>false),
+    validateSchedule:s=>attempt(()=>validateSchedule(s),()=> '\uadfc\ubb34\uc2dc\uac04\ud45c\ub97c \uc77d\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.'),
+    conflicts:(p,start,end)=>attempt(()=>conflicts(p,start,end),()=>[
+      {date:validDate(start)?start:'',type:'invalid',description:'Unreadable conflict data.'}
+    ])
+  });
+  return API;
+})();
+if(typeof module!=='undefined')module.exports=WS;
+
+// WORK_STATE_MODEL_END
+// Work-state controls are additive. The original payroll formulas remain untouched.
+const WS_SELECTED = new Set();
+const WS_ACTIONS = new Map();
+const WS_APPROVED = new Map();
+const WS_DAY_NAMES = ['일','월','화','수','목','금','토'];
+let WS_DIALOG = null;
+let WS_BUSY = false;
+let WS_PAY_REVISION = '';
+const wsCopy = value => JSON.parse(JSON.stringify(value));
+const wsStamp = () => `${kstLabel()} ${kstNow()}`;
+const wsEscape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const wsActual = a => !!(a && (a.inTime || a.outTime || (a.manual && (a.adjustedStart || a.adjustedEnd))));
+const wsId = () => 'ws_' + crypto.randomUUID().replaceAll('-', '');
+function wsWritable() {
+  if (WS_REVIEW && !/^http:\/\/127\.0\.0\.1:\d+\/db$/.test(FC.databaseURL)) throw Error('검토본에서는 운영 자료를 변경할 수 없습니다.');
+}
+function wsUrl(key, parameters) {
+  const url = new URL(FC.databaseURL.replace(/\/$/, '') + '/' + key + '.json');
+  if (parameters) for (const [k,v] of Object.entries(parameters)) url.searchParams.set(k, JSON.stringify(v));
+  return url.toString();
+}
+async function wsRead(key, etag = false, parameters) {
+  const response = await fetch(wsUrl(key, parameters), {cache:'no-store', headers:etag?{'X-Firebase-ETag':'true'}:{}, signal:AbortSignal.timeout(15000)});
+  if (!response.ok) throw Error('자료를 확인하지 못했습니다. 다시 시도해주세요.');
+  return {value:await response.json(), etag:response.headers.get('etag')};
+}
+async function wsCas(key, change) {
+  wsWritable();
+  for (let attempt=0; attempt<5; attempt++) {
+    const current = await wsRead(key, true);
+    if (!current.etag) throw Error('저장 상태를 확인할 수 없습니다.');
+    const next = change(wsCopy(current.value));
+    if (next === undefined) throw Error('다른 작업으로 자료가 변경되었습니다. 다시 열어 확인해주세요.');
+    const response = await fetch(wsUrl(key), {method:'PUT',headers:{'content-type':'application/json','if-match':current.etag},body:JSON.stringify(next),signal:AbortSignal.timeout(15000)});
+    if (response.status===412) continue;
+    if (!response.ok) throw Error('저장하지 못했습니다. 다시 확인해주세요.');
+    return await response.json();
+  }
+  throw Error('다른 저장이 진행 중입니다. 잠시 후 다시 확인해주세요.');
+}
+function wsProof(token){return{token,requestId:wsId()};}
+async function wsPatch(key, changes) {
+  wsWritable();
+  const response=await fetch(wsUrl(key),{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(changes),signal:AbortSignal.timeout(15000)});
+  if(!response.ok)throw Error('자료가 변경되었거나 저장 시간이 지났습니다. 다시 열어 확인해주세요.');
+  return response.json();
+}
+async function wsLease(ids, expected, token, target='batch', intent='update') {
+  const changes={};
+  for(const id of ids)changes[id+'/_workWriteLease']={token,until:Date.now()+90000,target,intent};
+  let error;
+  try{await wsPatch('parts',changes);}catch(e){error=e;}
+  const locked=(await wsRead('parts')).value||{};
+  const owned=ids.every(id=>locked[id]?._workWriteLease?.token===token&&locked[id]._workWriteLease.until>Date.now());
+  if(!owned)throw error||Error('다른 저장이 진행 중입니다. 다시 확인해주세요.');
+  if(expected&&ids.some(id=>WS.signature(locked[id])!==expected[id])){await wsRelease(ids,token);throw Error('자료가 변경되었습니다. 다시 열어 확인해주세요.');}
+  return locked;
+}
+async function wsRelease(ids, token) {
+  try {
+    const parts=(await wsRead('parts')).value||{},changes={};
+    for(const id of ids)if(parts[id]?._workWriteLease?.token===token&&parts[id]._workWriteLease.until>Date.now()){
+      changes[id+'/_workWriteLease']=null;changes[id+'/_workWriteProof']=wsProof(token);
+    }
+    if(Object.keys(changes).length)await wsPatch('parts',changes);
+  } catch (e) { console.warn('Work-state lease expires automatically:',e.message); }
+}
+function wsPath(reference) {
+  if (typeof reference==='string' && !reference.startsWith('http')) return reference.replace(/^\/+|\/+$/g,'');
+  const url=new URL(reference.toString());
+  const base=new URL(FC.databaseURL);
+  return decodeURIComponent(url.pathname.slice(base.pathname.replace(/\/$/,'').length)).replace(/^\/+|\/+$/g,'');
+}
+async function wsBackendRead(reference,...args) {
+  const result=await wsRawGet(reference,...args), key=wsPath(reference), segments=key.split('/');
+  if(segments[0]==='attendance'&&segments.length===3){const action=WS_ACTIONS.get(segments[2]);if(action){action.reads=action.reads||{};if(!Object.hasOwn(action.reads,key))action.reads[key]=wsCopy(result.val());}}
+  return result;
+}
+function wsCheckMutation(p, payload, id) {
+  if (!WS.has(p) || !payload || typeof payload!=='object') return payload;
+  const out=wsCopy(payload);
+  for (const field of ['tempDates','educationDates']) if (out[field]) {
+    const old=Array.isArray(p[field])?p[field]:Object.values(p[field]||{});
+    for (const entry of out[field]) {
+      if (old.some(e=>JSON.stringify(e)===JSON.stringify(entry))) continue;
+      const pause=WS.pauseAt(p,entry.date);
+      if (!pause) continue;
+      if (WS_APPROVED.get(id+'|'+entry.date+'|'+field)!==pause.id) throw Error('근무중단 기간과 겹칩니다. 해당 일정을 다시 열어 확인해주세요.');
+      entry.workPauseId=pause.id;
+      entry.workPauseApprovedAt=wsStamp();
+    }
+  }
+  for (const field of ['permChanges','scheduleReplaces','schedulePeriods','plannedAbsent']) if (out[field]) {
+    const old=p[field]||[];
+    for (const entry of out[field]) {
+      if (old.some(e=>JSON.stringify(e)===JSON.stringify(entry))) continue;
+      const start=typeof entry==='string'?entry:entry.startDate||entry.date;
+      const end=typeof entry==='string'?entry:entry.endDate||start;
+      if (WS.entries(p).some(s=>start && start<(s.resumeDate||'9999-12-31') && end>=s.startDate)) throw Error('근무중단 기간의 일정은 복귀 설정을 먼저 확인해주세요.');
+    }
+  }
+  return out;
+}
+async function wsBackendWrite(kind, reference, payload) {
+  wsWritable();
+  const raw={set:wsRawSet,update:wsRawUpdate,push:wsRawPush,remove:wsRawRemove}[kind];
+  const key=wsPath(reference), segments=key.split('/');
+  const id=segments[0]==='parts'&&segments.length===2?segments[1]:segments[0]==='attendance'&&segments.length===3?segments[2]:null;
+  if (!id || (kind==='push')) return kind==='remove'?raw(reference):raw(reference,payload);
+  const token=wsId();
+  const current=(await wsRead('parts/'+id)).value;
+  if (!current) return kind==='remove'?raw(reference):raw(reference,payload);
+  const action=WS_ACTIONS.get(id);
+  if (action && WS.signature(current)!==WS.signature(action.before)) throw Error('자료가 변경되었습니다. 다시 열어 확인해주세요.');
+  await wsLease([id], {[id]:WS.signature(current)}, token,key,kind==='remove'||payload===null?'remove':kind);
+  try {
+    const latest=(await wsRead('parts/'+id)).value;
+    if(latest?._workWriteLease?.token!==token||latest._workWriteLease.until<=Date.now())throw Error('저장 상태가 변경되었습니다. 다시 확인해주세요.');
+    let value=payload;
+    if (segments[0]==='parts' && kind!=='remove') value=wsCheckMutation(latest,payload,id);
+    if (segments[0]==='parts' && kind==='remove' && WS.has(latest)) throw Error('근무중단 이력이 있는 직원은 삭제할 수 없습니다.');
+    const before=(await wsRead(key)).value;
+    if(segments[0]==='attendance'){
+      if(action?.reads&&Object.hasOwn(action.reads,key)&&WS.signature(before)!==WS.signature(action.reads[key]))throw Error('다른 직원이 출결을 수정했습니다. 다시 열어 확인해주세요.');
+      const date=segments[1],pause=WS.pauseAt(latest,date), merged=kind==='update'?{...(before||{}),...(value||{})}:value;
+      if(pause&&!isWorkDay(latest,WS_DAY_NAMES[new Date(date+'T12:00:00+09:00').getDay()],date)&&!wsActual(before)&&merged&&(merged.stdPhrase||merged.adjustedStart||merged.adjustedEnd||merged.inTime||merged.outTime)){
+        if(!(date<=kstDate()&&wsActual(merged)&&WS_APPROVED.get(id+'|'+date+'|attendance')===pause.id))throw Error('근무중단 기간입니다. 복귀일 또는 실제 근무 여부를 먼저 확인해주세요.');
+      }
+    }
+    const desired=kind==='remove'?null:kind==='update'?{...(before||{}),...value}:wsCopy(value);
+    if(desired)desired._workWriteProof=wsProof(token);
+    let result;
+    try{result=await wsCas(key,currentValue=>{
+      if(WS.signature(currentValue)!==WS.signature(before))return;
+      if(segments[0]==='parts'&&(currentValue?._workWriteLease?.token!==token||currentValue._workWriteLease.until<=Date.now()))return;
+      return desired;
+    });}catch(error){const readback=(await wsRead(key)).value;if(WS.signature(readback)!==WS.signature(desired)||(desired&&readback?._workWriteProof?.requestId!==desired._workWriteProof.requestId))throw error;result=readback;}
+    if(segments[0]==='parts'&&payload&&result){
+      for(const field of ['tempDates','educationDates'])if(Array.isArray(payload[field])&&Array.isArray(result[field]))payload[field].splice(0,payload[field].length,...wsCopy(result[field]));
+    }
+    if (action) action.before=(await wsRead('parts/'+id)).value;
+    if(action?.reads&&segments[0]==='attendance')action.reads[key]=wsCopy(result);
+    return result;
+  } finally { await wsRelease([id],token); }
+}
+const wsBaseGetDayTime=getDayTime;
+const wsBaseIsWorkDay=isWorkDay;
+getDayTime=function(p,day,date){return WS.has(p)?WS.resolve(p,day,date||kstDate(),wsBaseGetDayTime):wsBaseGetDayTime(p,day,date);};
+isWorkDay=function(p,day,date){return WS.has(p)?WS.expected(p,day,date||kstDate(),wsBaseIsWorkDay,wsBaseGetDayTime):wsBaseIsWorkDay(p,day,date);};
+const wsBaseEnrich=enrich;
+enrich=function(parts,cat){
+  const rows=wsBaseEnrich(parts,cat), date=DD[cat]||kstDate(), found=new Set(rows.map(r=>r.id));
+  for (const p of parts) {
+    const a=TB[cat]?.[p.id];
+    if (!WS.has(p) || found.has(p.id) || !wsActual(a)) continue;
+    const eff=effectivePartOn(p.id,date)||p;
+    const complete=!!(a.inTime&&a.outTime&&a.stdPhrase);
+    const state=!complete?'no-schedule':a.stdPhrase==='결근'?'absent-con':a.stdPhrase==='지각'?'late':['추가근무','조기퇴근'].includes(a.stdPhrase)?'changed':'done';
+    rows.push({...eff,id:p.id,actual:a.inTime||null,ar:a,status:state,unscheduled:true,workStateActualOnly:complete});
+  }
+  return rows;
+};
+const wsBaseStats=rStats;
+rStats=function(cat,rows){return wsBaseStats(cat,rows.filter(r=>!r.workStateActualOnly||r.status!=='done'));};
+const wsOldLoadWorkman=loadWorkmanData;
+loadWorkmanData=async function(){
+  await wsOldLoadWorkman();
+  let changed=false;
+  WD=WD.map(row=>{
+    if(!row.unscheduled||!WS.has(row.p)||!wsActual(row.a))return row;
+    changed=true;const p=effectivePartOn(row.p.id,row.dt)||row.p;
+    return {...row,p:{...p,id:row.p.id},unscheduled:false,workStateActualOnly:true};
+  });
+  if(changed)renderWorkmanList();
+};
+window.loadWorkmanData=loadWorkmanData;
+function wsListState(p,date=kstDate()) {
+  const pause=WS.pauseAt(p,date);
+  if (pause) return {entry:pause,text:pause.resumeDate?'중단 · '+pause.resumeDate.slice(5).replace('-','/')+' 복귀':'근무중단'};
+  const future=WS.entries(p).find(e=>e.startDate>date);
+  return future?{entry:future,text:future.startDate.slice(5).replace('-','/')+' 중단예정'}:null;
+}
+function wsSelectionCount() {
+  const button=document.getElementById('ws-suspend');
+  if (button) {button.disabled=!WS_SELECTED.size||WS_BUSY;button.textContent=WS_SELECTED.size?'근무중단 ('+WS_SELECTED.size+')':'근무중단';}
+}
+function wsVisibleRows() {return [...document.querySelectorAll('#parts-table-wrap tbody tr[data-work-id]')].filter(r=>!r.hidden);}
+function wsDecorateParts() {
+  const allowed=CU?.role==='관리자';
+  const filters=document.querySelector('#tab-parts .parts-filters');
+  const header=document.querySelector('#tab-parts > div:first-child');
+  if(header){header.style.flexWrap='wrap';header.style.gap='8px';const commands=header.lastElementChild;if(commands){commands.style.flexWrap='wrap';for(const command of commands.querySelectorAll('button'))command.style.whiteSpace='nowrap';}}
+  const status=document.getElementById('filter-status');
+  if (status && !status.querySelector('option[value="workPaused"]')) status.add(new Option('근무중단','workPaused'));
+  let button=document.getElementById('ws-suspend');
+  if (!button && filters) {button=document.createElement('button');button.id='ws-suspend';button.className='btn-secondary';button.type='button';button.onclick=wsOpenSuspend;filters.appendChild(button);}
+  if (button) button.hidden=!allowed;
+  const table=document.querySelector('#parts-table-wrap table');
+  if (!table) {wsSelectionCount();return;}
+  const head=table.tHead?.rows[0];
+  if (allowed && head && !head.querySelector('.ws-check-cell')) {
+    const th=document.createElement('th');th.className='ws-check-cell';th.style.cssText='width:32px;min-width:32px;';
+    const box=document.createElement('input');box.type='checkbox';box.title='현재 목록 선택';box.setAttribute('aria-label','현재 목록 선택');
+    box.onchange=()=>{for(const row of wsVisibleRows()){const cb=row.querySelector('input[data-work-select]');if(cb&&!cb.disabled){cb.checked=box.checked;box.checked?WS_SELECTED.add(row.dataset.workId):WS_SELECTED.delete(row.dataset.workId);}}wsSelectionCount();};
+    th.appendChild(box);head.prepend(th);
+  }
+  for (const row of [...table.tBodies[0].rows]) {
+    const trigger=row.querySelector('button[onclick^="openSchedHist("]');
+    const match=trigger?.getAttribute('onclick')?.match(/openSchedHist\('([^']+)'\)/);
+    if (!match) continue;
+    const id=match[1], p=AP[id];if(!p)continue;
+    row.dataset.workId=id;
+    const state=wsListState(p), resigned=p.status==='inactive'||(p.leaveDate&&p.leaveDate<kstDate());
+    if (status?.value==='workPaused' && (!state||resigned)) row.hidden=true;
+    const statusCell=row.cells[row.cells.length-2];
+    if (state && !resigned) {const badge=statusCell.querySelector('.sbadge');if(badge){badge.textContent=state.text;badge.className='sbadge';badge.style.cssText='color:#64748b;background:#f1f5f9;white-space:nowrap;';}}
+    if (WS.latestResume(p,kstDate())) {
+      const plain={...p,tempDates:[]}, days=WS_DAY_NAMES.filter(day=>isWorkDay(plain,day,kstDate()));
+      row.cells[5].textContent=days.join('·')||'-';
+      row.cells[6].innerHTML=days.map(day=>{const t=getDayTime(plain,day,kstDate());return `<div style="line-height:1.5">${wsEscape(day)} ${wsEscape(t.start||'-')}~${wsEscape(t.end||'-')}</div>`;}).join('')||'-';
+    }
+    if (allowed) {
+      const cell=document.createElement('td');cell.className='ws-check-cell';
+      const cb=document.createElement('input');cb.type='checkbox';cb.dataset.workSelect=id;cb.setAttribute('aria-label',p.name+' '+p.role+' 선택');
+      cb.disabled=!!state||resigned;cb.checked=WS_SELECTED.has(id)&&!cb.disabled;
+      if(cb.disabled)WS_SELECTED.delete(id);
+      cb.onchange=()=>{cb.checked?WS_SELECTED.add(id):WS_SELECTED.delete(id);wsSelectionCount();};cell.appendChild(cb);row.prepend(cell);
+      if (state && !resigned) {const resume=document.createElement('button');resume.type='button';resume.className='icon-btn';resume.textContent=state.entry.resumeDate?'복귀변경':'복귀';resume.onclick=()=>wsOpenResume(id,state.entry.id);row.lastElementChild.appendChild(resume);}
+    }
+  }
+  wsSelectionCount();
+}
+const wsOriginalRenderPT=renderPT;
+renderPT=function(){wsOriginalRenderPT();wsDecorateParts();};
+window.renderPT=renderPT;window.renderPartsTable=renderPT;
+for (const id of ['filter-name','filter-role','filter-cat','filter-status']) document.getElementById(id)?.addEventListener(id==='filter-name'||id==='filter-role'?'input':'change',()=>WS_SELECTED.clear(),true);
+function wsModal(title,html) {
+  let overlay=document.getElementById('modal-workstate');
+  if (!overlay) {
+    overlay=document.createElement('div');overlay.id='modal-workstate';overlay.className='modal-overlay';
+    overlay.innerHTML='<div class="modal" style="max-width:650px;width:calc(100vw - 32px);max-height:88dvh;display:flex;flex-direction:column;overflow:hidden"><div class="modal-header" style="flex-shrink:0"><div class="modal-title" id="ws-title"></div><button class="modal-close" id="ws-close" type="button" aria-label="닫기">✕</button></div><div id="ws-body" style="min-height:0;overflow-y:auto;overscroll-behavior:contain"></div><div id="ws-actions" style="position:relative;display:flex;gap:8px;align-items:center;flex-shrink:0;border-top:1px solid var(--border-light);padding-top:12px;margin-top:12px"></div></div>';
+    overlay.querySelector('.modal').onclick=e=>e.stopPropagation();
+    overlay.querySelector('#ws-close').onclick=wsClose;
+    document.body.appendChild(overlay);if(typeof makeDraggable==='function')makeDraggable('modal-workstate');
+  }
+  document.getElementById('ws-title').textContent=title;
+  const body=document.getElementById('ws-body'),footer=document.getElementById('ws-actions');body.innerHTML=html;footer.innerHTML='';
+  const buttons=body.querySelector('.btn-row');
+  if(buttons){
+    const extra=[...buttons.children].filter(b=>/wsCancel(Plan|Resume)/.test(b.getAttribute('onclick')||''));
+    if(extra.length){
+      const menu=document.createElement('div');menu.hidden=true;menu.style.cssText='position:absolute;bottom:54px;left:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;box-shadow:var(--shadow);z-index:2;min-width:140px;';
+      for(const b of extra){b.style.cssText+=';display:block;white-space:nowrap;width:100%;margin:3px 0';menu.appendChild(b);}
+      const more=document.createElement('button');more.className='icon-btn';more.type='button';more.textContent='⋯';more.title='예약 취소';more.setAttribute('aria-label','예약 취소 메뉴');more.style.cssText='width:34px;height:34px;flex-shrink:0;font-size:18px';more.onclick=()=>{menu.hidden=!menu.hidden;};footer.append(more,menu);
+    }
+    for(const b of [...buttons.children]){b.style.whiteSpace='nowrap';if(b.classList.contains('btn-primary'))b.style.flex='1';footer.appendChild(b);}
+    buttons.remove();
+  }
+  OM('modal-workstate');
+}
+function wsClose(){if(WS_BUSY)return;CM('modal-workstate');WS_DIALOG=null;}
+function wsError(message) {const box=document.getElementById('ws-error');if(box){box.textContent=message;box.hidden=false;const body=document.getElementById('ws-body');if(body)body.scrollTop=body.scrollHeight;}else ST(message);}
+function wsSetBusy(value) {WS_BUSY=value;document.querySelectorAll('#modal-workstate button,#modal-workstate input').forEach(e=>e.disabled=value);wsSelectionCount();}
+function wsNames(ids) {return ids.map(id=>{const p=AP[id];return `<div style="padding:7px 0;border-bottom:1px solid var(--border-light);font-size:13px"><strong>${wsEscape(p?.name||'-')}</strong> · ${wsEscape(p?.role||'-')} <span style="color:var(--text-muted)">${wsEscape((p?.phone||'').replace(/\D/g,'').slice(-4))}</span></div>`;}).join('');}
+function wsOpenSuspend() {
+  if(CU?.role!=='관리자')return;
+  const ids=wsVisibleRows().map(r=>r.dataset.workId).filter(id=>WS_SELECTED.has(id));
+  if(!ids.length){ST('중단할 직원을 선택해주세요');return;}
+  WS_DIALOG={mode:'suspend',ids,expected:Object.fromEntries(ids.map(id=>[id,WS.signature(AP[id])])),operation:wsId()};
+  wsModal('근무중단',`<div style="max-height:180px;overflow-y:auto;margin-bottom:16px">${wsNames(ids)}</div><div class="form-group"><label class="form-label" for="ws-start">중단 시작일</label><input class="form-input" id="ws-start" type="date" min="${kstDate()}" value="${kstDate()}"></div><div id="ws-error" hidden style="color:var(--danger);font-size:12px;white-space:pre-line;margin:10px 0"></div><div class="btn-row"><button class="btn-secondary" type="button" onclick="wsClose()">취소</button><button class="btn-primary" type="button" onclick="wsSave()">중단 확정</button></div>`);
+}
+function wsTemplate(p,entry) {
+  if(entry.resumeSchedule)return wsCopy(entry.resumeSchedule);
+  const reference=kstDateAddDays(entry.startDate,-1), noTemp={...p,tempDates:[]}, days=[] , daySchedule={};
+  for(const day of WS_DAY_NAMES) if(wsBaseIsWorkDay(noTemp,day,reference)) {
+    const ds=getDayTime(noTemp,day,reference);if(ds.start&&ds.end){days.push(day);daySchedule[day]={start:ds.start,end:ds.end};}
+  }
+  const fallback=daySchedule[days[0]]||{start:p.start||'09:00',end:p.end||'18:00'};
+  const ds=getDayTime(noTemp,days[0]||'월',reference);
+  const customBreak=_resolveBreak(p,ds);
+  return {...fallback,days,daySchedule,...(customBreak!==undefined?{customBreak}:{breakAuto:true})};
+}
+function wsOpenResume(id,entryId) {
+  if(CU?.role!=='관리자')return;
+  const p=AP[id], entry=WS.entries(p).find(e=>e.id===entryId);if(!entry)return;
+  if(entry.resumeDate&&entry.resumeDate<=kstDate()){ST('이미 적용된 복귀일은 변경할 수 없습니다.');return;}
+  const schedule=wsTemplate(p,entry);
+  WS_DIALOG={mode:'resume',ids:[id],entryId,expected:{[id]:WS.signature(p)},operation:wsId()};
+  const rows=WS_DAY_NAMES.map(day=>{const time=schedule.daySchedule?.[day]||schedule;return `<div style="display:grid;grid-template-columns:44px minmax(0,1fr) minmax(0,1fr);gap:8px;align-items:center;padding:5px 0"><label style="font-size:13px;display:flex;gap:6px;align-items:center"><input type="checkbox" data-ws-day="${day}" ${schedule.days.includes(day)?'checked':''}>${day}</label><input class="form-input" type="time" aria-label="${day} 출근" data-ws-start="${day}" value="${time.start||'09:00'}" style="min-width:0;width:100%;padding:7px 4px;font-size:12px"><input class="form-input" type="time" aria-label="${day} 퇴근" data-ws-end="${day}" value="${time.end||'18:00'}" style="min-width:0;width:100%;padding:7px 4px;font-size:12px"></div>`;}).join('');
+  const earliest=kstDateAddDays(entry.startDate,1)>kstDate()?kstDateAddDays(entry.startDate,1):kstDate();
+  wsModal('복귀 설정',`${wsNames([id])}<div class="form-group" style="margin-top:14px"><label class="form-label" for="ws-resume">복귀일</label><input class="form-input" type="date" id="ws-resume" min="${earliest}" value="${entry.resumeDate||earliest}"></div><div style="margin:12px 0">${rows}</div><div class="form-group"><label class="form-label" for="ws-break">휴게시간(분)</label><input class="form-input" id="ws-break" type="number" min="0" max="240" placeholder="자동" value="${schedule.breakAuto?'':schedule.customBreak??''}"></div><div id="ws-error" hidden style="color:var(--danger);font-size:12px;white-space:pre-line;margin:10px 0"></div><div class="btn-row" style="flex-wrap:wrap">${entry.startDate>=kstDate()?'<button class="btn-secondary" type="button" onclick="wsCancelPlan()" style="color:var(--danger)">중단 취소</button>':''}${entry.resumeDate&&entry.resumeDate>kstDate()?'<button class="btn-secondary" type="button" onclick="wsCancelResume()">복귀예약 취소</button>':''}<button class="btn-secondary" type="button" onclick="wsClose()">닫기</button><button class="btn-primary" type="button" onclick="wsSave()">복귀 확정</button></div>`);
+}
+function wsReadSchedule() {
+  const days=[...document.querySelectorAll('#ws-body input[data-ws-day]:checked')].map(e=>e.dataset.wsDay);
+  const daySchedule={};for(const day of days)daySchedule[day]={start:document.querySelector(`[data-ws-start="${day}"]`).value,end:document.querySelector(`[data-ws-end="${day}"]`).value};
+  const first=daySchedule[days[0]]||{}, raw=document.getElementById('ws-break').value.trim();
+  return {...first,days,daySchedule,...(raw===''?{breakAuto:true}:{customBreak:Number(raw),breakAuto:false})};
+}
+async function wsScan(dialog,parts,start,end) {
+  const conflicts=[];
+  for(const id of dialog.ids) {
+    const p=parts[id];
+    if(p.status==='inactive'||p.leaveDate)throw Error(`${p.name}: 퇴사 정보가 있는 직원은 먼저 해당 정보를 확인해주세요.`);
+    if(dialog.mode==='suspend' && WS.entries(p).some(e=>e.startDate<(end||'9999-12-31')&&(!e.resumeDate||e.resumeDate>start)))throw Error(`${p.name}: 중단 기간이 이미 등록되어 있습니다.`);
+    const labels={scheduleReplaces:'기간교체',schedulePeriods:'기간추가',permChanges:'예약된 근무변경',tempDates:'추가근무',plannedAbsent:'결근예정',educationDates:'교육시수',invalid:'확인이 필요한 일정'};
+    for(const item of WS.conflicts(p,start,end))conflicts.push(`${p.name} (${p.role}) · ${item.date||item.startDate||''} ${labels[item.type]||'기존 일정'}`);
+  }
+  const future=(await wsRead('attendance',false,{orderBy:'$key',startAt:start,...(end?{endAt:kstDateAddDays(end,-1)}:{})})).value||{};
+  for(const [date,day]of Object.entries(future))for(const id of dialog.ids){const a=day?.[id];if(!a)continue;if(wsActual(a)||a.adjustedStart||a.adjustedEnd||a.stdPhrase)conflicts.push(`${parts[id].name} · ${date} 출결 기록/예약`);}
+  if(start<=kstDate()) {
+    const yesterday=kstDateAddDays(kstDate(),-1), day=(await wsRead('attendance/'+yesterday)).value||{};
+    for(const id of dialog.ids)if(day[id]?.inTime&&!day[id]?.outTime)conflicts.push(`${parts[id].name} · ${yesterday} 미퇴근 기록`);
+  }
+  if(conflicts.length)throw Error('기존 일정 또는 출결이 있습니다. 해당 항목을 먼저 확인해주세요.\n'+conflicts.slice(0,8).join('\n')+(conflicts.length>8?`\n외 ${conflicts.length-8}건`:''));
+}
+async function wsCommit(dialog,mode,start,schedule) {
+  const ids=dialog.ids, token=dialog.operation;
+  const previous=(await wsRead('parts')).value||{};
+  const completed=ids.map(id=>!!previous[id]?.workPauses?.[mode==='suspend'?token:dialog.entryId]?.history?.some(h=>h.operation===token&&h.request===dialog.request));
+  if(completed.every(Boolean)){AP=previous;await wsRelease(ids,token);return previous;}
+  if(completed.some(Boolean))throw Error('일부 저장 결과를 확인해야 합니다. 다시 작업하지 말고 담당자에게 확인해주세요.');
+  const locked=await wsLease(ids,dialog.expected,token);
+  try {
+    if(mode==='suspend')await wsScan(dialog,locked,start,null);
+    if(mode==='resume')await wsScan(dialog,locked,start,null);
+    if(mode==='cancelResume'){
+      const existing=locked[ids[0]]?.workPauses?.[dialog.entryId];
+      if(!existing?.resumeDate||existing.resumeDate<=kstDate())throw Error('이미 적용된 복귀일은 취소할 수 없습니다.');
+      await wsScan(dialog,locked,existing.resumeDate,null);
+    }
+    let result;
+    try{
+      const parts=(await wsRead('parts')).value||{},changes={};
+      for(const id of ids)if(parts[id]?._workWriteLease?.token!==token||parts[id]._workWriteLease.until<=Date.now()||WS.signature(parts[id])!==dialog.expected[id])throw Error('저장 상태가 변경되었습니다. 다시 확인해주세요.');
+      for(const id of ids) {
+        const p=parts[id];p.workPauses=p.workPauses||{};
+        if(mode==='suspend')p.workPauses[token]={id:token,startDate:start,revision:1,createdAt:wsStamp(),createdBy:CU.name,updatedAt:wsStamp(),updatedBy:CU.name,history:[{operation:token,request:dialog.request,type:'suspend',at:wsStamp(),by:CU.name}]};
+        else {
+          const e=p.workPauses[dialog.entryId];if(!e)throw Error('중단 내역이 변경되었습니다. 다시 확인해주세요.');
+          if(e.history?.some(h=>h.operation===token))continue;
+          e.history=e.history||[];e.history.push({operation:token,request:dialog.request,type:mode,at:wsStamp(),by:CU.name,previousResumeDate:e.resumeDate||null});
+          if(mode==='resume'){e.resumeDate=start;e.resumeSchedule=schedule;e.resumedAt=wsStamp();}
+          if(mode==='cancelResume'){delete e.resumeDate;delete e.resumeSchedule;delete e.resumedAt;}
+          if(mode==='cancelSuspend')e.cancelled=true;
+          e.revision=(e.revision||1)+1;e.updatedAt=wsStamp();e.updatedBy=CU.name;
+        }
+      }
+      for(const id of ids){
+        changes[id+'/workPauses']=parts[id].workPauses;
+        changes[id+'/_workStateFenceFrom']=WS.entries(parts[id]).map(e=>e.startDate).sort()[0]||'9999-12-31';
+        changes[id+'/_workWriteProof']=wsProof(token);
+      }
+      result=await wsPatch('parts',changes);
+    }catch(error){
+      const recovered=(await wsRead('parts')).value||{};
+      if(!ids.every(id=>recovered[id]?.workPauses?.[mode==='suspend'?token:dialog.entryId]?.history?.some(h=>h.operation===token&&h.request===dialog.request)))throw error;
+      result=recovered;
+    }
+    const check=(await wsRead('parts')).value||{};
+    for(const id of ids){const e=check[id]?.workPauses?.[mode==='suspend'?token:dialog.entryId];if(!e?.history?.some(h=>h.operation===token))throw Error('저장 결과를 다시 확인해주세요.');}
+    AP=check;return result;
+  } finally {await wsRelease(ids,token);}
+}
+async function wsRun(mode,start,schedule) {
+  if(WS_BUSY||CU?.role!=='관리자'||!WS_DIALOG)return;
+  const dialog=WS_DIALOG;
+  const request=WS.signature({mode,start:start||null,schedule:schedule||null});
+  if(dialog.request&&dialog.request!==request){wsError('이전 저장 결과를 먼저 확인해야 합니다. 창을 닫고 다시 열어주세요.');return;}
+  if((mode==='suspend'||mode==='resume')&&(!WS.validDate(start)||start<kstDate())){wsError('오늘 또는 이후 날짜를 선택해주세요.');return;}
+  if(mode==='resume') {
+    const e=WS.entries(AP[dialog.ids[0]]).find(e=>e.id===dialog.entryId);
+    if(!e||start<=e.startDate){wsError('복귀일은 중단 시작일 이후로 선택해주세요.');return;}
+    const error=WS.validateSchedule(schedule);if(error){wsError(error);return;}
+  }
+  wsSetBusy(true);
+  try {
+    dialog.request=request;
+    const pending={operation:dialog.operation,ids:dialog.ids,entryId:dialog.entryId||dialog.operation,mode};
+    localStorage.setItem('kangan_work_pending',JSON.stringify(pending));
+    await wsCommit(dialog,mode,start,schedule);
+    localStorage.removeItem('kangan_work_pending');
+    PAY_DATA=null;WS_PAY_REVISION='';WS_SELECTED.clear();wsSetBusy(false);wsClose();renderPT();renderAll();
+    if(WD?.length)await loadWorkmanData();
+    ST(mode==='suspend'?'근무중단 저장 완료':mode==='resume'?'복귀 설정 저장 완료':'예약 취소 완료');
+  } catch(e) {
+    try{const parts=(await wsRead('parts')).value||{};const present=dialog.ids.some(id=>parts[id]?.workPauses?.[mode==='suspend'?dialog.operation:dialog.entryId]?.history?.some(h=>h.operation===dialog.operation));if(!present){delete dialog.request;localStorage.removeItem('kangan_work_pending');}}catch{}
+    wsSetBusy(false);wsError(e.message||'저장 결과를 다시 확인해주세요.');
+  }
+}
+function wsSave(){if(!WS_DIALOG)return;if(WS_DIALOG.mode==='suspend')return wsRun('suspend',document.getElementById('ws-start').value);return wsRun('resume',document.getElementById('ws-resume').value,wsReadSchedule());}
+async function wsCancelPlan(){const e=WS.entries(AP[WS_DIALOG?.ids[0]]).find(e=>e.id===WS_DIALOG.entryId);if(!e||e.startDate<kstDate())return wsError('이미 시작된 중단은 복귀일을 지정해주세요.');if(await CC('중단 예약을 취소하시겠습니까?',{title:'중단 취소'}))return wsRun('cancelSuspend');}
+async function wsCancelResume(){const e=WS.entries(AP[WS_DIALOG?.ids[0]]).find(e=>e.id===WS_DIALOG.entryId);if(!e||!e.resumeDate||e.resumeDate<=kstDate())return wsError('이미 적용된 복귀일은 취소할 수 없습니다.');if(await CC('복귀 예약만 취소하고 근무중단을 유지하시겠습니까?',{title:'복귀예약 취소'}))return wsRun('cancelResume');}
+async function wsRecoverPending(){
+  let pending;try{pending=JSON.parse(localStorage.getItem('kangan_work_pending')||'null');}catch{}
+  if(!pending)return;
+  try {
+    const parts=(await wsRead('parts')).value||{};
+    const applied=pending.ids.every(id=>parts[id]?.workPauses?.[pending.entryId]?.history?.some(h=>h.operation===pending.operation));
+    if(applied){localStorage.removeItem('kangan_work_pending');AP=parts;renderPT();renderAll();ST('이전 저장 완료를 확인했습니다.');}
+    else{localStorage.removeItem('kangan_work_pending');ST('이전 작업은 저장되지 않았습니다. 다시 확인해주세요.');}
+  } catch {ST('이전 저장 결과를 아직 확인하지 못했습니다.');}
+}
+const wsOldInit=init;
+init=function(){wsOldInit();wsRecoverPending();};
+Object.assign(window,{wsOpenSuspend,wsOpenResume,wsClose,wsSave,wsCancelPlan,wsCancelResume});
+function wsWrapAction(name,idIndex=0) {
+  const original=window[name];if(typeof original!=='function')return;
+  window[name]=async function(...args){
+    const id=typeof idIndex==='function'?idIndex(args):args[idIndex];if(!AP[id])return original(...args);
+    const before=wsCopy(AP[id]);
+    const run=async callback=>{
+      if(WS_ACTIONS.has(id)){ST('저장 중입니다. 잠시 후 다시 확인해주세요.');return;}
+      WS_ACTIONS.set(id,{before:wsCopy(before),reads:{}});
+      try{return await callback();}catch(e){SL(false);ST(e.message||'저장 결과를 확인해주세요.');}finally{WS_ACTIONS.delete(id);}
+    };
+    return run(async()=>{
+      const result=await original(...args);
+      if(name==='waEditBreak'){
+        const button=document.getElementById('cmodal-btns')?.children[1],save=button?.onclick;
+        if(save)button.onclick=()=>run(save);
+      }
+      return result;
+    });
+  };
+}
+for(const name of ['savePartForm','savePF','saveWE','saveMA','saveMemo','saveUnscheduled','deleteAttend','saveNoteOnly','waSave','waDelete','waDeleteAttEvent','waEditBreak','addTempDate','removeTempDate','saveEducationEntry','deleteEducationEntry','toggleEducationExcluded','saveWageCorrection','resignPart','resignP','reinstatePart','reinP','deletePart','delP','changePartStatus','chgSt'])wsWrapAction(name);
+for(const name of ['waQuickAddAbsent','waQuickRemoveAbsent','waQuickAddOneday','waQuickAdjTime','waQuickAddExt'])wsWrapAction(name,()=>WA_PID);
+const wsOldSaveMA=window.saveMA;
+window.saveMA=async function(pid,date){const pause=WS.pauseAt(AP[pid],date);if(pause&&date<=kstDate()){if(!await CC('근무중단 기간의 실제 출퇴근 기록을 입력하시겠습니까? 급여에 반영됩니다.',{title:'실제 근무 확인'}))return;WS_APPROVED.set(pid+'|'+date+'|attendance',pause.id);}try{return await wsOldSaveMA(pid,date);}finally{WS_APPROVED.delete(pid+'|'+date+'|attendance');}};
+const wsOldWaSave=window.waSave;
+window.waSave=async function(pid,type){
+  const range=type==='oneday'&&document.querySelector('input[name="oneday-mode"]:checked')?.value==='range';
+  const start=document.getElementById(range?'wa-rstart':'wa-start')?.value||'', end=range?document.getElementById('wa-rend')?.value:start;
+  const days=range?[...document.querySelectorAll('#wa-rdays .day-btn.selected')].map(b=>b.textContent.trim()):null;
+  const approvals=[];
+  if(type==='oneday'&&WS.validDate(start)&&WS.validDate(end)&&end>=start){
+    let date=start,count=0;
+    while(date<=end&&count++<1000){const pause=WS.pauseAt(AP[pid],date),day=WS_DAY_NAMES[new Date(date+'T12:00:00+09:00').getDay()];if(pause&&(!days||days.includes(day)))approvals.push([pid+'|'+date+'|tempDates',pause.id]);date=kstDateAddDays(date,1);}
+  }
+  if(approvals.length&&!await CC('근무중단은 유지하고 선택한 날짜만 추가근무로 등록하시겠습니까?',{title:'중단 중 추가근무'}))return;
+  for(const [key,id]of approvals)WS_APPROVED.set(key,id);
+  try{return await wsOldWaSave(pid,type);}finally{for(const[key]of approvals)WS_APPROVED.delete(key);}
+};
+const wsOldEducationSave=window.saveEducationEntry;
+window.saveEducationEntry=async function(pid){const date=document.getElementById('edu-date')?.value||'',pause=WS.pauseAt(AP[pid],date);if(pause){if(!await CC('근무중단 기간의 교육입니다. 이 교육은 급여에 별도로 반영됩니다. 등록하시겠습니까?',{title:'교육 등록 확인'}))return;WS_APPROVED.set(pid+'|'+date+'|educationDates',pause.id);}try{return await wsOldEducationSave(pid);}finally{WS_APPROVED.delete(pid+'|'+date+'|educationDates');}};
+function wsPayrollRevision(){return WS.signature(Object.fromEntries(Object.entries(AP).filter(([,p])=>WS.has(p)).map(([id,p])=>[id,p])));}
+const wsOldLoadPayroll=loadPayroll;
+loadPayroll=async function(){await wsOldLoadPayroll();WS_PAY_REVISION=wsPayrollRevision();};window.loadPayroll=loadPayroll;
+const wsOldExportXLSX=exportPayrollXLSX,wsOldExportCSV=exportPayrollCSV;
+async function wsEnsurePayroll(){if(Object.values(AP).some(p=>WS.has(p))&&PAY_DATA&&WS_PAY_REVISION!==wsPayrollRevision())await loadPayroll();}
+exportPayrollXLSX=async function(){await wsEnsurePayroll();return wsOldExportXLSX();};window.exportPayrollXLSX=exportPayrollXLSX;
+exportPayrollCSV=async function(){await wsEnsurePayroll();return wsOldExportCSV();};window.exportPayrollCSV=exportPayrollCSV;
+
 </script>
 </body>
 </html>

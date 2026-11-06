@@ -135,16 +135,486 @@ body{font-family:'Noto Sans KR',sans-serif;background:#0f172a;color:#fff;min-hei
 
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import{getDatabase,ref,get,set,update}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import{getDatabase,ref,get,set as firebaseSet,update as firebaseUpdate}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 const FC={apiKey:"AIzaSyDWtvRCSWWmApj0W_qTOXaJg7A2VL-vjVc",authDomain:"kanganedupart-8fb5a.firebaseapp.com",databaseURL:"https://kanganedupart-8fb5a-default-rtdb.firebaseio.com",projectId:"kanganedupart-8fb5a",storageBucket:"kanganedupart-8fb5a.firebasestorage.app",messagingSenderId:"433381824511",appId:"1:433381824511:web:3292f67b193dd0a81079ca"};
 const fbApp=initializeApp(FC);const db=getDatabase(fbApp);
+
+const WS_REVIEW=false;
+function assertFakeWrite(){
+  if(!WS_REVIEW)return;
+  const match=/^http:\/\/127\.0\.0\.1:([1-9]\d{0,4})\/db$/.exec(FC.databaseURL);
+  if(!match||Number(match[1])>65535)throw new Error('시험 서버에서만 저장할 수 있습니다');
+}
+function set(...args){assertFakeWrite();return firebaseSet(...args);}
+function update(...args){assertFakeWrite();return firebaseUpdate(...args);}
+
+const leaseRetry='다른 작업이 진행 중입니다. 잠시 후 다시 시도하세요';
+function workPartUrl(pid){return FC.databaseURL+'/parts/'+encodeURIComponent(pid)+'.json';}
+function workLeaseUrl(pid){return FC.databaseURL+'/parts/'+encodeURIComponent(pid)+'/_workWriteLease.json';}
+function workProof(token){return{token,requestId:crypto.randomUUID()};}
+// Receipt equality includes proof fields, unlike the business-data WS signature.
+function exactRecord(value){
+  if(Array.isArray(value))return '['+value.map(exactRecord).join(',')+']';
+  if(value&&typeof value==='object')return '{'+Object.keys(value).sort().map(key=>JSON.stringify(key)+':'+exactRecord(value[key])).join(',')+'}';
+  return JSON.stringify(value);
+}
+async function readWorkPart(pid,etag=false){
+  const response=await fetch(workPartUrl(pid),{cache:'no-store',headers:etag?{'X-Firebase-ETag':'true'}:{},signal:AbortSignal.timeout(15000)});
+  if(!response.ok)throw new Error('저장 상태를 확인하지 못했습니다. 다시 시도하세요');
+  return{part:await response.json(),etag:response.headers.get('etag')};
+}
+async function patchWorkPart(pid,patch){
+  assertFakeWrite();
+  try{
+    await fetch(workPartUrl(pid),{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify(patch),signal:AbortSignal.timeout(15000)});
+  }catch(e){}
+  const {part}=await readWorkPart(pid,true);
+  if(!part||!Object.entries(patch).every(([key,value])=>exactRecord(part[key]??null)===exactRecord(Array.isArray(value)&&!value.length?null:value)))throw new Error('저장 결과를 확인하지 못했습니다. 다시 시도하세요');
+  return part;
+}
+async function takeWorkLease(pid,token,date){
+  assertFakeWrite();
+  const current=await fetch(workLeaseUrl(pid),{cache:'no-store',headers:{'X-Firebase-ETag':'true'},signal:AbortSignal.timeout(15000)});
+  if(!current.ok)throw new Error(leaseRetry);
+  const lock=await current.json(),etag=current.headers.get('etag');
+  if(!etag||(lock&&lock.until>Date.now()))throw new Error(leaseRetry);
+  const lease={token,until:Date.now()+90000,target:`attendance/${date}/${pid}`,intent:'set'};
+  try{
+    await fetch(workLeaseUrl(pid),{method:'PUT',headers:{'content-type':'application/json','if-match':etag},body:JSON.stringify(lease),signal:AbortSignal.timeout(15000)});
+  }catch(e){}
+  const {part,etag:profileEtag}=await readWorkPart(pid,true);
+  if(!profileEtag||!part||exactRecord(part._workWriteLease)!==exactRecord(lease)||!(part._workWriteLease.until>Date.now()))throw new Error(leaseRetry);
+  return part;
+}
+async function checkWorkLease(pid,token,date){
+  const {part,etag}=await readWorkPart(pid,true);
+  if(!etag||!part||part._workWriteLease?.token!==token||!(part._workWriteLease.until>Date.now())||part._workWriteLease.target!==`attendance/${date}/${pid}`||part._workWriteLease.intent!=='set')throw new Error(leaseRetry);
+  return part;
+}
+async function releaseWorkLease(pid,token){
+  try{
+    const {part}=await readWorkPart(pid,true);
+    if(part?._workWriteLease?.token!==token||!(part._workWriteLease.until>Date.now()))return;
+    await patchWorkPart(pid,{_workWriteLease:null,_workWriteProof:workProof(token)});
+  }catch(e){console.warn('Work-state lease expires automatically:',e.message);}
+}
+
+function attendanceUrl(date,pid){return FC.databaseURL+'/attendance/'+date+'/'+encodeURIComponent(pid)+'.json';}
+async function readAttendance(date,pid,etag=false){
+  const response=await fetch(attendanceUrl(date,pid),{cache:'no-store',headers:etag?{'X-Firebase-ETag':'true'}:{},signal:AbortSignal.timeout(15000)});
+  if(!response.ok)throw new Error('출결 기록을 확인하지 못했습니다. 다시 시도하세요');
+  return{att:(await response.json())||{},etag:response.headers.get('etag')};
+}
+async function saveAttendance(date,pid,att,etag){
+  assertFakeWrite();
+  if(!etag)throw new Error('출결 저장 상태를 확인하지 못했습니다. 다시 시도하세요');
+  let response;
+  // A lost response is ambiguous: confirm the exact value, never retry PUT blindly.
+  try{
+    response=await fetch(attendanceUrl(date,pid),{method:'PUT',headers:{'content-type':'application/json','if-match':etag},body:JSON.stringify(att),signal:AbortSignal.timeout(15000)});
+  }catch(e){}
+  const saved=await readAttendance(date,pid);
+  if(exactRecord(saved.att)!==exactRecord(att)){
+    if(response?.status===412)throw new Error('출결 기록이 변경되었습니다. PIN을 다시 입력하세요');
+    throw new Error('출결 저장 결과를 확인하지 못했습니다. 기록을 다시 확인해주세요');
+  }
+}
+
+// WORK_STATE_MODEL_BEGIN
+const WS=(function(){
+  'use strict';
+
+  const DAYS=['\uC77C','\uC6D4','\uD654','\uC218','\uBAA9','\uAE08','\uD1A0'];
+  const activeCallbacks=new Set();
+  const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+  const own=(v,k)=>v!==null&&typeof v==='object'&&Object.prototype.hasOwnProperty.call(v,k);
+  const absent=v=>v===undefined||v===null||v==='';
+  const text=v=>typeof v==='string'?v:'';
+  const empty=()=>({start:null,end:null});
+  const attempt=(fn,fallback)=>{try{return fn();}catch(_){return fallback();}};
+
+  function validDate(v){
+    if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;
+    const y=Number(v.slice(0,4)),m=Number(v.slice(5,7)),d=Number(v.slice(8,10));
+    if(y<1||m<1||m>12||d<1)return false;
+    const leap=y%4===0&&(y%100!==0||y%400===0);
+    return d<=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31][m-1];
+  }
+
+  function minutes(v){
+    if(typeof v!=='string'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(v))return null;
+    return Number(v.slice(0,2))*60+Number(v.slice(3));
+  }
+
+  function duration(s){
+    if(!object(s))return 0;
+    const a=minutes(s.start),b=minutes(s.end);
+    return a===null||b===null?0:(b-a+1440)%1440;
+  }
+
+  function day(v){
+    if(typeof v==='string'&&DAYS.includes(v))return v;
+    if((typeof v==='number'&&Number.isInteger(v))||
+       (typeof v==='string'&&/^[0-6]$/.test(v)))return DAYS[Number(v)]||null;
+    return null;
+  }
+
+  function days(v){
+    let values;
+    if(Array.isArray(v))values=Array.from(v);
+    else if(object(v))values=Object.keys(v).map(k=>v[k]===true?k:v[k]).filter(x=>x!==false&&x!==null);
+    else return null;
+    const result=values.map(day);
+    return result.some(x=>x===null)?null:[...new Set(result)];
+  }
+
+  function includes(s,d){return (days(s&&s.days)||[]).includes(d);}
+
+  function dayTime(s,d){
+    const ds=s&&s.daySchedule;
+    if(!ds||typeof ds!=='object')return null;
+    const found=own(ds,d)?ds[d]:ds[DAYS.indexOf(d)];
+    return object(found)?found:null;
+  }
+
+  function clone(v,seen=new Map()){
+    if(v===null||typeof v!=='object')return v;
+    if(seen.has(v))return seen.get(v);
+    const result=Array.isArray(v)?new Array(v.length):{};
+    seen.set(v,result);
+    Object.keys(v).forEach(k=>Object.defineProperty(result,k,{
+      value:clone(v[k],seen),enumerable:true,writable:true,configurable:true
+    }));
+    return result;
+  }
+
+  function cancelled(v){
+    if(!object(v))return false;
+    return v.cancelled===true||v.canceled===true||v.deleted===true||
+      !absent(v.cancelledAt)||!absent(v.canceledAt)||
+      ['cancelled','canceled','deleted'].includes(text(v.status).toLowerCase());
+  }
+
+  // Firebase collections may be arrays, keyed objects, or a legacy single record.
+  function rows(v,inferDate=false){
+    if(typeof v==='string')return [{key:'',value:v}];
+    if(!v||typeof v!=='object')return [];
+    if(!Array.isArray(v)&&(own(v,'startDate')||own(v,'date')||own(v,'resumeDate')||own(v,'endDate'))){
+      return [{key:'',value:v}];
+    }
+    return Object.keys(v).map(key=>{
+      let value=v[key];
+      if(inferDate&&validDate(key)){
+        if(object(value)&&!own(value,'date')&&!own(value,'startDate'))value={...value,date:key};
+        else if(value===true)value={date:key};
+      }
+      return {key,value};
+    });
+  }
+
+  function records(v){return rows(v,true).map(r=>r.value).filter(r=>object(r)&&!cancelled(r));}
+
+  function stamp(v){
+    if(typeof v!=='string')return '';
+    const m=/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})(?:[T\s]+(?:\([^)]*\)\s*)?(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(Z|[+-]\d{2}:?\d{2})?)?$/.exec(v.trim().replace(/\s+KST$/,''));
+    if(!m)return '';
+    const date=m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+    const hour=(m[4]||'00').padStart(2,'0'),minute=m[5]||'00',second=m[6]||'00';
+    if(!validDate(date)||Number(hour)>23||Number(minute)>59||Number(second)>59)return '';
+    // Labels without an offset are KST, never the host machine's local timezone.
+    const ms=Date.parse(date+'T'+hour+':'+minute+':'+second+'.'+
+      (m[7]||'0').padEnd(3,'0').slice(0,3)+(m[8]||'+09:00'));
+    return Number.isFinite(ms)?new Date(ms).toISOString():'';
+  }
+
+  const compare=(a,b)=>a<b?-1:a>b?1:0;
+  const eventAt=v=>stamp(v.at||v.updatedAt||v.createdAt);
+  const resumeAt=v=>stamp(v.updatedAt||v.at||v.createdAt);
+
+  function validApprovalStamp(v){
+    if(typeof v!=='string')return false;
+    const s=v.trim();
+    const local=/^\d{4}[-./]\d{2}[-./]\d{2} \d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?: KST)?$/.test(s);
+    const zoned=/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?\+09:?00$/.test(s);
+    return (local||zoned)&&stamp(s)!=='';
+  }
+
+  function entries(p){
+    if(!object(p))return [];
+    const array=Array.isArray(p.workPauses);
+    return rows(p.workPauses).filter(({value:v})=>object(v)&&!cancelled(v)&&
+      validDate(v.startDate)&&(absent(v.resumeDate)||
+      (validDate(v.resumeDate)&&v.resumeDate>v.startDate)))
+      .map(({key,value:v})=>{
+        const id=!array&&key?key:text(v.id);
+        return id?{...clone(v),id}:null;
+      }).filter(Boolean).sort((a,b)=>compare(a.startDate,b.startDate)||
+        compare(resumeAt(a),resumeAt(b))||compare(a.id,b.id));
+  }
+
+  function has(p){return entries(p).length>0;}
+
+  function pauseAt(p,date){
+    if(!validDate(date))return null;
+    return entries(p).filter(e=>e.startDate<=date&&(absent(e.resumeDate)||date<e.resumeDate)).pop()||null;
+  }
+
+  function latestResume(p,date){
+    if(!validDate(date))return null;
+    return entries(p).filter(e=>validDate(e.resumeDate)&&e.resumeDate<=date)
+      .sort((a,b)=>compare(a.resumeDate,b.resumeDate)||compare(resumeAt(a),resumeAt(b))||
+        compare(a.startDate,b.startDate)||compare(a.id,b.id)).pop()||null;
+  }
+
+  function breakNumber(v){
+    if(typeof v!=='number'&&(typeof v!=='string'||!v.trim()))return null;
+    const n=Number(v);
+    return Number.isFinite(n)&&n>=0&&n<=240?n:null;
+  }
+
+  function validateSchedule(s){
+    if(!object(s))return '\uadfc\ubb34\uc2dc\uac04\ud45c \ud615\uc2dd\uc774 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.';
+    const ds=days(s.days);
+    if(!ds||!ds.length)return '\uadfc\ubb34\uc694\uc77c\uc744 \ud558\ub098 \uc774\uc0c1 \uc62c\ubc14\ub974\uac8c \uc120\ud0dd\ud574\uc8fc\uc138\uc694.';
+    if(!duration(s))return '\uc2dc\uc791\u00b7\uc885\ub8cc\uc2dc\uac04\uc740 HH:MM \ud615\uc2dd\uc774\uc5b4\uc57c \ud558\uba70 \uc11c\ub85c \ub2ec\ub77c\uc57c \ud569\ub2c8\ub2e4.';
+    if(s.breakAuto!==undefined&&typeof s.breakAuto!=='boolean')return '\uc790\ub3d9\ud734\uac8c \uc124\uc815\uac12\uc774 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.';
+    if(s.customBreak!==undefined&&breakNumber(s.customBreak)===null)return '\ud734\uac8c\uc2dc\uac04\uc740 0~240\ubd84 \uc0ac\uc774\uc758 \uc720\ud6a8\ud55c \uc22b\uc790\uc5ec\uc57c \ud569\ub2c8\ub2e4.';
+    if(s.daySchedule!==undefined&&s.daySchedule!==null){
+      if(typeof s.daySchedule!=='object')return '\uc694\uc77c\ubcc4 \uc2dc\uac04\ud45c \ud615\uc2dd\uc774 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.';
+      for(const k of Object.keys(s.daySchedule)){
+        const t=s.daySchedule[k];
+        if(!day(k)||!duration(t))return '\uc694\uc77c\ubcc4 \uc2dc\uc791\u00b7\uc885\ub8cc\uc2dc\uac04\uc744 HH:MM \ud615\uc2dd\uc73c\ub85c \uc785\ub825\ud574\uc8fc\uc138\uc694. \ub450 \uc2dc\uac04\uc740 \uc11c\ub85c \ub2ec\ub77c\uc57c \ud569\ub2c8\ub2e4.';
+        if(t.breakAuto!==undefined&&typeof t.breakAuto!=='boolean')return '\uc694\uc77c\ubcc4 \uc790\ub3d9\ud734\uac8c \uc124\uc815\uac12\uc774 \uc62c\ubc14\ub974\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4.';
+        if(t.customBreak!==undefined&&(breakNumber(t.customBreak)===null||breakNumber(t.customBreak)>duration(t))){
+          return '\uc694\uc77c\ubcc4 \ud734\uac8c\uc2dc\uac04\uc740 0~240\ubd84\uc774\uba70 \ud574\ub2f9 \uadfc\ubb34\uc2dc\uac04\uc744 \ub118\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.';
+        }
+      }
+    }
+    const shortest=Math.min(...ds.map(d=>duration(dayTime(s,d)||s)));
+    if(!shortest)return '\uc120\ud0dd\ud55c \ubaa8\ub4e0 \uc694\uc77c\uc5d0 \uc11c\ub85c \ub2e4\ub978 \uc2dc\uc791\u00b7\uc885\ub8cc\uc2dc\uac04\uc774 \ud544\uc694\ud569\ub2c8\ub2e4.';
+    if(s.customBreak!==undefined&&breakNumber(s.customBreak)>shortest)return '\ud734\uac8c\uc2dc\uac04\uc740 \uac00\uc7a5 \uc9e7\uc740 \uadfc\ubb34\uc2dc\uac04\uc744 \ub118\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.';
+    return '';
+  }
+
+  function rangeCovers(r,date){
+    return validDate(r.startDate)&&validDate(r.endDate)&&r.startDate<=date&&date<=r.endDate;
+  }
+
+  function replacement(p,date){
+    return records(p.scheduleReplaces).map((r,i)=>({r,i})).filter(x=>rangeCovers(x.r,date))
+      .sort((a,b)=>compare(a.r.startDate,b.r.startDate)||compare(eventAt(a.r),eventAt(b.r))||a.i-b.i)
+      .map(x=>x.r).pop()||null;
+  }
+
+  function period(p,d,date){
+    return records(p.schedulePeriods).find(r=>rangeCovers(r,date)&&includes(r,d))||null;
+  }
+
+  function temp(p,date,id){
+    return records(p.tempDates).find(r=>r.date===date&&
+      (id===undefined||(r.workPauseId===id&&r.approved!==false&&r.workPauseApproved!==false&&
+        validApprovalStamp(r.workPauseApprovedAt)))&&duration(r)>0)||null;
+  }
+
+  function permCovers(r,date){
+    if(!validDate(r.startDate)||r.startDate>date)return false;
+    if(!absent(r.endDate))return validDate(r.endDate)&&date<=r.endDate&&r.endDate>=r.startDate;
+    const memo=text(r.memo);
+    const oneDay=['\uC77C\uC2DC','\uD558\uB8E8','1\uC77C'].some(s=>memo.includes(s));
+    return !oneDay||date===r.startDate;
+  }
+
+  function permanent(p,date){
+    return records(p.permChanges).filter(r=>permCovers(r,date))
+      .sort((a,b)=>compare(b.startDate,a.startDate)||compare(eventAt(b),eventAt(a)))[0]||null;
+  }
+
+  function explicitSchedule(s,flag){
+    return {start:s.start,end:s.end,customBreak:s.customBreak,
+      ...(flag==='fromReplace'?{wage:s.wage,role:s.role,tutorKind:s.tutorKind}:{}),
+      ...(flag==='_isTemp'?{breakAuto:s.breakAuto===true}:{}),[flag]:true};
+  }
+
+  function overrides(p,d,date){
+    const r=replacement(p,date);
+    if(r)return includes(r,d)?explicitSchedule(r,'fromReplace'):{start:null,end:null,replaced:true};
+    const pd=period(p,d,date);
+    // Legacy periods intentionally do not inherit base break settings.
+    if(pd)return {start:pd.start,end:pd.end,fromPeriod:true};
+    return null;
+  }
+
+  function resumedSchedule(e,pc){
+    const s=object(e.resumeSchedule)?e.resumeSchedule:null;
+    if(!s||validateSchedule(s))return null;
+    if(!pc)return s;
+    const hasTimes=own(pc,'start')||own(pc,'end');
+    const hasBreak=pc.customBreak!==undefined;
+    return {
+      days:own(pc,'days')?pc.days:s.days,
+      start:own(pc,'start')?pc.start:s.start,
+      end:own(pc,'end')?pc.end:s.end,
+      // A later change with its own times must never inherit pre-pause weekday times.
+      daySchedule:own(pc,'daySchedule')?pc.daySchedule:(hasTimes?{}:s.daySchedule),
+      customBreak:pc.breakAuto===true?undefined:
+        (hasBreak?pc.customBreak:(s.breakAuto===true?undefined:s.customBreak)),
+      breakAuto:own(pc,'breakAuto')?pc.breakAuto:(hasBreak?false:s.breakAuto)
+    };
+  }
+
+  function resumedReference(p,d,date,e){
+    const pc=permanent(p,date);
+    const later=pc&&(pc.startDate>e.resumeDate||
+      (pc.startDate===e.resumeDate&&eventAt(pc)>resumeAt(e)));
+    const s=resumedSchedule(e,later?pc:null);
+    const auto=!!s&&(s.breakAuto===true||s.customBreak===undefined);
+    if(!s||validateSchedule(s)||!includes(s,d)){
+      return {start:null,end:null,permExcluded:true,fromPerm:true,breakAuto:!s||auto};
+    }
+    const t=dayTime(s,d)||s;
+    return {start:t.start,end:t.end,customBreak:auto?undefined:s.customBreak,breakAuto:auto,fromPerm:true};
+  }
+
+  function fallbackReference(p,d,date){
+    const explicit=overrides(p,d,date);
+    if(explicit)return explicit;
+    const pc=permanent(p,date);
+    if(pc){
+      if(!includes(pc,d))return {start:null,end:null,permExcluded:true};
+      const t=dayTime(pc,d)||dayTime(p,d)||pc;
+      return {start:t.start,end:t.end,customBreak:pc.customBreak,breakAuto:!!pc.breakAuto,fromPerm:true};
+    }
+    if(validDate(p.scheduleChangeDate)&&date<p.scheduleChangeDate){
+      const history=records(p.scheduleHistory),prev=history[history.length-1];
+      if(prev)return {start:prev.start,end:prev.end};
+    }
+    return clone(dayTime(p,d)||{start:p.start,end:p.end});
+  }
+
+  function fallbackExpected(p,d,date){
+    const r=replacement(p,date);
+    if(r)return includes(r,d);
+    if(period(p,d,date)||temp(p,date))return true;
+    return includes(permanent(p,date)||p,d);
+  }
+
+  function baseline(fn,p,dow,date,fallback){
+    if(typeof fn!=='function'||activeCallbacks.has(fn))return fallback();
+    activeCallbacks.add(fn);
+    try{return fn(p,dow,date);}catch(_){return fallback();}
+    finally{activeCallbacks.delete(fn);}
+  }
+
+  function resolve(p,dow,date,baseGetDayTime){
+    const d=day(dow);
+    if(!object(p))return empty();
+    const valid=!!d&&validDate(date);
+    const base=()=>baseline(baseGetDayTime,p,dow,date,()=>valid?fallbackReference(p,d,date):empty());
+    if(!has(p))return base();
+    if(!valid)return empty();
+    const e=latestResume(p,date);
+    // Actual-payroll callers already select tempDates explicitly. Do not add a new priority.
+    if(!e)return base();
+    const explicit=overrides(p,d,date);
+    return explicit||resumedReference(p,d,date,e);
+  }
+
+  function expected(p,dow,date,baseIsWorkDay,baseGetDayTime){
+    const d=day(dow);
+    if(!object(p))return false;
+    const valid=!!d&&validDate(date);
+    const base=()=>baseline(baseIsWorkDay,p,dow,date,()=>valid?fallbackExpected(p,d,date):false);
+    if(!has(p))return base();
+    if(!valid)return false;
+    const pause=pauseAt(p,date);
+    if(pause)return !!temp(p,date,pause.id);
+    if(!latestResume(p,date))return base();
+    const r=replacement(p,date);
+    if(r)return includes(r,d);
+    if(period(p,d,date)||temp(p,date))return true;
+    return duration(resolve(p,dow,date,baseGetDayTime))>0;
+  }
+
+  function signature(p){
+    const ancestors=new Map();
+    function encode(v,path){
+      if(v===null)return 'null';
+      if(typeof v==='string'||typeof v==='boolean')return JSON.stringify(v);
+      if(typeof v==='number')return Number.isFinite(v)?(Object.is(v,-0)?'-0':String(v)):'number:'+String(v);
+      if(typeof v!=='object')return typeof v+':'+String(v);
+      if(ancestors.has(v))return 'circular:'+JSON.stringify(ancestors.get(v));
+      ancestors.set(v,path);
+      let result;
+      if(Array.isArray(v)){
+        result='['+Array.from({length:v.length},(_,i)=>own(v,i)?encode(v[i],path+'/'+i):'hole').join(',')+']';
+      }else{
+        // The reserved lease is transient; all other snapshot fields participate in CAS.
+        result='{'+Object.keys(v).filter(k=>k!=='_workWriteLease'&&k!=='_workWriteProof').sort()
+          .map(k=>JSON.stringify(k)+':'+encode(v[k],path+'/'+JSON.stringify(k))).join(',')+'}';
+      }
+      ancestors.delete(v);
+      return result;
+    }
+    return encode(p,'$');
+  }
+
+  function conflicts(p,start,end){
+    if(!validDate(start)||(!absent(end)&&(!validDate(end)||end<start))){
+      return [{date:validDate(start)?start:'',type:'invalid',description:'Invalid conflict interval.'}];
+    }
+    if(!object(p)||end===start)return [];
+    const within=d=>validDate(d)&&d>=start&&(absent(end)||d<end);
+    const found=[];
+    const add=(date,type)=>found.push({date,type,description:type+': '+date});
+    ['scheduleReplaces','schedulePeriods'].forEach(type=>{
+      records(p[type]).forEach(r=>{
+        const first=r.startDate,last=absent(r.endDate)?first:r.endDate;
+        if(!validDate(first)||!validDate(last)||last<first)return;
+        if(last>=start&&(absent(end)||first<end))add(first<start?start:first,type);
+      });
+    });
+    records(p.permChanges).forEach(r=>{if(within(r.startDate))add(r.startDate,'permChanges');});
+    records(p.tempDates).forEach(r=>{if(within(r.date))add(r.date,'tempDates');});
+    rows(p.plannedAbsent,true).forEach(({value:r})=>{
+      if(cancelled(r))return;
+      const first=typeof r==='string'?r:object(r)?r.date||r.startDate:null;
+      const last=object(r)&&!absent(r.endDate)?r.endDate:first;
+      if(!validDate(first)||!validDate(last)||last<first)return;
+      if(last>=start&&(absent(end)||first<end))add(first<start?start:first,'plannedAbsent');
+    });
+    records(p.educationDates).forEach(r=>{
+      const h=typeof r.hours==='number'||(typeof r.hours==='string'&&r.hours.trim())?Number(r.hours):NaN;
+      if(within(r.date)&&Number.isFinite(h)&&h>0)add(r.date,'educationDates');
+    });
+    return found.sort((a,b)=>compare(a.date,b.date)||compare(a.type,b.type));
+  }
+
+  const API=Object.freeze({
+    has:p=>attempt(()=>has(p),()=>false),
+    entries:p=>attempt(()=>entries(p),()=>[]),
+    pauseAt:(p,date)=>attempt(()=>pauseAt(p,date),()=>null),
+    latestResume:(p,date)=>attempt(()=>latestResume(p,date),()=>null),
+    resolve:(p,dow,date,base)=>attempt(()=>resolve(p,dow,date,base),empty),
+    expected:(p,dow,date,work,time)=>attempt(()=>expected(p,dow,date,work,time),()=>false),
+    signature:p=>attempt(()=>signature(p),()=> 'invalid:unreadable-snapshot'),
+    validDate:v=>attempt(()=>validDate(v),()=>false),
+    validateSchedule:s=>attempt(()=>validateSchedule(s),()=> '\uadfc\ubb34\uc2dc\uac04\ud45c\ub97c \uc77d\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.'),
+    conflicts:(p,start,end)=>attempt(()=>conflicts(p,start,end),()=>[
+      {date:validDate(start)?start:'',type:'invalid',description:'Unreadable conflict data.'}
+    ])
+  });
+  return API;
+})();
+if(typeof module!=='undefined')module.exports=WS;
+
+// WORK_STATE_MODEL_END
 
 function kstDate(){const k=new Date(Date.now()+9*3600000);return`${k.getUTCFullYear()}-${String(k.getUTCMonth()+1).padStart(2,'0')}-${String(k.getUTCDate()).padStart(2,'0')}`;}
 function kstTime(){const k=new Date(Date.now()+9*3600000);return`${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')}`;}
 function kstFull(){const k=new Date(Date.now()+9*3600000);const D=['일','월','화','수','목','금','토'];return`${k.getUTCFullYear()}.${String(k.getUTCMonth()+1).padStart(2,'0')}.${String(k.getUTCDate()).padStart(2,'0')} (${D[k.getUTCDay()]}) ${String(k.getUTCHours()).padStart(2,'0')}:${String(k.getUTCMinutes()).padStart(2,'0')}`;}
 
 // 근무일 체크 (admin.html과 동일 로직)
-function isWorkDay(p,dayOfWeek,date){
+function baseIsWorkDay(p,dayOfWeek,date){
   if(p.scheduleReplaces&&p.scheduleReplaces.length){
     const matched=p.scheduleReplaces.find(r=>date>=r.startDate&&date<=r.endDate);
     if(matched)return (matched.days||[]).includes(dayOfWeek);
@@ -169,7 +639,7 @@ function isPlannedAbsent(p,date){
   return false;
 }
 
-function getDayTime(p,dayOfWeek,date){
+function baseGetDayTime(p,dayOfWeek,date){
   if(p.scheduleReplaces&&p.scheduleReplaces.length){
     const matched=p.scheduleReplaces.find(r=>date>=r.startDate&&date<=r.endDate);
     if(matched&&(matched.days||[]).includes(dayOfWeek))return{start:matched.start,end:matched.end};
@@ -190,10 +660,21 @@ function getDayTime(p,dayOfWeek,date){
   return{start:p.start,end:p.end};
 }
 
+function isWorkDay(p,dayOfWeek,date){return WS.has(p)?WS.expected(p,dayOfWeek,date,baseIsWorkDay,baseGetDayTime):baseIsWorkDay(p,dayOfWeek,date);}
+function getDayTime(p,dayOfWeek,date){return WS.has(p)?WS.resolve(p,dayOfWeek,date,baseGetDayTime):baseGetDayTime(p,dayOfWeek,date);}
+function weekDay(date){return ['일','월','화','수','목','금','토'][new Date(date+'T00:00:00Z').getUTCDay()];}
+function recentOvernight(p,date,today){
+  if(Date.parse(today+'T00:00:00Z')-Date.parse(date+'T00:00:00Z')!==86400000)return false;
+  const ds=getDayTime(p,weekDay(date),date);
+  const time=/^(?:[01]\d|2[0-3]):[0-5]\d$/;
+  return !!ds&&time.test(ds.start)&&time.test(ds.end)&&ds.end<ds.start&&Date.now()<=Date.parse(today+'T'+ds.end+':00+09:00')+7200000;
+}
+
 function updateClock(){document.getElementById('top-time').textContent=kstFull();}
 updateClock();setInterval(updateClock,30000);
 
 let pin='',currentPart=null,currentPartId=null,wasAbsent=false;
+let confirmation=null,selectionVersion=0,attending=false;
 
 function showScreen(id){['pin-screen','confirm-screen','result-screen','error-screen'].forEach(s=>document.getElementById(s).style.display='none');document.getElementById(id).style.display='flex';}
 function updateDots(){for(let i=0;i<4;i++){const d=document.getElementById('d'+i);d.classList.toggle('filled',i<pin.length);d.classList.remove('error');}}
@@ -201,16 +682,25 @@ function pressKey(k){if(pin.length>=4)return;pin+=k;updateDots();if(pin.length==
 function pressBack(){if(pin.length>0){pin=pin.slice(0,-1);updateDots();}}
 window.pressKey=pressKey;window.pressBack=pressBack;
 
-async function checkPin(){
-  const snap=await get(ref(db,'parts'));
-  const parts=snap.val()||{};
-  const today=kstDate();
-  const DM=['일','월','화','수','목','금','토'];
-  const k=new Date(Date.now()+9*3600000);
-  const dw=DM[k.getUTCDay()];
+async function selectPart(parts,enteredPin,today){
+  const dw=weekDay(today);
+  const matching=Object.entries(parts).filter(([,p])=>p.pin===enteredPin);
+  const wsContext=matching.some(([,p])=>WS.has(p));
+  // Only WS-linked PINs bypass expected-attendance filtering for actual checkouts.
+  if(wsContext){
+    const previous=new Date(Date.parse(today+'T00:00:00Z')-86400000).toISOString().slice(0,10);
+    for(const date of [today,previous]){
+      const rows=await Promise.all(matching.map(async([id,p])=>{
+        const snap=await get(ref(db,`attendance/${date}/${id}`));
+        return[id,p,snap.val()||{}];
+      }));
+      const pending=rows.find(([,p,a])=>a.inTime&&!a.outTime&&(date===today||recentOvernight(p,date,today)));
+      if(pending)return{pid:pending[0],p:pending[1],date,pending:true,wsContext};
+    }
+  }
   // 모든 유효 후보 수집 (한 사람이 두 파트일 수 있음 - 조교 부담임/질의응답)
   const allCandidates=Object.entries(parts).filter(([id,p])=>{
-    if(p.pin!==pin)return false;
+    if(p.pin!==enteredPin)return false;
     // 일반 퇴사자(비단발)는 차단, 단발근무자는 추가근무 예약 있는 날만 허용
     const hasTempToday=p.tempDates&&p.tempDates.find(td=>td.date===today);
     if(p.status==='inactive'){
@@ -229,10 +719,9 @@ async function checkPin(){
   const nonAbsent=allCandidates.filter(([id,p])=>!isPlannedAbsent(p,today));
   const candidates=nonAbsent.length>0?nonAbsent:allCandidates;
   if(candidates.length===0){
-    const anyFound=Object.entries(parts).find(([id,p])=>p.pin===pin&&(p.status!=='inactive'||p.isCasual));
-    if(anyFound){showErrorScreen('오늘은 근무일이 아닙니다');}
-    else{showErrorScreen('등록되지 않은 PIN입니다');}
-    return;
+    if(matching.some(([,p])=>WS.has(p)&&WS.pauseAt(p,today)))return{error:'근무중단 기간입니다'};
+    const anyFound=Object.entries(parts).find(([id,p])=>p.pin===enteredPin&&(p.status!=='inactive'||p.isCasual));
+    return{error:anyFound?'오늘은 근무일이 아닙니다':'등록되지 않은 PIN입니다'};
   }
   let pickedEntry;
   if(candidates.length===1){
@@ -265,19 +754,34 @@ async function checkPin(){
     }
   }
   const[pid,p]=pickedEntry;
-  currentPart=p;currentPartId=pid;
-  wasAbsent=isPlannedAbsent(p,today);
-  showConfirm(pid,p);
+  return{pid,p,date:today,pending:false,wsContext};
 }
 
-async function showConfirm(pid,p){
-  const today=kstDate();
-  const DM=['일','월','화','수','목','금','토'];
-  const k=new Date(Date.now()+9*3600000);
-  const dw=DM[k.getUTCDay()];
+async function checkPin(){
+  const version=++selectionVersion,enteredPin=pin,today=kstDate();
+  try{
+    const parts=(await get(ref(db,'parts'))).val()||{};
+    const selected=await selectPart(parts,enteredPin,today);
+    if(version!==selectionVersion||enteredPin!==pin)return;
+    if(kstDate()!==today){showErrorScreen('날짜가 변경되었습니다. PIN을 다시 입력하세요');return;}
+    if(selected.error){showErrorScreen(selected.error);return;}
+    currentPart=selected.p;currentPartId=selected.pid;
+    wasAbsent=!WS.has(selected.p)&&isPlannedAbsent(selected.p,selected.date);
+    await showConfirm(selected.pid,selected.p,{...selected,openedDate:today,pin:enteredPin,version,wasAbsent,signature:selected.wsContext?WS.signature(selected.p):null});
+  }catch(e){if(version===selectionVersion)showErrorScreen('조회하지 못했습니다. 다시 시도하세요');}
+}
+
+async function showConfirm(pid,p,context){
+  const today=context.date;
+  const dw=weekDay(today);
   const ds=getDayTime(p,dw,today);
   const snap=await get(ref(db,`attendance/${today}/${pid}`));
   const att=snap.val()||{};
+  if(context.version!==selectionVersion||context.pin!==pin)return;
+  if(kstDate()!==context.openedDate){showErrorScreen('날짜가 변경되었습니다. PIN을 다시 입력하세요');return;}
+  context.inTime=att.inTime||'';
+  context.attendanceSignature=WS.signature(att);
+  confirmation=context;
   document.getElementById('cf-name').textContent=p.name;
   document.getElementById('cf-role').innerHTML=p.role+(p.tutorKind?` <span style="display:inline-block;margin-left:6px;padding:2px 10px;background:rgba(96,165,250,.18);color:#93c5fd;border-radius:12px;font-size:13px;font-weight:600">${p.tutorKind}</span>`:'');
   document.getElementById('cf-schedule').textContent=`${ds.start} ~ ${ds.end}`;
@@ -298,35 +802,69 @@ async function showConfirm(pid,p){
 }
 
 async function doAttend(type){
-  const now=kstTime();
-  const date=kstDate();
-  const snap=await get(ref(db,`attendance/${date}/${currentPartId}`));
-  const att=snap.val()||{};
-  if(type==='in'){
-    if(att.inTime){showResult(currentPart.name,'already-in',att.inTime);return;}
-    att.inTime=now;
-  }else{
-    if(!att.inTime){showResult(currentPart.name,'no-in',now);return;}
-    if(att.outTime){showResult(currentPart.name,'already-out',att.outTime);return;}
-    att.outTime=now;
-  }
-  await set(ref(db,`attendance/${date}/${currentPartId}`),att);
-  let absentCanceled=false;
-  if(type==='in'&&wasAbsent){
-    try{
-      const psnap=await get(ref(db,`parts/${currentPartId}`));
-      const pdata=psnap.val()||{};
-      const newAbs=(pdata.plannedAbsent||[]).filter(a=>{
-        if(typeof a==='string')return a!==date;
-        if(a.date)return a.date!==date;
-        if(a.startDate&&a.endDate)return !(date>=a.startDate&&date<=a.endDate);
-        return true;
-      });
-      await update(ref(db,`parts/${currentPartId}`),{plannedAbsent:newAbs});
-      absentCanceled=true;
-    }catch(e){}
-  }
-  showResult(currentPart.name,type,now,absentCanceled);
+  if(attending||!confirmation)return;
+  const context=confirmation;
+  const stale=()=>confirmation!==context||context.version!==selectionVersion||context.pin!==pin||context.pid!==currentPartId||kstDate()!==context.openedDate;
+  const checkContext=()=>{if(stale())throw new Error('확인 정보가 변경되었습니다. PIN을 다시 입력하세요');};
+  let leaseToken=null;
+  attending=true;
+  try{
+    checkContext();
+    assertFakeWrite();
+    if(type!=='in'&&type!=='out')return;
+    leaseToken='kiosk_'+crypto.randomUUID();
+    const leasedPart=await takeWorkLease(context.pid,leaseToken,context.date);
+    checkContext();
+    const parts=(await get(ref(db,'parts'))).val()||{};
+    parts[context.pid]=leasedPart;
+    const part=parts[context.pid];
+    checkContext();
+    if(!part||part.pin!==context.pin)throw new Error('직원 정보가 변경되었습니다. PIN을 다시 입력하세요');
+    const wsContext=context.wsContext||Object.values(parts).some(p=>p.pin===context.pin&&WS.has(p));
+    if(wsContext){
+      const selected=await selectPart(parts,context.pin,context.openedDate);
+      checkContext();
+      if(selected.error)throw new Error(selected.error);
+      if(selected.pid!==context.pid||selected.date!==context.date)throw new Error('근무 정보가 변경되었습니다. PIN을 다시 입력하세요');
+      if(type==='in'&&(context.pending||context.signature!==WS.signature(part)||!isWorkDay(part,weekDay(context.date),context.date)))throw new Error('근무 정보가 변경되었습니다. PIN을 다시 입력하세요');
+    }
+    const date=context.date,pid=context.pid;
+    const {att,etag}=await readAttendance(date,pid,true);
+    const latest=await checkWorkLease(pid,leaseToken,date);
+    checkContext();
+    if(WS.signature(latest)!==WS.signature(part))throw new Error('직원 정보가 변경되었습니다. PIN을 다시 입력하세요');
+    if(wsContext&&type==='out'&&att.inTime!==context.inTime)throw new Error('출근 기록이 변경되었습니다. PIN을 다시 입력하세요');
+    if(wsContext&&date!==context.openedDate&&!recentOvernight(part,date,context.openedDate))throw new Error('이전 퇴근 기록을 확인해주세요');
+    const now=kstTime();
+    if(type==='in'){
+      if(att.inTime){showResult(part.name,'already-in',att.inTime);return;}
+    }else{
+      if(!att.inTime){showResult(part.name,'no-in',now);return;}
+      if(att.outTime){showResult(part.name,'already-out',att.outTime);return;}
+    }
+    if(WS.signature(att)!==context.attendanceSignature)throw new Error('출결 기록이 변경되었습니다. PIN을 다시 입력하세요');
+    if(type==='in')att.inTime=now;else att.outTime=now;
+    att._workWriteProof=workProof(leaseToken);
+    await saveAttendance(date,pid,att,etag);
+    let absentCanceled=false;
+    if(type==='in'&&context.wasAbsent&&!WS.has(part)){
+      try{
+        const pdata=await checkWorkLease(pid,leaseToken,date);
+        if(!WS.has(pdata)){
+          const newAbs=(pdata.plannedAbsent||[]).filter(a=>{
+            if(typeof a==='string')return a!==date;
+            if(a.date)return a.date!==date;
+            if(a.startDate&&a.endDate)return !(date>=a.startDate&&date<=a.endDate);
+            return true;
+          });
+          await patchWorkPart(pid,{plannedAbsent:newAbs,_workWriteProof:workProof(leaseToken)});
+          absentCanceled=true;
+        }
+      }catch(e){}
+    }
+    if(!stale())showResult(part.name,type,now,absentCanceled);
+  }catch(e){if(confirmation===context)showErrorScreen(e.message||'저장하지 못했습니다. 다시 시도하세요');}
+  finally{try{if(leaseToken)await releaseWorkLease(context.pid,leaseToken);}finally{attending=false;}}
 }
 window.doAttend=doAttend;
 
@@ -353,7 +891,7 @@ function showResult(name,type,time,absentCanceled){
 
 function showErrorScreen(msg){for(let i=0;i<4;i++)document.getElementById('d'+i).classList.add('error');document.getElementById('err-msg').textContent=msg;showScreen('error-screen');setTimeout(goPin,2500);}
 
-function goPin(){pin='';currentPart=null;currentPartId=null;wasAbsent=false;updateDots();showScreen('pin-screen');}
+function goPin(){selectionVersion++;confirmation=null;pin='';currentPart=null;currentPartId=null;wasAbsent=false;updateDots();showScreen('pin-screen');}
 window.goPin=goPin;
 
 showScreen('pin-screen');
