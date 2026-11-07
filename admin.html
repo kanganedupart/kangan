@@ -939,6 +939,7 @@ function docSearchMatch(p,q){
   return (p.name||'').toLowerCase().includes(q)||(p.role||'').toLowerCase().includes(q)||(p.phone||'').includes(q);
 }
 function uniqueDocsParts(ps){
+  ps=ps.filter(p=>!p.employmentCancelled);
   const byKey=new Map();
   ps.forEach(p=>{
     const key=docPersonKey(p.id,p);
@@ -949,6 +950,7 @@ function uniqueDocsParts(ps){
   return Array.from(byKey.values());
 }
 function isDocsCurrentTarget(p){
+  if(p.employmentCancelled)return false;
   const today=kstDate();
   const isResigned=p.status==='inactive'||(p.leaveDate&&p.leaveDate<today);
   if(!isResigned)return true;
@@ -4664,7 +4666,7 @@ function renderPT(){
     })();
 return`<tr><td><span class="cat-badge cat-${p.cat}">${CATL[p.cat]||p.cat}</span></td><td><span style="color:${col};font-weight:700">${p.role}</span></td><td>${p.name}${tkBadge(p)}</td><td style="font-family:'Noto Sans KR',sans-serif">${p.phone||'-'}</td><td style="font-family:'Noto Sans KR',sans-serif">${sk==='inactive'?`<span style="text-decoration:line-through;color:var(--text-muted);letter-spacing:2px;font-size:12px">${p.pin||'-'}</span>`:`<span style="font-weight:700;letter-spacing:3px">${p.pin||'-'}</span>`}</td><td>${_curDaysPT.join('·')||'-'}</td><td style="font-family:'DM Mono',monospace">${timeDisplay}${_hasDayDiffPT?'':_brkDisplay}${futurePerm?`<div style="font-size:10px;color:#1d4ed8;margin-top:2px">📅 ${futurePerm.startDate}부터: ${futurePerm.daySchedule&&Object.keys(futurePerm.daySchedule).length>0?'시간변경':`${futurePerm.start}~${futurePerm.end}`}${futurePerm.customBreak!==undefined?` (휴게${futurePerm.customBreak}분)`:''}</div>`:''}</td><td style="font-family:'DM Mono',monospace;font-size:11px">${p.joinDate||'-'}${extraDate}</td>${canSeeWage()?`<td style="font-family:'DM Mono',monospace;font-size:11px">${(()=>{const w=wageAt(p,kstDate());const futureW=(()=>{const futures=(p.permChanges||[]).filter(pc=>pc.startDate>kstDate()&&pc.wage!==undefined&&pc.wage!==null);if(!futures.length)return null;return futures.sort((a,b)=>{const c=a.startDate.localeCompare(b.startDate);if(c!==0)return c;return(b.at||'').localeCompare(a.at||'');})[0];})();const cur=w?w.toLocaleString()+'원/'+wageUnit(p):'<span style="color:var(--text-muted)">-</span>';const futureMark=futureW?`<div style="font-size:10px;color:#1d4ed8;margin-top:2px">📅 ${futureW.startDate}부터: ${futureW.wage.toLocaleString()}원/${wageUnit(p)}</div>`:'';return cur+futureMark;})()}</td>`:''}<td>${sb}</td><td>${CU.role==='관리자'?`<button class="icon-btn" onclick="openEP('${p.id}')">수정</button>`:''}<button class="icon-btn" onclick="openSchedHist('${p.id}')" style="color:var(--accent)">${CU.role==='관리자'?'히스토리':'보기'}</button><button class="icon-btn" onclick="openHistoryModal('${p.id}')" style="color:#1d4ed8;border-color:#bfdbfe">📋 이력</button></td></tr>`;}).join('');document.getElementById('parts-table-wrap').innerHTML=`<div style="overflow-x:auto"><table class="parts-table"><thead><tr><th>카테고리</th><th>직무</th><th>이름</th><th>휴대폰</th><th>PIN</th><th>요일</th><th>기본시간</th><th>입사일</th>${canSeeWage()?'<th>시급</th>':''}<th>상태</th><th>관리</th></tr></thead><tbody>${rows}</tbody></table></div>`;}
 window.renderPartsTable=renderPT;window.renderPT=renderPT;
-function exportPartsCSV(){let ps=Object.entries(AP).map(([id,p])=>({...p,id}));const sf=document.getElementById('filter-status')?.value??'active';const today=kstDate();const isResigned=p=>p.status==='inactive'||(p.leaveDate&&p.leaveDate<today);const isScheduledResign=p=>p.leaveDate&&p.leaveDate>today&&p.status!=='inactive';if(sf==='active')ps=ps.filter(p=>!isResigned(p));else if(sf==='inactive')ps=ps.filter(p=>isResigned(p)||isScheduledResign(p));const wageCol=canSeeWage();const h='카테고리,직무,종류,이름,휴대폰,PIN,요일,출근,퇴근'+(wageCol?',시급,단위':'')+',입사일,퇴사일,상태';const statusLbl=p=>{if(p.status==='inactive')return '퇴사';if(p.leaveDate&&p.leaveDate<today)return '퇴사';if(p.leaveDate&&p.leaveDate>today)return '퇴사예정';return '재직';};const rows=ps.map(p=>{const base=[CATL[p.cat]||p.cat,p.role,p.tutorKind||'',p.name,p.phone||'',p.pin||'',(p.days||[]).join('·'),p.start||'',p.end||''];if(wageCol){const w=wageAt(p,today);base.push(w||'',w?wageUnit(p):'');}base.push(p.joinDate||'',p.leaveDate||'',statusLbl(p));return base.map(v=>`"${v}"`).join(',');}).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_직원목록.csv';a.click();URL.revokeObjectURL(u);}
+function exportPartsCSV(){let ps=Object.entries(AP).filter(([,p])=>!p.employmentCancelled).map(([id,p])=>({...p,id}));const sf=document.getElementById('filter-status')?.value??'active';const today=kstDate();const isResigned=p=>p.status==='inactive'||(p.leaveDate&&p.leaveDate<today);const isScheduledResign=p=>p.leaveDate&&p.leaveDate>today&&p.status!=='inactive';if(sf==='active')ps=ps.filter(p=>!isResigned(p));else if(sf==='inactive')ps=ps.filter(p=>isResigned(p)||isScheduledResign(p));const wageCol=canSeeWage();const h='카테고리,직무,종류,이름,휴대폰,PIN,요일,출근,퇴근'+(wageCol?',시급,단위':'')+',입사일,퇴사일,상태';const statusLbl=p=>{if(p.status==='inactive')return '퇴사';if(p.leaveDate&&p.leaveDate<today)return '퇴사';if(p.leaveDate&&p.leaveDate>today)return '퇴사예정';return '재직';};const rows=ps.map(p=>{const base=[CATL[p.cat]||p.cat,p.role,p.tutorKind||'',p.name,p.phone||'',p.pin||'',(p.days||[]).join('·'),p.start||'',p.end||''];if(wageCol){const w=wageAt(p,today);base.push(w||'',w?wageUnit(p):'');}base.push(p.joinDate||'',p.leaveDate||'',statusLbl(p));return base.map(v=>`"${v}"`).join(',');}).join('\n');const b=new Blob(['\uFEFF'+h+'\n'+rows],{type:'text/csv;charset=utf-8;'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='강안교육_직원목록.csv';a.click();URL.revokeObjectURL(u);}
 window.exportPartsCSV=exportPartsCSV;
 function openAP(){document.getElementById('modal-part-title').textContent='파트 등록';rPF(null);OM('modal-part');setTimeout(updateWageHelper,50);}
 function openEP(id){document.getElementById('modal-part-title').textContent='파트 수정';rPF(id);OM('modal-part');}
@@ -6712,6 +6714,7 @@ async function loadPayroll(){
   // 활성/3월 중 재직 파트 수집
   const today=kstDate();
   const parts=Object.entries(AP).filter(([id,p])=>{
+    if(p.employmentCancelled)return false;
     if(p.joinDate&&p.joinDate>monthEnd)return false;
     // ⭐ v10.8.7-fix3: 단발자 + tempDates 있으면 퇴사일 이후라도 포함
     if(p.leaveDate&&p.leaveDate<monthStart){
@@ -8960,6 +8963,7 @@ function getEducationH(p,dt){
 }
 window.getEducationH=getEducationH;
 function isEducationTarget(p){
+  if(p?.employmentCancelled)return false;
   return !!p&&(p.cat==='mgmt'||(p.cat==='tutor'&&String(p.tutorKind||'').includes('부담임')));
 }
 window.isEducationTarget=isEducationTarget;
@@ -10471,6 +10475,7 @@ async function wsBackendWrite(kind, reference, payload) {
     const latest=(await wsRead('parts/'+id)).value;
     if(latest?._workWriteLease?.token!==token||latest._workWriteLease.until<=Date.now())throw Error('저장 상태가 변경되었습니다. 다시 확인해주세요.');
     let value=payload;
+    value=await elValidateLeasedWrite(key,latest,value);
     if(segments[0]==='parts'&&payload&&WS.has(latest)){
       const pending=[];
       for(const field of ['tempDates','educationDates'])if(Array.isArray(payload[field])){
@@ -11004,6 +11009,484 @@ init=function(...args){
 doLogout=function(...args){lfReset();return lfOriginalLogout.apply(this,args);};
 window.doLogout=doLogout;
 
+
+// EMPLOYMENT_LIFECYCLE_BEGIN
+const EL=(function(){
+  'use strict';
+  const DAYS=['\uC77C','\uC6D4','\uD654','\uC218','\uBAA9','\uAE08','\uD1A0'];
+  const own=(o,k)=>!!o&&Object.prototype.hasOwnProperty.call(o,k);
+  const object=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
+  const fail=message=>{throw new Error(message);};
+  const put=(o,k,v)=>Object.defineProperty(o,k,{value:v,writable:true,enumerable:true,configurable:true});
+  function clone(v){
+    if(v===null||typeof v!=='object')return v;
+    const out=Array.isArray(v)?[]:{};
+    Object.keys(v).forEach(k=>put(out,k,clone(v[k])));return out;
+  }
+  function canonical(v){
+    if(Array.isArray(v))return '['+v.map(canonical).join(',')+']';
+    if(object(v))return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canonical(v[k])).join(',')+'}';
+    return JSON.stringify(v);
+  }
+  let cachedWS;
+  function ws(){
+    if(typeof WS!=='undefined')return WS;
+    if(cachedWS===undefined){
+      cachedWS=null;
+      if(typeof module!=='undefined'&&module.exports&&typeof require==='function'){
+        try{cachedWS=require('./model.js');}catch(e){/* Standalone fallback below. */}
+      }
+    }
+    return cachedWS;
+  }
+  function validDate(v){
+    if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v))return false;
+    const y=+v.slice(0,4),m=+v.slice(5,7),d=+v.slice(8,10),leap=y%4===0&&(y%100!==0||y%400===0);
+    return y>=1&&m>=1&&m<=12&&d>=1&&d<=[31,leap?29:28,31,30,31,30,31,31,30,31,30,31][m-1];
+  }
+  function nextDay(date,n=1){
+    if(!validDate(date)||!Number.isSafeInteger(n))fail('Invalid date or day offset.');
+    const d=new Date(date+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);
+    if(!Number.isFinite(d.getTime()))fail('Date is out of range.');
+    const result=d.toISOString().slice(0,10);if(!validDate(result))fail('Date is out of range.');return result;
+  }
+  function key(v){return typeof v==='string'&&v.trim()!==''&&!/[.$#[\]/\u0000-\u001f\u007f]/.test(v);}
+  function cancelled(v){return !!v&&(v.cancelled===true||v.canceled===true||v.deleted===true||!!v.cancelledAt||!!v.canceledAt||['cancelled','canceled','deleted'].includes(String(v.status||'').toLowerCase()));}
+  function rows(v){return v&&typeof v==='object'?Object.entries(v).filter(([,r])=>r!==null&&r!==undefined):[];}
+  function dated(v){return rows(v).map(([k,r])=>({key:k,value:r,date:object(r)&&validDate(r.date)?r.date:validDate(k)?k:null}));}
+  function intervals(p){
+    const model=ws();if(model&&typeof model.entries==='function')return model.entries(p);
+    return rows(p&&p.workPauses).filter(([,r])=>object(r)&&!cancelled(r)&&validDate(r.startDate)&&(!r.resumeDate||validDate(r.resumeDate)&&r.resumeDate>r.startDate))
+      .map(([k,r])=>({...clone(r),id:Array.isArray(p.workPauses)?r.id:k})).filter(r=>key(r.id)).sort((a,b)=>a.startDate.localeCompare(b.startDate));
+  }
+  function endDate(p,today){
+    if(!validDate(today))fail('Invalid today.');
+    if(p&&validDate(p.leaveDate))return p.leaveDate;
+    const entry=intervals(p).find(e=>!validDate(e.resumeDate)||e.resumeDate>today);
+    return entry?nextDay(entry.startDate,-1):null;
+  }
+  function state(p,today){
+    const lastDay=endDate(p,today),isCancelled=!!(p&&p.employmentCancelled),ended=!!(p&&p.status==='inactive')||!!lastDay&&lastDay<today;
+    return{lastDay,ended,pendingEnd:!isCancelled&&!ended&&!!lastDay&&lastDay>=today,cancelled:isCancelled};
+  }
+  function actual(a){return !!(a&&(a.inTime||a.outTime||(a.manual&&(a.adjustedStart||a.adjustedEnd))));}
+  function context(p,id,options){
+    if(!object(p)||!key(id)||!object(options)||!validDate(options.today)||!key(options.operation)||typeof options.stamp!=='string'||!options.stamp.trim()||typeof options.by!=='string'||!options.by.trim())fail('Invalid lifecycle context.');
+    if(p.employmentCancelled)fail('Cancelled employment cannot be activated.');
+    if(p.joinDate&&!validDate(p.joinDate))fail('Invalid retained join date.');
+    return options;
+  }
+  function revision(p){
+    const n=p._employmentRevision??0;if(!Number.isSafeInteger(n)||n<0||n>=Number.MAX_SAFE_INTEGER)fail('Invalid employment revision.');return n+1;
+  }
+  function eventMap(p){
+    const out={};
+    for(const [k,e]of rows(p.employmentEvents)){
+      const id=Array.isArray(p.employmentEvents)?(object(e)&&key(e.operation)?e.operation:'legacy_'+k):k;
+      if(own(out,id))fail('Duplicate retained employment event.');put(out,id,clone(e));
+    }
+    return out;
+  }
+  function saveEvent(out,id,kind,options,details={}){
+    const events=eventMap(out);if(own(events,options.operation))fail('Employment operation already exists.');
+    const n=revision(out);put(events,options.operation,{...clone(details),operation:options.operation,kind,at:options.stamp,by:options.by,profileId:id,revision:n});
+    out.employmentEvents=events;out._employmentRevision=n;out.employmentLastOperation=options.operation;
+  }
+  function snapshot(p,fields){
+    const out={};for(const field of fields)put(out,field,{exists:own(p,field),...(own(p,field)?{value:clone(p[field])}:{})});return out;
+  }
+  function restore(out,s){
+    if(!object(s))fail('Missing previous employment state.');
+    for(const [field,prior]of Object.entries(s)){if(!object(prior)||typeof prior.exists!=='boolean')fail('Invalid previous employment state.');if(prior.exists)put(out,field,clone(prior.value));else delete out[field];}
+  }
+  // Preserve keyed booking IDs and every archived record field; arrays remain arrays.
+  function split(value,cutoff,inclusive){
+    const kept=Array.isArray(value)?[]:{},removed=Array.isArray(value)?[]:{};
+    for(const row of dated(value)){
+      const target=row.date&&(inclusive?row.date>=cutoff:row.date>cutoff)?removed:kept;
+      if(Array.isArray(target))target.push(clone(row.value));else put(target,row.key,clone(row.value));
+    }
+    return{kept,removed};
+  }
+  function archive(out,cutoff,inclusive){
+    const details={};
+    for(const [field,eventField]of [['tempDates','archivedTemps'],['educationDates','archivedEducation']]){
+      if(!own(out,field))continue;
+      if(out[field]!==null&&typeof out[field]!=='object')fail('Invalid retained booking collection.');
+      const parts=split(out[field],cutoff,inclusive);out[field]=parts.kept;
+      if(rows(parts.removed).length)details[eventField]=parts.removed;
+    }
+    return details;
+  }
+  function mergeBookings(current,archived){
+    if(!rows(archived).length)return clone(current);
+    const out=current===undefined?(Array.isArray(archived)?[]:{}):clone(current);
+    if(!out||typeof out!=='object')fail('Booking restoration collision.');
+    const existing=dated(out),used=new Set();
+    for(const row of dated(archived)){
+      const sameKey=!Array.isArray(out)&&existing.find(r=>r.key===row.key);
+      if(sameKey){if(canonical(sameKey.value)!==canonical(row.value))fail('Booking key collision.');used.add(sameKey);continue;}
+      const collisions=existing.filter(r=>row.date&&r.date===row.date);
+      if(collisions.length){
+        if(collisions.some(r=>canonical(r.value)!==canonical(row.value)))fail('Booking date collision.');
+        const identical=collisions.find(r=>!used.has(r));if(identical){used.add(identical);continue;}
+      }
+      if(Array.isArray(out))out.push(clone(row.value));else put(out,row.key,clone(row.value));
+    }
+    return out;
+  }
+  function restoreBookings(out,event){
+    for(const [field,eventField]of [['tempDates','archivedTemps'],['educationDates','archivedEducation']])if(own(event,eventField))out[field]=mergeBookings(out[field],event[eventField]);
+  }
+  function combineArchives(first,second){
+    if(!rows(first).length)return clone(second);
+    if(!rows(second).length)return clone(first);
+    if(Array.isArray(first)||Array.isArray(second))return [...rows(first),...rows(second)].map(([,v])=>clone(v));
+    const out=clone(first);
+    for(const [k,v]of rows(second)){
+      if(own(out,k)&&canonical(out[k])!==canonical(v))fail('Archived booking key collision.');
+      put(out,k,clone(v));
+    }
+    return out;
+  }
+  // Storage callers must provide the authoritative attendance snapshot in options.
+  // Accept date -> record, date -> {profileId: record}, or dated record arrays.
+  function evidence(p,id,options){
+    const value=options.attendance===undefined?p.attendance:options.attendance;
+    return dated(value).map(row=>({date:row.date,record:object(row.value)&&own(row.value,id)?row.value[id]:row.value})).filter(r=>r.date&&actual(r.record));
+  }
+  function rootId(p,id){if(p.employmentRootId!==undefined&&!key(p.employmentRootId))fail('Invalid employment root.');return p.employmentRootId||id;}
+  function stampValid(v){
+    if(typeof v!=='string')return false;
+    const m=/^(\d{4})[-./](\d{2})[-./](\d{2})[ T]([01]\d|2[0-3]):([0-5]\d)(?::[0-5]\d(?:\.\d+)?)?(?: KST|\+09:?00)?$/.exec(v.trim());
+    return !!m&&validDate(m[1]+'-'+m[2]+'-'+m[3]);
+  }
+  function approvedTemp(p,date){
+    const interval=intervals(p).filter(e=>e.startDate<=date&&(!validDate(e.resumeDate)||date<e.resumeDate)).pop();
+    return !!interval&&dated(p.tempDates).some(r=>r.date===date&&object(r.value)&&!cancelled(r.value)&&r.value.workPauseId===interval.id&&r.value.approved!==false&&r.value.workPauseApproved!==false&&stampValid(r.value.workPauseApprovedAt)&&shift(r.value)>0);
+  }
+  function time(v){return typeof v==='string'&&/^([01]\d|2[0-3]):[0-5]\d$/.test(v)?Number(v.slice(0,2))*60+Number(v.slice(3)):null;}
+  function shift(s){const a=time(s&&s.start),b=time(s&&s.end);return a===null||b===null?0:(b-a+1440)%1440;}
+  function numeric(v){return typeof v==='number'||typeof v==='string'&&v.trim()?Number(v):NaN;}
+  function day(v){return DAYS.includes(v)?v:/^[0-6]$/.test(String(v))?DAYS[Number(v)]:null;}
+  function schedule(value){
+    if(!object(value))fail('Fresh schedule is required.');
+    const values=Array.isArray(value.days)?value.days:object(value.days)?Object.entries(value.days).map(([k,v])=>v===true?k:v).filter(v=>v!==false&&v!==null):[];
+    const days=values.map(day);if(!days.length||days.some(d=>!d))fail('Invalid schedule days.');
+    const out={days:[...new Set(days)],start:value.start,end:value.end,wage:numeric(value.wage)};
+    if(!Number.isFinite(out.wage)||out.wage<=0||!shift(out))fail('Valid times and positive wage are required.');
+    if(value.breakAuto!==undefined&&typeof value.breakAuto!=='boolean')fail('Invalid automatic break.');
+    if(value.customBreak!==undefined){out.customBreak=numeric(value.customBreak);if(!Number.isFinite(out.customBreak)||out.customBreak<0||out.customBreak>240)fail('Invalid break.');}
+    if(value.breakAuto===true){out.breakAuto=true;delete out.customBreak;}else if(out.customBreak===undefined)fail('Fresh break or automatic break is required.');
+    else if(value.breakAuto===false)out.breakAuto=false;
+    if(value.daySchedule!==undefined){
+      if(!value.daySchedule||typeof value.daySchedule!=='object')fail('Invalid weekday schedule.');out.daySchedule={};
+      for(const [k,v]of rows(value.daySchedule)){
+        const d=day(k);if(!d||!object(v)||!shift(v))fail('Invalid weekday times.');
+        const t={start:v.start,end:v.end};
+        if(v.customBreak!==undefined){t.customBreak=numeric(v.customBreak);if(!Number.isFinite(t.customBreak)||t.customBreak<0||t.customBreak>240||t.customBreak>shift(t))fail('Invalid weekday break.');}
+        if(v.breakAuto!==undefined){if(typeof v.breakAuto!=='boolean')fail('Invalid weekday automatic break.');t.breakAuto=v.breakAuto;}
+        put(out.daySchedule,d,t);
+      }
+    }
+    const shortest=Math.min(...out.days.map(d=>shift(out.daySchedule&&out.daySchedule[d]||out)));
+    if(out.customBreak!==undefined&&out.customBreak>shortest)fail('Break exceeds shift.');
+    const model=ws();if(model&&typeof model.validateSchedule==='function'){const error=model.validateSchedule(out);if(error)fail(error);}
+    return out;
+  }
+  function endProfile(p,id,lastDay,options){
+    context(p,id,options);if(!validDate(lastDay)||p.joinDate&&lastDay<p.joinDate)fail('Invalid last working day.');
+    if(p.employmentNext&&(!validDate(p.employmentNext.startDate)||lastDay>=p.employmentNext.startDate))fail('End overlaps linked rehire.');
+    if(evidence(p,id,options).some(r=>r.date>lastDay))fail('Actual work exists after the last day.');
+    const prior=activeEvent(p,'end');
+    const supersedes=prior&&prior.lastDay===p.leaveDate&&prior.lastDay>=options.today&&p.status==='active'&&p.isCasual===false?prior:null;
+    const out=clone(p),previousState=supersedes?clone(supersedes.previousState):snapshot(p,['leaveDate','status','isCasual']);
+    const archived=archive(out,lastDay,false);
+    if(supersedes)for(const field of ['archivedTemps','archivedEducation'])if(own(supersedes,field)||own(archived,field))archived[field]=combineArchives(supersedes[field],archived[field]);
+    out.leaveDate=lastDay;out.status='active';out.isCasual=false;out.employmentRootId=rootId(p,id);
+    saveEvent(out,id,'end',options,{lastDay,previousState,...archived,...(supersedes?{supersedes:supersedes.operation}:{})});return out;
+  }
+  function rehireProfiles(old,id,newId,start,freshSchedule,options){
+    context(old,id,options);if(!key(newId)||newId===id||!validDate(start)||start<options.today)fail('Invalid rehire identity or date.');
+    const lastDay=endDate(old,options.today),legacy=!validDate(old.leaveDate),records=evidence(old,id,options);
+    const unworkedLegacy=legacy&&old.joinDate&&lastDay&&lastDay<old.joinDate&&!records.length;
+    if(!lastDay||start<=lastDay||old.joinDate&&lastDay<old.joinDate&&!unworkedLegacy)fail('Rehire must follow the retained last day.');
+    if(old.employmentNext)fail('A linked next employment already exists.');
+    for(const r of records)if(r.date>=start||r.date>lastDay&&!(legacy?approvedTemp(old,r.date):old.isCasual&&dated(old.tempDates).some(t=>t.date===r.date&&!cancelled(t.value))))fail('Rehire would hide actual work without a permitted extra shift.');
+    const timetable=schedule(freshSchedule),previous=clone(old),root=rootId(old,id),previousState=snapshot(old,['leaveDate','status','isCasual']);
+    const archived=archive(previous,start,true);
+    if(legacy&&dated(previous.tempDates).some(r=>r.date>lastDay))previous.isCasual=true;
+    previous.leaveDate=lastDay;previous.status='active';previous.employmentRootId=root;previous.employmentNext={id:newId,startDate:start,operation:options.operation};
+    saveEvent(previous,id,'rehire',options,{lastDay,startDate:start,nextId:newId,previousState,...archived});
+    const next={};for(const field of ['name','phone','pin','cat','category','role','tutorKind'])if(own(old,field))put(next,field,clone(old[field]));
+    Object.assign(next,timetable,{joinDate:start,status:'active',pinActive:true,isCasual:false,employmentRootId:root,employmentPreviousId:id,_employmentDateRevision:0});
+    saveEvent(next,newId,'rehire',options,{startDate:start,previousId:id});return{previous,next};
+  }
+  function activeEvent(p,kind){
+    const all=Object.values(eventMap(p)).filter(object),reversed=new Set(all.flatMap(e=>[e.reverses,e.supersedes]).filter(Boolean));
+    return all.filter(e=>e.kind===kind&&!reversed.has(e.operation)).sort((a,b)=>(b.revision||0)-(a.revision||0)||String(b.at||'').localeCompare(String(a.at||'')))[0]||null;
+  }
+  function cancelEnd(p,id,options){
+    context(p,id,options);const event=activeEvent(p,'end'),lastDay=endDate(p,options.today);
+    if(!event||!lastDay||lastDay<options.today||event.lastDay!==lastDay||p.employmentNext||p.status!=='active'||p.isCasual!==false)fail('Only an unchanged pending end can be cancelled.');
+    const out=clone(p);restoreBookings(out,event);restore(out,event.previousState);
+    saveEvent(out,id,'cancelEnd',options,{lastDay,reverses:event.operation});return out;
+  }
+  function cancelRehire(old,id,newp,newId,options){
+    context(old,id,options);context(newp,newId,options);
+    const link=old.employmentNext,start=newp.joinDate,event=activeEvent(old,'rehire');
+    if(id===newId||!link||link.id!==newId||link.startDate!==start||!validDate(start)||start<options.today||newp.status!=='active'||validDate(newp.leaveDate)||newp.employmentPreviousId!==id||newp.employmentRootId!==rootId(old,id)||newp.employmentNext||!event||event.operation!==link.operation||event.nextId!==newId)fail('Only a linked pending rehire can be cancelled.');
+    if(evidence(newp,newId,options).length)fail('Rehire has actual attendance.');
+    for(const field of ['tempDates','educationDates','permChanges','scheduleReplaces','schedulePeriods','plannedAbsent','workPauses','scheduleHistory'])if(rows(newp[field]).length)fail('Rehire has adjustment bookings.');
+    const previous=clone(old),next=clone(newp);restoreBookings(previous,event);restore(previous,event.previousState);delete previous.employmentNext;
+    saveEvent(previous,id,'cancelRehire',options,{startDate:start,nextId:newId,reverses:event.operation});
+    next.status='inactive';next.employmentCancelled=true;next.leaveDate=nextDay(start,-1);next.pinActive=false;next.isCasual=false;
+    saveEvent(next,newId,'cancelRehire',options,{startDate:start,previousId:id,reverses:link.operation});return{previous,next};
+  }
+  return Object.freeze({validDate,nextDay,endDate,state,actual,endProfile,rehireProfiles,cancelEnd,cancelRehire});
+})();
+if(typeof module!=='undefined'&&module.exports)module.exports=EL;
+
+const EL_SELECTED=new Set();
+const EL_COMMIT_STARTED=new Set();
+let EL_DIALOG=null,EL_BUSY=false;
+const elClone=v=>JSON.parse(JSON.stringify(v));
+const elRows=v=>Array.isArray(v)?v:Object.entries(v||{}).map(([key,value])=>value&&typeof value==='object'&&!value.date&&EL.validDate(key)?{...value,date:key}:value);
+const elId=()=> 'employment_'+crypto.randomUUID().replaceAll('-','');
+const elOptions=operation=>({today:kstDate(),stamp:wsStamp(),by:CU.name,operation});
+const elExpected=ids=>Object.fromEntries(ids.map(id=>[id,WS.signature(AP[id])]));
+const elLabel=p=>`${p.name} · ${p.role}${p.tutorKind?' · '+p.tutorKind:''}`;
+function elAssertAdmin(){if(CU?.role!=='관리자')throw Error('관리자만 변경할 수 있습니다.');wsWritable();}
+async function elAttendance(){return (await wsRead('attendance')).value||{};}
+function elAssertNoActualAfter(id,date,attendance){
+  const dates=Object.entries(attendance).filter(([day,rows])=>day>date&&EL.actual(rows?.[id])).map(([day])=>day).sort();
+  if(dates.length)throw Error(`${AP[id]?.name||''}: 퇴사일 이후 출결이 있습니다. ${dates.slice(0,5).join(', ')}`);
+}
+function elAssertUnworked(id,attendance){
+  if(Object.values(attendance).some(rows=>EL.actual(rows?.[id])))throw Error('이미 출결이 있는 근무기록은 취소하거나 시작일을 바꿀 수 없습니다.');
+}
+function elAssertLegacyClosure(p,id,lastDay,start,attendance){
+  if(EL.validDate(p.leaveDate))return;
+  for(const [date,rows]of Object.entries(attendance)){
+    if(date<=lastDay||date>=start||!EL.actual(rows?.[id]))continue;
+    if(!elRows(p.tempDates).some(e=>e.date===date))throw Error(`${p.name}: 기존 중단 기간의 실제 출결을 먼저 확인해주세요. ${date}`);
+  }
+}
+async function elCommit(ids,expected,operation,build){
+  elAssertAdmin();
+  let current=(await wsRead('parts')).value||{};
+  if(ids.every(id=>current[id]?.employmentEvents?.[operation])){AP=current;return current;}
+  await wsLease(ids,expected,operation,'employment','update');
+  try{
+    current=(await wsRead('parts')).value||{};
+    if(ids.some(id=>current[id]?._workWriteLease?.token!==operation||current[id]._workWriteLease.until<=Date.now()))throw Error('다른 저장이 진행 중입니다. 다시 열어 확인해주세요.');
+    const attendance=await elAttendance();
+    const replacements=build(current,attendance),changes={};
+    for(const [id,p]of Object.entries(replacements)){
+      if(!ids.includes(id)&&current[id])throw Error('이미 등록된 재입사 기록입니다. 다시 확인해주세요.');
+      changes[id]={...p,_workWriteProof:wsProof(operation)};
+    }
+    EL_COMMIT_STARTED.add(operation);try{await wsPatch('parts',changes);}catch(error){
+      const recovered=(await wsRead('parts')).value||{};
+      if(!ids.every(id=>recovered[id]?.employmentEvents?.[operation]))throw error;
+    }
+    const confirmed=(await wsRead('parts')).value||{};
+    if(!ids.every(id=>confirmed[id]?.employmentEvents?.[operation]))throw Error('저장 결과를 다시 확인해주세요. 같은 창에서 다시 확인할 수 있습니다.');
+    AP=confirmed;return confirmed;
+  }finally{await wsRelease(ids,operation);}
+}
+function elRefresh(){PAY_DATA=null;WS_PAY_REVISION='';EL_SELECTED.clear();renderPT();renderAll();if(typeof updateEducationTodayButton==='function')updateEducationTodayButton();}
+function elSetBusy(value){EL_BUSY=value;document.querySelectorAll('#modal-employment button,#modal-employment input,#modal-part button,#modal-part input,#modal-part select').forEach(e=>{if(value){e.dataset.elDisabled=e.disabled?'1':'0';e.disabled=true;}else if(e.dataset.elDisabled!==undefined){e.disabled=e.dataset.elDisabled==='1';delete e.dataset.elDisabled;}});elSelectionCount();}
+function elError(message){const box=document.querySelector('#modal-employment.open #el-error')||document.querySelector('#modal-part.open #el-error');const text=/[가-힣]/.test(message)?message:'날짜, 근무 요일, 시간과 시급을 확인해주세요. 기존 기록과 겹치는 경우 저장되지 않습니다.';if(box){box.textContent=text;box.hidden=false;}else ST(text);}
+function elIntent(dialog,kind,value){const signature=WS.signature({kind,value});if(dialog.request&&dialog.request!==signature&&EL_COMMIT_STARTED.has(dialog.operation))throw Error('이전 저장 결과를 먼저 확인한 뒤 창을 다시 열어주세요.');dialog.request=signature;}
+function elClose(){if(EL_BUSY)return;CM('modal-employment');EL_DIALOG=null;}
+function elModal(title,body,buttons){
+  let overlay=document.getElementById('modal-employment');
+  if(!overlay){overlay=document.createElement('div');overlay.id='modal-employment';overlay.className='modal-overlay';overlay.innerHTML='<div class="modal" style="width:calc(100vw - 32px);max-width:650px;max-height:88dvh;display:flex;flex-direction:column;overflow:hidden"><div class="modal-header"><div class="modal-title" id="el-title"></div><button type="button" class="modal-close" aria-label="닫기" onclick="elClose()">✕</button></div><div id="el-body" style="min-height:0;overflow-y:auto;overscroll-behavior:contain"></div><div id="el-footer" class="btn-row" style="flex-wrap:wrap;flex-shrink:0;margin-top:16px"></div></div>';overlay.firstElementChild.onclick=e=>e.stopPropagation();document.body.appendChild(overlay);if(typeof makeDraggable==='function')makeDraggable('modal-employment');}
+  document.getElementById('el-title').textContent=title;document.getElementById('el-body').innerHTML=body+'<div id="el-error" hidden role="alert" style="color:var(--danger);font-size:12px;white-space:pre-line;margin-top:12px"></div>';
+  document.getElementById('el-footer').innerHTML=buttons;OM('modal-employment');
+}
+function elSelectionCount(){const button=document.getElementById('el-bulk-end');if(button){button.disabled=EL_BUSY||!EL_SELECTED.size;button.textContent=EL_SELECTED.size?`일괄퇴사 (${EL_SELECTED.size})`:'일괄퇴사';}}
+function elDecorateParts(){
+  const allowed=CU?.role==='관리자',filters=document.querySelector('#tab-parts .parts-filters'),status=document.getElementById('filter-status');
+  document.getElementById('ws-suspend')?.remove();
+  status?.querySelector('option[value="workPaused"]')?.remove();
+  let button=document.getElementById('el-bulk-end');
+  if(!button&&allowed&&filters){button=document.createElement('button');button.id='el-bulk-end';button.type='button';button.className='btn-secondary';button.onclick=()=>elOpenEnd();filters.appendChild(button);}
+  const table=document.querySelector('#parts-table-wrap table');if(!table){elSelectionCount();return;}
+  const head=table.tHead?.rows[0];
+  if(head){head.cells[head.cells.length-2].classList.add('ws-status-col');head.cells[head.cells.length-1].classList.add('ws-manage-col');}
+  if(allowed&&head){const th=document.createElement('th');th.style.cssText='width:32px;min-width:32px';const all=document.createElement('input');all.type='checkbox';all.setAttribute('aria-label','현재 목록 선택');all.onchange=()=>{for(const cb of table.querySelectorAll('input[data-el-select]'))if(!cb.disabled&&!cb.closest('tr').hidden){cb.checked=all.checked;all.checked?EL_SELECTED.add(cb.dataset.elSelect):EL_SELECTED.delete(cb.dataset.elSelect);}elSelectionCount();};th.appendChild(all);head.prepend(th);}
+  for(const row of table.querySelectorAll('tbody tr')){
+    const match=row.querySelector('button[onclick^="openSchedHist("]')?.getAttribute('onclick')?.match(/openSchedHist\('([^']+)'\)/),id=match?.[1],p=AP[id];if(!p)continue;
+    row.dataset.workId=id;const state=EL.state(p,kstDate()),ended=state.ended;
+    if(p.employmentCancelled){row.hidden=true;EL_SELECTED.delete(id);continue;}
+    if(status?.value==='inactive'&&!ended&&!state.pendingEnd)row.hidden=true;
+    if(status?.value==='active'&&!document.getElementById('filter-name')?.value&&!document.getElementById('filter-role')?.value&&ended&&(!p.isCasual||p.employmentNext?.startDate<=kstDate()))row.hidden=true;
+    const statusCell=row.cells[row.cells.length-2];statusCell.classList.add('ws-status-col');row.lastElementChild.classList.add('ws-manage-col');
+    const badge=statusCell.querySelector('.sbadge');if(badge&&state.lastDay){badge.textContent=(ended?'퇴사 ':'퇴사예정 ')+state.lastDay;badge.className='sbadge '+(ended?'s-inactive':'');}
+    if(allowed){const td=document.createElement('td'),cb=document.createElement('input');cb.type='checkbox';cb.dataset.elSelect=id;cb.setAttribute('aria-label',p.name+' '+p.role+' 선택');cb.disabled=ended||!!p.employmentNext;cb.checked=EL_SELECTED.has(id)&&!cb.disabled;if(cb.disabled)EL_SELECTED.delete(id);cb.onchange=()=>{cb.checked?EL_SELECTED.add(id):EL_SELECTED.delete(id);elSelectionCount();};td.appendChild(cb);row.prepend(td);}
+  }
+  elSelectionCount();
+}
+wsDecorateParts=elDecorateParts;
+for(const id of ['filter-name','filter-role','filter-cat','filter-status'])document.getElementById(id)?.addEventListener(id==='filter-name'||id==='filter-role'?'input':'change',()=>EL_SELECTED.clear(),true);
+function elOpenEnd(ids){
+  try{elAssertAdmin();}catch(e){ST(e.message);return;}
+  ids=ids||[...document.querySelectorAll('#parts-table-wrap tr[data-work-id]')].filter(r=>!r.hidden&&EL_SELECTED.has(r.dataset.workId)).map(r=>r.dataset.workId);
+  if(!ids.length){ST('퇴사할 직원을 선택해주세요.');return;}
+  CM('modal-part');
+  const initial=ids.length===1?EL.endDate(AP[ids[0]],kstDate()):null;
+  const suggested=initial||ids.reduce((date,id)=>AP[id].joinDate>date?AP[id].joinDate:date,kstDate());
+  EL_DIALOG={kind:'end',ids,expected:elExpected(ids),operation:elId()};
+  const names=ids.map(id=>`<div style="padding:7px 0;border-bottom:1px solid var(--border-light)">${wsEscape(elLabel(AP[id]))}</div>`).join('');
+  const cancel=ids.length===1&&initial&&initial>=kstDate()&&elRows(AP[ids[0]].employmentEvents).some(e=>e.kind==='end')?'<button type="button" class="btn-secondary" onclick="elCancelEnd()">퇴사예약 취소</button>':'';
+  elModal(ids.length>1?'일괄퇴사':'퇴사',`<div style="max-height:180px;overflow-y:auto;margin-bottom:14px">${names}</div><div class="form-group"><label class="form-label" for="el-last-day">퇴사일 (마지막 근무일)</label><input type="date" id="el-last-day" class="form-input" value="${suggested}"></div>`,`${cancel}<button type="button" class="btn-secondary" onclick="elClose()">취소</button><button type="button" class="btn-primary" onclick="elSaveEnd()">퇴사 확정</button>`);
+}
+async function elSaveEnd(){
+  const d=EL_DIALOG;if(!d||EL_BUSY)return;const date=document.getElementById('el-last-day').value;
+  if(!EL.validDate(date)){elError('퇴사일을 선택해주세요.');return;}
+  try{elIntent(d,'end',date);}catch(e){elError(e.message);return;}
+  const count=d.ids.reduce((sum,id)=>sum+elRows(AP[id].tempDates).filter(e=>e.date>date).length+elRows(AP[id].educationDates).filter(e=>e.date>date).length,0);
+  if(!await CC(`${d.ids.length}건 · 마지막 근무일 ${date}${count?`\n퇴사일 이후 추가근무·교육 예약 ${count}건은 종료하며 내역은 보존합니다.`:''}`,{title:'퇴사 확인',danger:true}))return;
+  elSetBusy(true);
+  try{await elCommit(d.ids,d.expected,d.operation,(parts,attendance)=>Object.fromEntries(d.ids.map(id=>{elAssertNoActualAfter(id,date,attendance);return[id,EL.endProfile(parts[id],id,date,{...elOptions(d.operation),attendance})];})));await Promise.allSettled(d.ids.map(id=>logActivity('퇴사',elLabel(AP[id]),`마지막 근무일=${date}`,id)));elSetBusy(false);elClose();elRefresh();ST('퇴사 처리 완료');}catch(e){elSetBusy(false);elError(e.message);}
+}
+async function elCancelEnd(){const d=EL_DIALOG;if(!d||EL_BUSY)return;if(!await CC('퇴사 예약을 취소하시겠습니까?',{title:'퇴사예약 취소'}))return;try{elIntent(d,'cancelEnd',d.ids);}catch(e){elError(e.message);return;}elSetBusy(true);try{await elCommit(d.ids,d.expected,d.operation,parts=>({[d.ids[0]]:EL.cancelEnd(parts[d.ids[0]],d.ids[0],elOptions(d.operation))}));elSetBusy(false);elClose();elRefresh();ST('퇴사예약 취소 완료');}catch(e){elSetBusy(false);elError(e.message);}}
+function elSetTime(id,time){const [h,m]=time.split(':');document.getElementById(id).value=time;document.getElementById(id+'-ap').value=Number(h)>=12?'오후':'오전';document.getElementById(id+'-h').value=String(Number(h)%12||12);const minutes=document.getElementById(id+'-m');if(![...minutes.options].some(o=>o.value===m))minutes.add(new Option(m,m));minutes.value=m;}
+function elOpenRehire(id){
+  try{elAssertAdmin();}catch(e){ST(e.message);return;}
+  const p=AP[id];if(!p)return;const lastDay=EL.endDate(p,kstDate());
+  if(p.cat==='tutor'&&!p.tutorKind){ST('기본 정보에서 조교 종류를 먼저 선택해주세요.');return;}
+  if(!lastDay){ST('퇴사일을 먼저 확인해주세요.');return;}
+  const pending=p.employmentNext&&AP[p.employmentNext.id]&&!AP[p.employmentNext.id].employmentCancelled?AP[p.employmentNext.id]:null;
+  if(pending&&pending.joinDate<kstDate()){ST('이미 적용된 재입사입니다. 현재 근무기록에서 수정해주세요.');return;}
+  const newId=p.employmentNext?.id||elId(),ids=pending?[id,newId]:[id];
+  EL_DIALOG={kind:pending?'editRehire':'rehire',ids,oldId:id,newId,expected:elExpected(ids),operation:elId()};
+  rPF(null);document.getElementById('modal-part-title').textContent='재입사';
+  document.getElementById('modal-part').classList.add('el-rehire');document.getElementById('wrap-pf-start').closest('.form-group').parentElement.classList.add('el-base-times');
+  const basic=document.getElementById('ptab-basic-content'),schedule=document.getElementById('ptab-schedule-content'),date=document.getElementById('pf-jd'),dateGroup=date.closest('.form-group');
+  const identity=document.createElement('div');identity.hidden=true;
+  for(const key of ['pf-cat','pf-role','pf-tutorkind','pf-name','pf-phone','pf-pin']){const input=document.getElementById(key);if(!input)continue;identity.appendChild(input);const v={ 'pf-cat':p.cat,'pf-role':p.role,'pf-tutorkind':p.tutorKind||'','pf-name':p.name,'pf-phone':p.phone||'','pf-pin':p.pin||''}[key];if(input.tagName==='SELECT'&&![...input.options].some(o=>o.value===v))input.add(new Option(v,v));input.value=v;}
+  const heading=document.createElement('div');heading.style.cssText='font-size:13px;font-weight:600;margin-bottom:16px';heading.textContent=elLabel(p);
+  dateGroup.querySelector('label').textContent='재입사일';date.min=EL.nextDay(lastDay)>kstDate()?EL.nextDay(lastDay):kstDate();date.value=pending?.joinDate||date.min;
+  const body=document.getElementById('modal-part-body');body.firstElementChild?.remove();basic.replaceChildren(heading,dateGroup,identity,schedule);schedule.style.display='block';
+  const error=document.createElement('div');error.id='el-error';error.hidden=true;error.setAttribute('role','alert');error.style.cssText='font-size:12px;color:var(--danger);white-space:pre-line;margin-top:12px';basic.appendChild(error);
+  document.getElementById('pf-wage').value=pending?.wage||wageAt(p,date.value)||'';
+  if(pending){elSetTime('pf-start',pending.start);elSetTime('pf-end',pending.end);document.getElementById('pf-brk').value=pending.customBreak??'';for(const day of pending.days||[]){const b=[...document.querySelectorAll('#pf-days .day-btn')].find(b=>b.textContent===day);b?.classList.add('selected');}for(const [day,time]of Object.entries(pending.daySchedule||{})){toggleDayTime(day);elSetTime('ds-s-'+day,time.start);elSetTime('ds-e-'+day,time.end);}}
+  const footer=body.querySelector(':scope > .btn-row'),save=footer.querySelector('.btn-primary');save.textContent='재입사 저장';save.onclick=elSaveRehire;
+  if(pending){const cancel=document.createElement('button');cancel.type='button';cancel.className='btn-secondary';cancel.textContent='재입사 취소';cancel.onclick=()=>elCancelRehire(id,newId);footer.prepend(cancel);}
+  if(typeof updateWageHelper==='function')updateWageHelper();if(typeof updatePfAutoBrk==='function')updatePfAutoBrk();OM('modal-part');
+}
+function elReadSchedule(){
+  const days=[...document.querySelectorAll('#pf-days .day-btn.selected')].map(b=>b.textContent.trim()),daySchedule={};
+  for(const row of document.querySelectorAll('#day-times [data-day]')){const day=row.dataset.day;daySchedule[day]={start:syncGetTime('ds-s-'+day),end:syncGetTime('ds-e-'+day)};}
+  const raw=document.getElementById('pf-brk').value.trim();return{days,start:syncGetTime('pf-start'),end:syncGetTime('pf-end'),daySchedule,wage:Number(document.getElementById('pf-wage').value),...(raw===''?{breakAuto:true}:{customBreak:Number(raw),breakAuto:false})};
+}
+function elCheckRehireOverlap(parts,next,excluded){
+  const same=Object.entries(parts).filter(([id,p])=>!excluded.includes(id)&&!p.employmentCancelled&&((p.phone&&String(p.phone).replace(/\D/g,'')===String(next.phone||'').replace(/\D/g,''))||(p.pin===next.pin&&p.name===next.name)));
+  const shift=(p,n)=>{const date=EL.nextDay(next.joinDate,n),day=['일','월','화','수','목','금','토'][new Date(date+'T12:00:00+09:00').getDay()];if(p.joinDate&&date<p.joinDate||p.leaveDate&&date>p.leaveDate&&!(p.isCasual&&elRows(p.tempDates).some(e=>e.date===date))||p.status==='inactive'&&!p.leaveDate&&!p.isCasual||isPlannedAbsent(p,date)||!isWorkDay(p,day,date))return null;const t=getDayTime(p,day,date);if(!t?.start||!t.end)return null;const start=toM(t.start),end=toM(t.end);return{date,start:n*1440+start,end:n*1440+end+(end<=start?1440:0)};};
+  const fresh=Array.from({length:31},(_,n)=>shift(next,n)).filter(Boolean);
+  for(const[,p]of same)for(let n=-1;n<=31;n++){const b=shift(p,n);if(b&&fresh.some(a=>a.start<b.end&&b.start<a.end))return `${b.date} ${p.role} 근무와 시간이 겹칩니다.`;}return null;
+}
+async function elSaveRehire(){
+  const d=EL_DIALOG;if(!d||EL_BUSY||!['rehire','editRehire'].includes(d.kind))return;
+  const start=document.getElementById('pf-jd').value,schedule=elReadSchedule();let clash;const oldP=AP[d.oldId];try{clash=elCheckRehireOverlap(AP,{name:oldP.name,phone:oldP.phone,pin:oldP.pin,cat:oldP.cat,role:oldP.role,tutorKind:oldP.tutorKind,...schedule,joinDate:start},[d.oldId,d.newId]);}catch(e){elError(e.message);return;}if(clash&&!await CC(`${clash}\n같은 사람의 여러 직무는 기존처럼 결근 처리·추가근무로 구분해야 합니다. 계속 저장하시겠습니까?`,{title:'시간 겹침',danger:true}))return;try{elIntent(d,d.kind,{start,schedule});}catch(e){elError(e.message);return;}elSetBusy(true);
+  try{await elCommit(d.ids,d.expected,d.operation,(parts,attendance)=>{
+    const old=parts[d.oldId],lastDay=EL.endDate(old,kstDate());elAssertLegacyClosure(old,d.oldId,lastDay,start,attendance);
+    if(d.kind==='editRehire'){
+      const existing=parts[d.newId];elAssertUnworked(d.newId,attendance);elAssertNoNewBookings(existing);
+      if(EL.validDate(existing.leaveDate)&&start>existing.leaveDate)throw Error('재입사일이 예약된 퇴사일보다 늦습니다. 퇴사 예약을 먼저 확인해주세요.');
+      const temporary=elClone(old);delete temporary.employmentNext;
+      const built=EL.rehireProfiles(temporary,d.oldId,d.newId,start,schedule,{...elOptions(d.operation),attendance});
+      built.next={...existing,...built.next,employmentEvents:{...existing.employmentEvents,...built.next.employmentEvents},_employmentRevision:(existing._employmentRevision||0)+1};
+      built.next._employmentDateRevision=existing._employmentDateRevision||0;
+      built.next.employmentEvents[d.operation].revision=built.next._employmentRevision;
+      const prior=old.employmentEvents?.[old.employmentNext.operation],event=built.previous.employmentEvents[d.operation];
+      if(prior){event.previousState=elClone(prior.previousState);for(const key of ['archivedTemps','archivedEducation'])if(prior[key])event[key]=elMergeArchives(prior[key],event[key]);}
+      if(existing.joinDate!==start)elDateProof(built.next,existing,start);const nowClash=elCheckRehireOverlap(parts,built.next,[d.oldId,d.newId]);if(nowClash&&nowClash!==clash)throw Error('다른 직무의 일정이 변경되었습니다. 재입사 화면을 다시 열어 확인해주세요.');return{[d.oldId]:built.previous,[d.newId]:built.next};
+    }
+    const built=EL.rehireProfiles(old,d.oldId,d.newId,start,schedule,{...elOptions(d.operation),attendance});const nowClash=elCheckRehireOverlap(parts,built.next,[d.oldId,d.newId]);if(nowClash&&nowClash!==clash)throw Error('다른 직무의 일정이 변경되었습니다. 재입사 화면을 다시 열어 확인해주세요.');return{[d.oldId]:built.previous,[d.newId]:built.next};
+  });await logActivity('재입사',elLabel(AP[d.newId]),`재입사일=${start}, 이전 근무기록 보존`,d.newId);elSetBusy(false);CM('modal-part');EL_DIALOG=null;elRefresh();ST('재입사 처리 완료');}catch(e){elSetBusy(false);elError(e.message);}
+}
+function elMergeArchives(a,b){if(!b)return elClone(a);if(Array.isArray(a)&&Array.isArray(b)){const seen=new Set();return [...a,...b].filter(row=>{const key=WS.signature(row);if(seen.has(key))return false;seen.add(key);return true;}).map(elClone);}if(!Array.isArray(a)&&!Array.isArray(b)){const out=elClone(a);for(const[key,row]of Object.entries(b)){if(Object.hasOwn(out,key)&&WS.signature(out[key])!==WS.signature(row))throw Error('예약 내역을 먼저 확인해주세요.');out[key]=elClone(row);}return out;}throw Error('예약 내역 형식이 달라 재입사 예약을 취소한 뒤 다시 등록해주세요.');}
+function elAssertNoNewBookings(p){for(const field of ['tempDates','educationDates','permChanges','scheduleReplaces','schedulePeriods','plannedAbsent'])if(elRows(p[field]).length)throw Error('새 근무기록에 일정이 등록돼 있습니다. 해당 일정을 먼저 확인해주세요.');}
+function elDateProof(next,before,to){next._employmentDateRevision=(before._employmentDateRevision||0)+1;next.employmentDateProof={from:before.joinDate||null,to};}
+async function elCancelRehire(oldId,newId){
+  if(EL_BUSY||!await CC('재입사 예약만 취소하시겠습니까?',{title:'재입사 취소'}))return;
+  const d=EL_DIALOG||{ids:[oldId,newId],expected:elExpected([oldId,newId]),operation:elId()};try{elIntent(d,'cancelRehire',[oldId,newId]);}catch(e){elError(e.message);return;}elSetBusy(true);
+  try{await elCommit([oldId,newId],d.expected,d.operation,(parts,attendance)=>{elAssertUnworked(newId,attendance);elAssertNoNewBookings(parts[newId]);const built=EL.cancelRehire(parts[oldId],oldId,parts[newId],newId,{...elOptions(d.operation),attendance});return{[oldId]:built.previous,[newId]:built.next};});elSetBusy(false);CM('modal-part');EL_DIALOG=null;elRefresh();ST('재입사 취소 완료');}catch(e){elSetBusy(false);elError(e.message);}
+}
+const elOriginalRPF=rPF;
+rPF=function(id){
+  document.getElementById('modal-part').classList.remove('el-rehire');elOriginalRPF(id);const normalSave=document.querySelector('#modal-part-body > .btn-row .btn-primary');if(normalSave)normalSave.onclick=()=>window.savePF(id||'');if(!id||CU?.role!=='관리자')return;const p=AP[id],state=EL.state(p,kstDate()),box=document.getElementById('state-btns');if(!box)return;
+  box.replaceChildren();
+  const add=(text,callback,danger)=>{const b=document.createElement('button');b.type='button';b.className='btn-secondary';b.textContent=text;b.style.cssText='font-size:12px;padding:6px 12px;margin-right:8px;white-space:nowrap';if(danger)b.style.color='var(--danger)';b.onclick=callback;box.appendChild(b);};
+  const pendingStart=p.employmentPreviousId&&p.joinDate>=kstDate();
+  if(pendingStart)add('재입사',()=>elOpenRehire(p.employmentPreviousId));
+  else if(state.ended||state.pendingEnd)add('재입사',()=>elOpenRehire(id));
+  if(!state.ended||!state.lastDay)add('퇴사',()=>elOpenEnd([id]),true);
+  add(p.employmentPreviousId&&p.joinDate>=kstDate()?'재입사 취소':'삭제',()=>elDelete(id),true);
+  const leave=document.getElementById('pf-leave');if(leave){leave.readOnly=true;leave.value=state.lastDay||'';leave.parentElement.querySelector('button')?.remove();}
+  const join=document.getElementById('pf-jd');if(join&&p.employmentRootId)join.readOnly=true;
+};
+window.rPF=rPF;
+resignP=id=>elOpenEnd([id]);reinP=id=>elOpenRehire(id);
+async function elDelete(id){
+  const p=AP[id];if(!p||EL_BUSY)return;
+  if(p.employmentPreviousId&&p.joinDate>=kstDate()){EL_DIALOG={ids:[p.employmentPreviousId,id],expected:elExpected([p.employmentPreviousId,id]),operation:elId()};return elCancelRehire(p.employmentPreviousId,id);}
+  if(!await CC(`${p.name} (${p.role})를 직원 목록에서 삭제하시겠습니까?`,{title:'직원 삭제',danger:true}))return;
+  const op=elId(),expected=elExpected([id]);elSetBusy(true);
+  try{await elCommit([id],expected,op,(parts,attendance)=>{elAssertUnworked(id,attendance);if(elRows(parts[id].educationDates).some(e=>Number(e.hours)>0))throw Error('교육시수가 있는 직원은 삭제할 수 없습니다.');const next=elClone(parts[id]);next.employmentCancelled=true;next.status='inactive';next.isCasual=false;next.leaveDate=EL.nextDay(next.joinDate||kstDate(),-1);next.employmentRootId=next.employmentRootId||id;next._employmentRevision=(next._employmentRevision||0)+1;next.employmentLastOperation=op;next.employmentEvents={...next.employmentEvents,[op]:{kind:'removeDraft',at:wsStamp(),by:CU.name}};return{[id]:next};});CM('modal-part');elRefresh();ST('삭제 완료');}catch(e){ST(e.message);}finally{elSetBusy(false);}
+}
+delP=elDelete;
+Object.assign(window,{resignP,resignPart:resignP,reinP,reinstatePart:reinP,delP,deletePart:delP,elOpenEnd,elSaveEnd,elCancelEnd,elOpenRehire,elSaveRehire,elCancelRehire,elClose});
+const elOriginalBackendWrite=wsBackendWrite;
+async function elValidateLeasedWrite(key,p,payload){
+  const match=key.match(/^parts\/([^/]+)$/);if(!match||!payload||!Object.hasOwn(payload,'joinDate')||payload.joinDate===p.joinDate)return payload;
+  const id=match[1],value=elClone(payload);if(p.employmentRootId)throw Error('근무 이력의 입사일은 직접 변경할 수 없습니다.');
+  if(!EL.validDate(value.joinDate))throw Error('입사일을 확인해주세요.');
+  const attendance=await elAttendance();
+  if(Object.entries(attendance).some(([date,rows])=>date<value.joinDate&&EL.actual(rows?.[id])))throw Error('변경할 입사일 이전에 출결이 있습니다. 재입사로 새 근무기간을 등록해주세요.');
+  if(elRows(p.educationDates).some(e=>e.date<value.joinDate&&Number(e.hours)>0))throw Error('변경할 입사일 이전에 교육시수가 있습니다.');
+  elDateProof(value,p,value.joinDate);return value;
+}
+wsBackendWrite=async function(kind,reference,payload){
+  const key=wsPath(reference),match=key.match(/^parts\/([^/]+)$/),id=match?.[1];
+  if(!id)return elOriginalBackendWrite(kind,reference,payload);
+  const p=(await wsRead(key)).value;if(!p)return elOriginalBackendWrite(kind,reference,payload);
+  if(kind==='remove'||payload===null)throw Error('직원 삭제는 수정 화면의 삭제 버튼에서 처리해주세요.');
+  let value=elClone(payload);
+  if(value&&Object.hasOwn(value,'joinDate')&&value.joinDate!==p.joinDate){
+    if(p.employmentRootId)throw Error('근무 이력의 입사일은 직접 변경할 수 없습니다. 재입사 화면에서 확인해주세요.');
+    if(!EL.validDate(value.joinDate))throw Error('입사일을 확인해주세요.');
+    elDateProof(value,p,value.joinDate);
+  }
+  if(value&&((Object.hasOwn(value,'leaveDate')&&(value.leaveDate||null)!==(p.leaveDate||null))||(Object.hasOwn(value,'status')&&value.status!==p.status&&(value.status==='inactive'||p.status==='inactive'))))throw Error('퇴사·재입사는 수정 화면의 해당 버튼에서 처리해주세요.');
+  if(p.employmentNext?.startDate){for(const field of ['tempDates','educationDates'])if(elRows(value?.[field]).some(e=>e.date>=p.employmentNext.startDate))throw Error('재입사일부터의 일정은 새 근무기록에서 등록해주세요.');}
+  return elOriginalBackendWrite(kind,reference,value);
+};
+const elOriginalPayrollPersonKey=payrollPersonKey;
+const elOriginalIsWorkDay=isWorkDay;
+isWorkDay=function(p,day,date){const dt=date||kstDate();if(p?.employmentRootId){if(p.employmentCancelled||p.joinDate&&dt<p.joinDate||p.employmentNext?.startDate&&dt>=p.employmentNext.startDate)return false;if(p.leaveDate&&dt>p.leaveDate&&!(p.isCasual&&elRows(p.tempDates).some(e=>e.date===dt)))return false;}return elOriginalIsWorkDay(p,day,date);};
+window.isWorkDay=isWorkDay;
+payrollPersonKey=function(row){const p=AP[row?.pid]||row||{};return p.cat==='tutor'&&p.employmentRootId?'__part__'+p.employmentRootId:elOriginalPayrollPersonKey(row);};
+window.payrollPersonKey=payrollPersonKey;
+const elStyle=document.createElement('style');elStyle.textContent=`
+#tab-parts .ws-manage-col{min-width:178px;width:178px}
+#modal-employment .modal-header{flex-shrink:0}
+#modal-employment .form-input{font-family:'Noto Sans KR','Malgun Gothic',sans-serif;font-weight:400}
+#modal-employment .btn-row button{white-space:nowrap}
+#modal-part-body input[readonly]{background:var(--bg);color:var(--text-secondary)}
+#modal-part.el-rehire .el-base-times{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))}
+#modal-part.el-rehire .form-group{min-width:0}
+#modal-part.el-rehire [id^="wrap-"]{display:grid!important;grid-template-columns:minmax(56px,1.15fr) minmax(40px,1fr) auto minmax(40px,1fr);gap:4px!important;min-width:0;max-width:100%}
+#modal-part.el-rehire [id^="wrap-"] select{width:100%!important;min-width:0!important}
+@media(max-width:560px){#modal-employment .modal{padding:20px 14px}#modal-employment .btn-row .btn-primary{flex:1}#modal-part.el-rehire .el-base-times{grid-template-columns:minmax(0,1fr)}#modal-part.el-rehire .day-time-row{flex-wrap:wrap}#modal-part.el-rehire .btn-row{flex-wrap:wrap}}
+`;document.head.appendChild(elStyle);
+if(document.getElementById('parts-table-wrap')?.querySelector('table'))renderPT();
+
+// EMPLOYMENT_LIFECYCLE_END
 </script>
 </body>
 </html>
