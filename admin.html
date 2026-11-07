@@ -10628,9 +10628,9 @@ function wsModal(title,html) {
   if(buttons){
     const extra=[...buttons.children].filter(b=>/wsCancel(Plan|Resume)/.test(b.getAttribute('onclick')||''));
     if(extra.length){
-      const menu=document.createElement('div');menu.hidden=true;menu.style.cssText='position:absolute;bottom:54px;left:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px;box-shadow:var(--shadow);z-index:2;min-width:140px;';
-      for(const b of extra){b.style.cssText+=';display:block;white-space:nowrap;width:100%;margin:3px 0';menu.appendChild(b);}
-      const more=document.createElement('button');more.className='icon-btn';more.type='button';more.textContent='⋯';more.title='예약 취소';more.setAttribute('aria-label','예약 취소 메뉴');more.style.cssText='width:34px;height:34px;flex-shrink:0;font-size:18px';more.onclick=()=>{menu.hidden=!menu.hidden;};footer.append(more,menu);
+      const cancellations=document.createElement('div');cancellations.className='ws-cancel-actions';
+      for(const b of extra){b.style.whiteSpace='nowrap';cancellations.appendChild(b);}
+      footer.appendChild(cancellations);
     }
     for(const b of [...buttons.children]){b.style.whiteSpace='nowrap';if(b.classList.contains('btn-primary'))b.style.flex='1';footer.appendChild(b);}
     buttons.remove();
@@ -10892,10 +10892,12 @@ wsStyle.textContent=`
 #ws-break-auto{color:#1d4ed8;background:#eff6ff;border:1px solid #bfdbfe;padding:1px 6px;border-radius:10px;font-size:10px;font-weight:600}
 #ws-break-mode:not(:empty){color:#b45309;background:#fffbeb;border:1px solid #fde68a;padding:1px 6px;border-radius:10px;font-size:10px}
 #modal-workstate .ws-break-preview{font-size:12px;color:var(--text-secondary);margin:0 0 12px;word-break:keep-all}
+#ws-actions{flex-wrap:wrap}
+#ws-actions .ws-cancel-actions{display:flex;gap:8px;align-items:center}
 #cmodal .ws-time-prompt{max-width:520px!important;width:100%;max-height:90dvh;overflow-y:auto}
 #cmodal .ws-prompt-times{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px!important}
 #cmodal .ws-prompt-times>div{min-width:0}
-@media(max-width:560px){#modal-workstate .ws-time-columns,#cmodal .ws-prompt-times{grid-template-columns:minmax(0,1fr)}#tab-parts .ws-manage-col{min-width:242px}}
+@media(max-width:560px){#modal-workstate .ws-time-columns,#cmodal .ws-prompt-times{grid-template-columns:minmax(0,1fr)}#tab-parts .ws-manage-col{min-width:242px}#ws-actions .ws-cancel-actions{flex-basis:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}#ws-actions .ws-cancel-actions button{min-width:0;width:100%;padding-left:6px;padding-right:6px}}
 `;
 document.head.appendChild(wsStyle);
 const wsPartsPanel=document.getElementById('tab-parts'),wsMain=document.querySelector('.main');
